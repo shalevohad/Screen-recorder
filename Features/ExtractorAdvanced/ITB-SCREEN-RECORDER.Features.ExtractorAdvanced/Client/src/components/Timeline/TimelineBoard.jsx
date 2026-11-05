@@ -71,6 +71,7 @@ export default function TimelineBoard({
     onAddKeyframeAtEpoch,
     onDeleteKeyframe,
     onUpdateKeyframeEpoch,
+    onUpdateKeyframeTransition,
     onToggleDisplayOnCanvas,
     onUpdateAudioPlan
 }) {
@@ -425,24 +426,46 @@ export default function TimelineBoard({
                                         <polyline points="9 18 15 12 9 6" />
                                     </svg>
                                 </button>
-                                <span className="summary-title">ALL VIDEO</span>
-                                <span className="summary-badge">{stations.length} STA</span>
+                                <span className="summary-title">ALL VIDEO (CANVAS)</span>
+                                <span className="summary-badge">{currentPlacements?.length || stations.length} STA</span>
                             </div>
                             <div className="track-canvas">
-                                {stations.length > 0 && (
-                                    <FilmstripCanvas
-                                        hostname={stations[0]?.hostname || stations[0]?.id}
-                                        displayId="mon-0"
-                                        activeSegments={recordingSegments[stations[0]?.id] || recordingSegments[stations[0]?.hostname] || stations[0]?.segments || []}
-                                        viewportStartMs={viewportStartMs}
-                                        viewportDurationMs={viewportDurationMs}
-                                        baseEpochMs={baseEpochMs}
-                                        inPointMs={inPointMs}
-                                        outPointMs={outPointMs}
-                                        globalGaps={estimateData?.removedGlobalGaps || []}
-                                        isAutoDirectorEnabled={false}
-                                    />
-                                )}
+                                {stations.length > 0 && (() => {
+                                    const primaryPlacement = currentPlacements?.find(p => p.isPrimary || p.isFocused) || currentPlacements?.[0];
+                                    const masterHost = primaryPlacement?.stationId || stations[0]?.hostname || stations[0]?.id;
+                                    const masterDisp = primaryPlacement?.displayId || 'mon-0';
+                                    let masterSegs = [];
+                                    if (currentPlacements && currentPlacements.length > 0) {
+                                        const segSet = new Map();
+                                        currentPlacements.forEach(p => {
+                                            const sSegs = recordingSegments[p.stationId] || recordingSegments[p.stationId?.toLowerCase()] || [];
+                                            sSegs.forEach(s => {
+                                                const k = `${s.startEpochMs || s.start}_${s.endEpochMs || s.end}`;
+                                                if (!segSet.has(k)) segSet.set(k, s);
+                                            });
+                                        });
+                                        masterSegs = Array.from(segSet.values());
+                                    }
+                                    if (masterSegs.length === 0) {
+                                        masterSegs = recordingSegments[stations[0]?.id] || recordingSegments[stations[0]?.hostname] || stations[0]?.segments || [];
+                                    }
+
+                                    return (
+                                        <FilmstripCanvas
+                                            hostname={masterHost}
+                                            displayId={masterDisp}
+                                            activeSegments={masterSegs}
+                                            viewportStartMs={viewportStartMs}
+                                            viewportDurationMs={viewportDurationMs}
+                                            baseEpochMs={baseEpochMs}
+                                            inPointMs={inPointMs}
+                                            outPointMs={outPointMs}
+                                            globalGaps={estimateData?.removedGlobalGaps || []}
+                                            isAutoDirectorEnabled={false}
+                                            isCanvasSummary={true}
+                                        />
+                                    );
+                                })()}
                             </div>
                         </div>
                     )}
@@ -511,14 +534,14 @@ export default function TimelineBoard({
                             onUpdateAudioPlan={onUpdateAudioPlan}
                         />
                     )}
-                    {canvasLayoutTimeline?.keyframes?.length > 0 && (
-                        <CanvasKeyframeTrack
+                    <CanvasKeyframeTrack
                             canvasLayoutTimeline={canvasLayoutTimeline}
                             activeKfIndex={activeKfIndex}
                             onSelectKeyframe={onSelectKeyframe}
                             onAddKeyframeAtEpoch={onAddKeyframeAtEpoch}
                             onDeleteKeyframe={onDeleteKeyframe}
                             onUpdateKeyframeEpoch={onUpdateKeyframeEpoch}
+                            onUpdateKeyframeTransition={onUpdateKeyframeTransition}
                             viewportStartMs={viewportStartMs}
                             viewportDurationMs={viewportDurationMs}
                             baseEpochMs={baseEpochMs}
@@ -528,7 +551,6 @@ export default function TimelineBoard({
                             outPointMs={outPointMs}
                             timeMode={timeMode}
                         />
-                    )}
                 </div>
 
                 <TimelineVerticalExportBtn

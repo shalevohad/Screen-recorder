@@ -39,7 +39,8 @@ export function FilmstripCanvas({
     directorSegments = [],
     isAutoDirectorEnabled = false,
     showDirectorCoverage = false,
-    stepperSegments = null
+    stepperSegments = null,
+    isCanvasSummary = false
 }) {
     const [tilesMap, setTilesMap] = useState({});
     const tilesMapRef = useRef(tilesMap);
@@ -58,7 +59,7 @@ export function FilmstripCanvas({
 
         const sorted = [...activeSegments].sort((a, b) => getSegStart(a) - getSegStart(b));
 
-        const allGapsToCheck = [...(globalGaps || []), ...(gaps || [])];
+        const allGapsToCheck = isCanvasSummary ? (globalGaps || []) : [...(globalGaps || []), ...(gaps || [])];
         const isTileInGap = (tStart, tEnd) => {
             if (!allGapsToCheck || allGapsToCheck.length === 0) return false;
             return allGapsToCheck.some(g => {
@@ -286,6 +287,10 @@ export function FilmstripCanvas({
             });
         }
 
+        if (isCanvasSummary) {
+            return resultGaps;
+        }
+
         rawStationEmptyRanges.forEach((range, rIdx) => {
             let subRanges = [range];
             if (globalGaps && globalGaps.length > 0) {
@@ -328,7 +333,7 @@ export function FilmstripCanvas({
         });
 
         return resultGaps;
-    }, [activeSegments, globalGaps, baseEpochMs, viewportStartMs, viewportDurationMs, inPointMs, outPointMs]);
+    }, [activeSegments, globalGaps, baseEpochMs, viewportStartMs, viewportDurationMs, inPointMs, outPointMs, isCanvasSummary]);
 
     // Director Coverage Highlights for child display tracks
     const coverageBlocks = useMemo(() => {
@@ -721,7 +726,7 @@ export default function TimelineTrack({
                     <span className="station-single-label" title={stationDisplayName}>
                         {stationDisplayName}
                     </span>
-                    {onToggleAutoDirector && (
+                    {hasMultiDisplays && onToggleAutoDirector && (
                         <button
                             type="button"
                             className={`btn-track-auto-dir-pill ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
@@ -792,7 +797,7 @@ export default function TimelineTrack({
                     <span className="station-accordion-title" title={stationDisplayName}>
                         {stationDisplayName}
                     </span>
-                    {onToggleAutoDirector && (
+                    {hasMultiDisplays && onToggleAutoDirector && (
                         <button
                             type="button"
                             className={`btn-track-auto-dir-pill ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
@@ -808,7 +813,7 @@ export default function TimelineTrack({
                 </div>
 
                 <div className="accordion-header-timeline">
-                    {onToggleAutoDirector && (
+                    {hasMultiDisplays && onToggleAutoDirector && (
                         <button
                             type="button"
                             className={`btn-station-auto-director ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
@@ -877,7 +882,7 @@ export default function TimelineTrack({
                             <FilmstripCanvas
                                 hostname={hostname}
                                 displayId={dispId}
-                                activeSegments={activeSegments}
+                                activeSegments={(disp.segments && disp.segments.length > 0) ? disp.segments : activeSegments}
                                 viewportStartMs={viewportStartMs}
                                 viewportDurationMs={viewportDurationMs}
                                 baseEpochMs={baseEpochMs}

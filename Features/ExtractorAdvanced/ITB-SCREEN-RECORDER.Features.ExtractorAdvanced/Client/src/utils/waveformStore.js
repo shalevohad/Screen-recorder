@@ -8,17 +8,18 @@ const _waveformCache = new Map();
 const _inFlightRequests = new Map();
 
 /**
- * Normalizes epoch timestamps into cache key
+ * Normalizes stationId and epoch timestamps into cache key
  */
-function makeWaveformKey(stationId, startEpoch, endEpoch, points = 200) {
-    return `${(stationId || '').toLowerCase()}_${Math.round(startEpoch)}_${Math.round(endEpoch)}_${points}`;
+function makeWaveformKey(stationId, startEpoch, endEpoch, points = 250) {
+    const cleanId = (stationId || '').replace(/^live\//i, '').toLowerCase().trim();
+    return `${cleanId}_${Math.round(startEpoch)}_${Math.round(endEpoch)}_${points}`;
 }
 
 export const waveformStore = {
     /**
      * Gets cached waveform peaks synchronously if already fetched.
      */
-    get(stationId, startEpoch, endEpoch, points = 200) {
+    get(stationId, startEpoch, endEpoch, points = 250) {
         const key = makeWaveformKey(stationId, startEpoch, endEpoch, points);
         return _waveformCache.get(key) || null;
     },
@@ -27,8 +28,9 @@ export const waveformStore = {
      * Asynchronously fetches acoustic peaks from the server.
      * Deduplicates in-flight calls and caches responses in memory.
      */
-    async fetchWaveform(stationId, startEpoch, endEpoch, signal = null, points = 200) {
+    async fetchWaveform(stationId, startEpoch, endEpoch, signal = null, points = 250) {
         if (!stationId || endEpoch <= startEpoch) return null;
+        const cleanId = (stationId || '').replace(/^live\//i, '').trim();
         const key = makeWaveformKey(stationId, startEpoch, endEpoch, points);
 
         if (_waveformCache.has(key)) {
@@ -41,7 +43,7 @@ export const waveformStore = {
 
         const fetchPromise = (async () => {
             try {
-                const url = `/api/v1/extractor-advanced/audio-waveform?stationId=${encodeURIComponent(stationId)}&startEpoch=${Math.round(startEpoch)}&endEpoch=${Math.round(endEpoch)}&points=${points}`;
+                const url = `/api/v1/extractor-advanced/audio-waveform?stationId=${encodeURIComponent(cleanId)}&startEpoch=${Math.round(startEpoch)}&endEpoch=${Math.round(endEpoch)}&points=${points}`;
                 const res = await fetch(url, { signal });
                 if (!res.ok) {
                     if (res.status === 204) return null;
@@ -56,7 +58,7 @@ export const waveformStore = {
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     // Cache a flat fallback to avoid thrashing on network/recording voids
-                    const fallback = new Array(points).fill(0.03);
+                    const fallback = new Array(points).fill(0.02);
                     _waveformCache.set(key, fallback);
                     return fallback;
                 }

@@ -24,6 +24,7 @@ import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache 
 import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
 import { formatTimelineClock } from './utils/timeFormat.js';
 import { getCurrentOperatorName } from './utils/operatorStore.js';
+import { waveformStore } from './utils/waveformStore.js';
 
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
@@ -516,6 +517,57 @@ export default function ExtractorAdvancedStudio() {
         if (!selectedStationIds || selectedStationIds.length === 0) return [];
         return allStations.filter(s => selectedStationIds.includes(s.id));
     }, [allStations, selectedStationIds]);
+
+    // Guarantee Root Keyframe and Cut Out Keyframe on session mount
+    useEffect(() => {
+        if (!timelineBaseEpochMs || isNaN(timelineBaseEpochMs)) return;
+        setCanvasLayoutTimeline(prev => {
+            if (prev?.keyframes && prev.keyframes.length > 0) return prev;
+            const inEpoch = timelineBaseEpochMs + (inPointMs || 0);
+            const outEpoch = timelineBaseEpochMs + (outPointMs || totalTimelineDurationMs || 3600000);
+            const initialLayout = currentCanvasLayout || {
+                width: 1920,
+                height: 1080,
+                backgroundColor: "#070A10",
+                fps: 30.0,
+                placements: []
+            };
+            return {
+                width: 1920,
+                height: 1080,
+                backgroundColor: "#070A10",
+                fps: 30.0,
+                keyframes: [
+                    {
+                        id: `kf_root_${inEpoch}`,
+                        timestampEpochMs: Math.round(inEpoch),
+                        transitionDurationSec: 0.5,
+                        transitionType: "smooth",
+                        layout: JSON.parse(JSON.stringify(initialLayout))
+                    },
+                    {
+                        id: `kf_out_${outEpoch}`,
+                        timestampEpochMs: Math.round(outEpoch),
+                        transitionDurationSec: 0.5,
+                        transitionType: "smooth",
+                        layout: JSON.parse(JSON.stringify(initialLayout))
+                    }
+                ]
+            };
+        });
+    }, [timelineBaseEpochMs, inPointMs, outPointMs, totalTimelineDurationMs, currentCanvasLayout]);
+
+    // Pre-fetch real acoustic waveforms for timeline stations across active cut interval for zero-time instant display
+    useEffect(() => {
+        if (!timelineStations || timelineStations.length === 0 || !timelineBaseEpochMs || isNaN(timelineBaseEpochMs)) return;
+        const inEpoch = timelineBaseEpochMs + (inPointMs || 0);
+        const outEpoch = timelineBaseEpochMs + (outPointMs || totalTimelineDurationMs || 3600000);
+        if (outEpoch <= inEpoch) return;
+
+        timelineStations.forEach(st => {
+            waveformStore.fetchWaveform(st.id, inEpoch, outEpoch, null, 250);
+        });
+    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, totalTimelineDurationMs]);
 
     const spotlightStation = useMemo(() => {
         return allStations.find(s => s.id === spotlightStationId) || null;

@@ -602,7 +602,7 @@
         right: 0;
         height: 3px !important;
         pointer-events: none;
-        z-index: 5;
+        z-index: 12 !important;
 
         &.has-stepper {
             bottom: 12px !important;
@@ -1007,13 +1007,23 @@
             }
 
             .data-presence-layer {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
                 height: 3px !important;
+                pointer-events: none;
+                z-index: 12 !important;
 
                 .data-presence-bar {
+                    position: absolute;
+                    top: 0;
+                    bottom: 0;
                     height: 100% !important;
                     min-width: 4px !important;
                     background-color: #10B981 !important;
                     box-shadow: 0 0 8px rgba(16, 185, 129, 0.8) !important;
+                    border-radius: 1px;
                 }
             }
         }

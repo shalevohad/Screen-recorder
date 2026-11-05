@@ -2882,4 +2882,54 @@ To maintain strict operational accountability and chain-of-custody in air-gapped
 
 ---
 
+### 19. Timeline Master Canvas Composite Filmstrip, Single-Display Station Governance, Draggable Audio Clips with Fade Ramps, Time-0 Waveform Architecture & Keyframe Sequencer Guarantee (2026-11-05)
+
+To guarantee broadcast-grade forensic accuracy, ergonomic timeline operations, and strict separation between multi-monitor and single-monitor workstations, this update delivers six core architectural enhancements:
+
+1. **Master Collapsed Video Track: Canvas Composite Filmstrip & Global Gap Slicing**:
+   - **Operational Challenge**: When collapsing the video tracks section (`!isMasterVideoOpen`), the summary filmstrip previously defaulted to rendering recording chunks and gaps from a single workstation (`stations[0]`), displaying misleading workstation-specific gaps instead of representing the master canvas timeline.
+   - **Canvas Synthesis & Slicing Architecture**:
+     - `TimelineBoard.jsx`: Computes `masterSegs` dynamically from active canvas placements (`currentPlacements`).
+     - Passes `isCanvasSummary={true}` to `FilmstripCanvas`.
+     - In `TimelineTrack.jsx` (`FilmstripCanvas`): When `isCanvasSummary` is active, workstation-specific empty ranges are completely suppressed. The filmstrip strictly evaluates `globalGaps` (`gap-global-skipped`), displaying only true shared missing intervals with `✂ SKIPPED ({durationSec}s)` badges.
+     - Collapsed master sidebar updates title to `ALL VIDEO (CANVAS)` with live station count badge (`{N} STA`).
+
+2. **Single-Display Station Expansion Suppression & Child Display Health Bars**:
+   - **Single-Display Invariant**: Workstations with only 1 physical screen (`displays.length <= 1`) strictly cannot expand. The accordion toggle button (`.btn-accordion-toggle`) is completely omitted from the DOM, and track clicking is restricted to selection without expanding.
+   - **Expanded Multi-Screen Health Bar Parity**: When a station with 2+ displays is expanded, each child screen row (`Screen 1`, `Screen 2`, etc.) renders the identical 3px health bar (`.data-presence-layer` with `.data-presence-bar`) anchored at `bottom: 0` with bright emerald `#10B981` glow and elevated `z-index: 12 !important;`, matching closed station health indicators.
+
+3. **Auto-Director Single-Screen Exclusion**:
+   - Workstations with a single display have only one camera feed; auto-director switching algorithms and UI controls are redundant and excluded.
+   - `TimelineTrack.jsx`: In both collapsed and expanded modes, Auto-Director controls (`.btn-track-auto-dir-pill` and `.btn-station-auto-director`) and stepper ribbons (`.director-stepper-ribbon`) are rendered strictly under `hasMultiDisplays && onToggleAutoDirector`.
+   - `ExtractorAdvancedStudio.jsx`: Re-planning effects filter `allStations` by `displays.length > 1`, completely bypassing single-screen stations.
+
+4. **Draggable Audio Cut Segments & Volume Fade In / Out Ramps**:
+   - **Draggable Audio Clips**:
+     - Operators can click anywhere on the body of an audio clip (`.audio-clip-block`) and drag horizontally to reposition its `startEpochMs` and `endEpochMs` along the timeline.
+     - Snapping engine automatically aligns moving clips to the playhead (`playheadEpoch`), cut In/Out points, and adjacent audio clips within 12px tolerance.
+     - Clamping safeguards keep audio clips within timeline boundaries (`baseEpochMs` to `baseEpochMs + totalDurationMs`).
+   - **Fade-In & Fade-Out Volume Ramps**:
+     - Added `fadeInMs` and `fadeOutMs` (default 50ms, adjustable 0–5000ms) to the audio clip data model.
+     - Visual corner fade ramps (`.clip-fade-ramp.fade-in-ramp` and `.clip-fade-ramp.fade-out-ramp`) render diagonal gradient wedges and dashed vector guides on the clip block.
+     - "EDIT AUDIO CLIP" popover exposes millisecond-level numeric inputs for customizing Fade In and Fade Out durations.
+
+5. **Acoustic Waveform Station Sync, Time-0 Memory Caching & Loading Shimmer**:
+   - **Strict Station Binding**: Waveforms are keyed strictly by station ID (`stationId.toLowerCase().trim()`), clip start epoch, end epoch, and sample point density.
+   - **Time-0 Synchronous Retrieval & Pre-Fetching**:
+     - `ExtractorAdvancedStudio.jsx`: On session initialization and cut window adjustment, a background pre-fetch job triggers `waveformStore.fetchWaveform` for all timeline workstations across `[inEpochMs, outEpochMs]`.
+     - When switching audio source stations or creating clips, `waveformStore.get` returns peaks synchronously at **Time 0** (0ms latency).
+   - **Tactical Loading Shimmer**: If a waveform is being decoded asynchronously for the first time, `AudioClipRenderer` displays a sleek animated scanner bar (`.waveform-loading-shimmer`) with "DECODING AUDIO..." telemetry.
+   - **Authentic DAW Waveform Polygon**: `generateWaveformSvgPath` renders a high-density (250+ points) mirrored acoustic polygon envelope scaled proportionally by volume gain.
+
+6. **Audio Context Menu DOM Portal Isolation & Z-Index Guarantee**:
+   - To eliminate clipping and occlusion by timeline rulers, viewport modals, or parent `overflow: hidden` containers, the "EDIT AUDIO CLIP" context menu popover is rendered via `createPortal(..., document.body)`.
+   - Styled with `position: fixed` and `z-index: 999999 !important;` with dynamic screen boundary clamping to ensure 100% visibility in any workspace state.
+
+7. **Keyframe Sequencer Guarantee & Automatic Cut Anchors**:
+   - `TimelineBoard.jsx`: Always renders `<CanvasKeyframeTrack />` without conditional suppression, exposing the minimalist 26px layout sequencer and "+ KF" button at all times.
+   - `ExtractorAdvancedStudio.jsx`: Automatically initializes `canvasLayoutTimeline` with Root Keyframe 1 at Cut In (`timelineBaseEpochMs + inPointMs`) and Keyframe 2 at Cut Out (`timelineBaseEpochMs + outPointMs`).
+   - Seamlessly passes `onUpdateKeyframeTransition` to support smooth, instant cut, and dip-to-black transitions with custom durations.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

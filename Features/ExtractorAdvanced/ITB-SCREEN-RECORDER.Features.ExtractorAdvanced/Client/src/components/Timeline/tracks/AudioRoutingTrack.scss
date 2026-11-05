@@ -1,3 +1,7 @@
+@keyframes shimmerScan {
+    0% { transform: translateX(-150%); }
+    100% { transform: translateX(350%); }
+}
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.scss
 // Tactical NOC Real-Time Reactive Audio Track Styling with Waveforms & Gain Scale
@@ -871,6 +875,40 @@
                     display: flex;
                     gap: 2px;
 
+                    .btn-lane-channel-mode {
+                        font-size: 7.5px;
+                        font-weight: 800;
+                        font-family: 'JetBrains Mono', monospace;
+                        border-radius: 2px;
+                        padding: 0 4px;
+                        height: 15px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: pointer;
+                        border: 1px solid rgba(6, 182, 212, 0.4);
+                        background: rgba(6, 182, 212, 0.15);
+                        color: #38BDF8;
+                        transition: all 0.15s ease;
+
+                        &:hover {
+                            background: rgba(6, 182, 212, 0.3);
+                            color: #fff;
+                        }
+
+                        &.mode-sys {
+                            border-color: rgba(139, 92, 246, 0.45);
+                            background: rgba(139, 92, 246, 0.18);
+                            color: #C084FC;
+                        }
+
+                        &.mode-mic {
+                            border-color: rgba(245, 158, 11, 0.45);
+                            background: rgba(245, 158, 11, 0.18);
+                            color: #FBBF24;
+                        }
+                    }
+
                     .btn-lane-toggle {
                         width: 15px;
                         height: 15px;
@@ -986,6 +1024,58 @@
                         filter: grayscale(80%);
                     }
 
+                    .clip-fade-ramp {
+                        position: absolute;
+                        top: 0;
+                        bottom: 0;
+                        pointer-events: none;
+                        z-index: 6;
+
+                        &.fade-in-ramp {
+                            left: 0;
+                        }
+
+                        &.fade-out-ramp {
+                            right: 0;
+                        }
+
+                        .fade-ramp-svg {
+                            width: 100%;
+                            height: 100%;
+                            display: block;
+                        }
+                    }
+
+                    .waveform-loading-shimmer {
+                        position: absolute;
+                        inset: 0;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: rgba(15, 23, 42, 0.6);
+                        overflow: hidden;
+                        z-index: 2;
+
+                        .shimmer-scanner {
+                            position: absolute;
+                            top: 0;
+                            bottom: 0;
+                            width: 30%;
+                            background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.3), transparent);
+                            animation: shimmerScan 1.4s infinite ease-in-out;
+                        }
+
+                        .shimmer-text {
+                            font-family: 'JetBrains Mono', monospace;
+                            font-size: 7.5px;
+                            font-weight: 700;
+                            color: #38BDF8;
+                            letter-spacing: 0.5px;
+                            opacity: 0.8;
+                            z-index: 3;
+                        }
+                    }
+
                     .trim-handle {
                         position: absolute;
                         top: 0;
@@ -1079,7 +1169,7 @@
 .audio-clip-context-menu {
     position: fixed;
     z-index: 999999 !important;
-    width: 250px;
+    width: 270px;
     background: rgba(15, 23, 42, 0.96);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(6, 182, 212, 0.45);
@@ -1181,6 +1271,49 @@
             height: 4px;
             accent-color: #10B981;
             cursor: pointer;
+        }
+    }
+
+    .fade-controls-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .fade-input-group {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            padding: 3px 6px;
+
+            .fade-input-label {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 8px;
+                font-weight: 800;
+                color: #38BDF8;
+            }
+
+            .fade-number-input {
+                flex: 1;
+                min-width: 0;
+                background: transparent;
+                border: none;
+                color: #F8FAFC;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                font-weight: 700;
+                text-align: right;
+                outline: none;
+            }
+
+            .fade-unit {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 8px;
+                color: #64748B;
+            }
         }
     }
 
