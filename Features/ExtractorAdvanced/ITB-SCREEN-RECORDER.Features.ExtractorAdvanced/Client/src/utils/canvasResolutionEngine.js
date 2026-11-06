@@ -11,26 +11,35 @@ export const RESOLUTION_PRESETS = [
 ];
 
 export const ASPECT_PRESETS = [
-    { id: '19:10', label: '19:10 NOC Extended', ratio: 19 / 10, w: 2736, h: 1440 },
-    { id: '16:10', label: '16:10 WUXGA / WQXGA', ratio: 16 / 10, w: 2560, h: 1600 },
     { id: '16:9', label: '16:9 Broadcast', ratio: 16 / 9, w: 2560, h: 1440 },
+    { id: '16:10', label: '16:10 WUXGA / WQXGA', ratio: 16 / 10, w: 2560, h: 1600 },
+    { id: '19:10', label: '19:10 NOC Extended', ratio: 19 / 10, w: 2736, h: 1440 },
     { id: '21:9', label: '21:9 Ultrawide', ratio: 21 / 9, w: 3440, h: 1440 },
     { id: '32:9', label: '32:9 Dual Screen', ratio: 32 / 9, w: 5120, h: 1440 },
     { id: '4:3', label: '4:3 Standard', ratio: 4 / 3, w: 1920, h: 1440 }
 ];
 
 export const DEFAULT_CANVAS_RESOLUTION = '2K';
-export const DEFAULT_CANVAS_ASPECT = '19:10';
-export const DEFAULT_VIRTUAL_CANVAS_W = 2736;
+export const DEFAULT_CANVAS_ASPECT = '16:9';
+export const DEFAULT_VIRTUAL_CANVAS_W = 2560;
 export const DEFAULT_VIRTUAL_CANVAS_H = 1440;
 
 /**
  * Computes deterministic, even-integer virtual canvas bounds based on decoupled resolution and aspect ratio.
  * @param {string} resolutionId '4K' | '2K' | 'FHD' | 'HD'
- * @param {string} aspectId '19:10' | '16:10' | '16:9' | '21:9' | '32:9' | '4:3'
+ * @param {string} aspectId '16:9' | '16:10' | '19:10' | '21:9' | '32:9' | '4:3'
  * @returns {{ w: number, h: number }}
  */
-export function computeCanvasDimensions(resolutionId = '2K', aspectId = '19:10') {
+export function computeCanvasDimensions(resolutionId = '2K', aspectId = '16:9') {
+    if (aspectId === '16:9') {
+        switch (resolutionId) {
+            case '4K': return { w: 3840, h: 2160 };
+            case '2K': return { w: 2560, h: 1440 };
+            case 'HD': return { w: 1280, h: 720 };
+            case 'FHD':
+            default:   return { w: 1920, h: 1080 };
+        }
+    }
     if (aspectId === '16:10') {
         switch (resolutionId) {
             case '4K': return { w: 3840, h: 2400 };
@@ -47,15 +56,6 @@ export function computeCanvasDimensions(resolutionId = '2K', aspectId = '19:10')
             case 'HD': return { w: 1368, h: 720 };
             case 'FHD':
             default:   return { w: 2052, h: 1080 };
-        }
-    }
-    if (aspectId === '16:9') {
-        switch (resolutionId) {
-            case '4K': return { w: 3840, h: 2160 };
-            case '2K': return { w: 2560, h: 1440 };
-            case 'HD': return { w: 1280, h: 720 };
-            case 'FHD':
-            default:   return { w: 1920, h: 1080 };
         }
     }
     if (aspectId === '21:9') {
@@ -86,7 +86,7 @@ export function computeCanvasDimensions(resolutionId = '2K', aspectId = '19:10')
         }
     }
     const aspectObj = ASPECT_PRESETS.find(a => a.id === aspectId);
-    const ratio = aspectObj ? aspectObj.ratio : (19 / 10);
+    const ratio = aspectObj ? aspectObj.ratio : (16 / 9);
     const baseH = resolutionId === '4K' ? 2160 : resolutionId === '2K' ? 1440 : resolutionId === 'HD' ? 720 : 1080;
     let w = Math.round(baseH * ratio);
     w -= (w % 2);
@@ -100,11 +100,11 @@ export function computeCanvasDimensions(resolutionId = '2K', aspectId = '19:10')
  * @returns {string}
  */
 export function getReadableAspectRatio(w, h) {
-    if (!w || !h || w <= 0 || h <= 0) return '19:10';
+    if (!w || !h || w <= 0 || h <= 0) return '16:9';
     const ratio = w / h;
-    if (Math.abs(ratio - (19 / 10)) < 0.04) return '19:10';
-    if (Math.abs(ratio - (16 / 10)) < 0.04) return '16:10';
     if (Math.abs(ratio - (16 / 9)) < 0.04) return '16:9';
+    if (Math.abs(ratio - (16 / 10)) < 0.04) return '16:10';
+    if (Math.abs(ratio - (19 / 10)) < 0.04) return '19:10';
     if (Math.abs(ratio - (4 / 3)) < 0.04) return '4:3';
     if (Math.abs(ratio - (21 / 9)) < 0.06) return '21:9';
     if (Math.abs(ratio - (32 / 9)) < 0.08) return '32:9';

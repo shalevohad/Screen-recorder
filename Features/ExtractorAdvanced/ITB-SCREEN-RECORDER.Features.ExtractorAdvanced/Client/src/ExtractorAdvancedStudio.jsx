@@ -1831,7 +1831,7 @@ export default function ExtractorAdvancedStudio() {
                     stationsCount: timelineStations.length,
                     audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1,
                     resolution: canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
-                    canvasWidth: currentCanvasLayout?.width || 2736,
+                    canvasWidth: currentCanvasLayout?.width || 2560,
                     canvasHeight: currentCanvasLayout?.height || 1440
                 }}
             />

@@ -7428,14 +7428,26 @@ const Yi = [
   { id: "FHD", label: "1080p FHD", shortLabel: "FHD", baseH: 1080, desc: "Standard Full HD" },
   { id: "HD", label: "720p HD", shortLabel: "HD", baseH: 720, desc: "Compact Fast Export" }
 ], Qn = [
-  { id: "19:10", label: "19:10 NOC Extended", ratio: 19 / 10, w: 2736, h: 1440 },
-  { id: "16:10", label: "16:10 WUXGA / WQXGA", ratio: 16 / 10, w: 2560, h: 1600 },
   { id: "16:9", label: "16:9 Broadcast", ratio: 16 / 9, w: 2560, h: 1440 },
+  { id: "16:10", label: "16:10 WUXGA / WQXGA", ratio: 16 / 10, w: 2560, h: 1600 },
+  { id: "19:10", label: "19:10 NOC Extended", ratio: 19 / 10, w: 2736, h: 1440 },
   { id: "21:9", label: "21:9 Ultrawide", ratio: 21 / 9, w: 3440, h: 1440 },
   { id: "32:9", label: "32:9 Dual Screen", ratio: 32 / 9, w: 5120, h: 1440 },
   { id: "4:3", label: "4:3 Standard", ratio: 4 / 3, w: 1920, h: 1440 }
-], Xc = 2736, Gc = 1440;
-function Sr(e = "2K", t = "19:10") {
+], gx = "16:9", Xc = 2560, Gc = 1440;
+function Sr(e = "2K", t = "16:9") {
+  if (t === "16:9")
+    switch (e) {
+      case "4K":
+        return { w: 3840, h: 2160 };
+      case "2K":
+        return { w: 2560, h: 1440 };
+      case "HD":
+        return { w: 1280, h: 720 };
+      case "FHD":
+      default:
+        return { w: 1920, h: 1080 };
+    }
   if (t === "16:10")
     switch (e) {
       case "4K":
@@ -7459,18 +7471,6 @@ function Sr(e = "2K", t = "19:10") {
       case "FHD":
       default:
         return { w: 2052, h: 1080 };
-    }
-  if (t === "16:9")
-    switch (e) {
-      case "4K":
-        return { w: 3840, h: 2160 };
-      case "2K":
-        return { w: 2560, h: 1440 };
-      case "HD":
-        return { w: 1280, h: 720 };
-      case "FHD":
-      default:
-        return { w: 1920, h: 1080 };
     }
   if (t === "21:9")
     switch (e) {
@@ -7508,14 +7508,14 @@ function Sr(e = "2K", t = "19:10") {
       default:
         return { w: 1440, h: 1080 };
     }
-  const n = Qn.find((a) => a.id === t), r = n ? n.ratio : 19 / 10, l = e === "4K" ? 2160 : e === "2K" ? 1440 : e === "HD" ? 720 : 1080;
+  const n = Qn.find((a) => a.id === t), r = n ? n.ratio : 16 / 9, l = e === "4K" ? 2160 : e === "2K" ? 1440 : e === "HD" ? 720 : 1080;
   let o = Math.round(l * r);
   return o -= o % 2, { w: o, h: l };
 }
 function tl(e, t) {
-  if (!e || !t || e <= 0 || t <= 0) return "19:10";
+  if (!e || !t || e <= 0 || t <= 0) return "16:9";
   const n = e / t;
-  return Math.abs(n - 19 / 10) < 0.04 ? "19:10" : Math.abs(n - 16 / 10) < 0.04 ? "16:10" : Math.abs(n - 16 / 9) < 0.04 ? "16:9" : Math.abs(n - 4 / 3) < 0.04 ? "4:3" : Math.abs(n - 21 / 9) < 0.06 ? "21:9" : Math.abs(n - 32 / 9) < 0.08 ? "32:9" : Math.abs(n - 5 / 4) < 0.04 ? "5:4" : Math.abs(n - 9 / 16) < 0.04 ? "9:16" : Math.abs(n - 1) < 0.04 ? "1:1" : `${n.toFixed(2)}:1`;
+  return Math.abs(n - 16 / 9) < 0.04 ? "16:9" : Math.abs(n - 16 / 10) < 0.04 ? "16:10" : Math.abs(n - 19 / 10) < 0.04 ? "19:10" : Math.abs(n - 4 / 3) < 0.04 ? "4:3" : Math.abs(n - 21 / 9) < 0.06 ? "21:9" : Math.abs(n - 32 / 9) < 0.08 ? "32:9" : Math.abs(n - 5 / 4) < 0.04 ? "5:4" : Math.abs(n - 9 / 16) < 0.04 ? "9:16" : Math.abs(n - 1) < 0.04 ? "1:1" : `${n.toFixed(2)}:1`;
 }
 const jt = [
   "#06B6D4",
@@ -7530,7 +7530,7 @@ const jt = [
   // Purple
   "#38BDF8"
   // Sky
-], gx = [
+], xx = [
   "#06B6D4",
   "#10B981",
   "#F59E0B",
@@ -7540,7 +7540,7 @@ const jt = [
   "#FFFFFF",
   "transparent"
 ];
-function xx(e, t, n) {
+function yx(e, t, n) {
   let r;
   switch (e) {
     case "deep":
@@ -7715,7 +7715,7 @@ function er(e, t = Xc, n = Gc) {
     };
   });
 }
-function yx({
+function vx({
   activeStation: e,
   timelineStations: t = [],
   allStations: n = [],
@@ -7819,7 +7819,7 @@ function yx({
       if (Ee && Qn.some((at) => at.id === Ee)) return Ee;
     } catch {
     }
-    return "19:10";
+    return gx;
   }), Es = u.useMemo(() => Sr(on, bt), [on, bt]), Oe = Es.w, Le = Es.h, Ys = u.useMemo(() => ({ ...Qn.find((k) => k.id === bt) || Qn[0], w: Oe, h: Le }), [bt, Oe, Le]).ratio, [Xn, ui] = u.useState(() => {
     try {
       const f = localStorage.getItem("itb_studio_canvas_fullwidth");
@@ -9497,7 +9497,7 @@ function yx({
                           displays: ae ? [{ displayId: ae.displayId, width: ae.sourceWidth, height: ae.sourceHeight }] : []
                         }, ve = (Te == null ? void 0 : Te.displays) || ((Dt = Te == null ? void 0 : Te.topology) == null ? void 0 : Dt.displays) || [], Ee = z.filter(
                           (ke) => ke.stationId === f.stationId || Te && (ke.stationId === Te.id || ke.stationId === Te.hostname)
-                        ), at = ve.length > 1 && Ee.length >= ve.length, it = f.borderColor || jt[k % jt.length], pt = f.borderWidth !== void 0 ? f.borderWidth : 2, Ne = f.rotation || 0, ct = f.shadowEffect || "deep", Ot = f.borderRadius || 0, yt = f.x / Oe * 100, Ct = f.y / Le * 100, An = f.width / Oe * 100, Gn = f.height / Le * 100, Wt = xx(ct, O, it);
+                        ), at = ve.length > 1 && Ee.length >= ve.length, it = f.borderColor || jt[k % jt.length], pt = f.borderWidth !== void 0 ? f.borderWidth : 2, Ne = f.rotation || 0, ct = f.shadowEffect || "deep", Ot = f.borderRadius || 0, yt = f.x / Oe * 100, Ct = f.y / Le * 100, An = f.width / Oe * 100, Gn = f.height / Le * 100, Wt = yx(ct, O, it);
                         f.y < 50, f.x < 100, f.x + f.width > Oe - 100;
                         const Rt = f.zIndex !== void 0 ? f.zIndex : k + 1;
                         return /* @__PURE__ */ s.jsxs(
@@ -9809,7 +9809,7 @@ function yx({
                                     )
                                   }
                                 ),
-                                xt && /* @__PURE__ */ s.jsx("div", { className: "compact-color-palette-popover", children: gx.map((yt) => /* @__PURE__ */ s.jsx(
+                                xt && /* @__PURE__ */ s.jsx("div", { className: "compact-color-palette-popover", children: xx.map((yt) => /* @__PURE__ */ s.jsx(
                                   "button",
                                   {
                                     type: "button",
@@ -10412,7 +10412,7 @@ function Qc({
     }
   );
 }
-const ya = 2500, vx = {
+const ya = 2500, Nx = {
   // Mouse and control keys
   1: "LButton",
   2: "RButton",
@@ -10575,19 +10575,19 @@ const ya = 2500, vx = {
   222: "'",
   226: "\\"
 };
-function Nx(e) {
+function kx(e) {
   if (!e) return "";
   const t = e.trim(), n = t.match(/^Key\((\d+)\)$/i);
   if (n) {
     const l = parseInt(n[1], 10);
-    return vx[l] || `Key(${l})`;
+    return Nx[l] || `Key(${l})`;
   }
   const r = t.toLowerCase();
   return r === "ctrl" || r === "control" ? "Ctrl" : r === "shift" ? "Shift" : r === "alt" ? "Alt" : r === "win" || r === "windows" ? "Win" : r === "rctrl" ? "Ctrl" : r === "rshift" ? "Shift" : r === "ralt" ? "Alt" : r === "backspace" ? "Backspace" : r === "enter" || r === "return" ? "Enter" : r === "escape" || r === "esc" ? "Esc" : r === "space" ? "Space" : r === "delete" || r === "del" ? "Delete" : r === "capslock" || r === "caps lock" ? "Caps Lock" : t;
 }
 function Yp(e) {
   if (!e || typeof e != "string") return [];
-  const n = e.split("+").map((o) => o.trim()).filter(Boolean).map(Nx), r = /* @__PURE__ */ new Set(), l = [];
+  const n = e.split("+").map((o) => o.trim()).filter(Boolean).map(kx), r = /* @__PURE__ */ new Set(), l = [];
   for (const o of n)
     o && (r.has(o) || (r.add(o), l.push(o)));
   return l;
@@ -10598,8 +10598,8 @@ function Xp(e, t = " + ") {
 function Yl(e) {
   return Xp(e, "+");
 }
-const kx = 8;
-function wx({
+const wx = 8;
+function Ex({
   activeStationName: e = "",
   stationHostname: t = "",
   stations: n = [],
@@ -10657,7 +10657,7 @@ function wx({
       if (N < x || N > I)
         continue;
       const _ = N - l, U = (_ - a) / i * c;
-      if (h && U - $ < kx) {
+      if (h && U - $ < wx) {
         h.events.push(E), h.endOffsetMs = _, h.endEpochMs = N;
         const R = new Set(h.events.map((F) => F.stationName || "Workstation"));
         h.isMultiStation = R.size > 1, h.stationCount = R.size, $ = U;
@@ -10758,7 +10758,7 @@ function wx({
     );
   }) }) : null;
 }
-const Ex = u.memo(wx), Gi = [
+const Cx = u.memo(Ex), Gi = [
   1e3,
   2e3,
   5e3,
@@ -10777,8 +10777,8 @@ const Ex = u.memo(wx), Gi = [
   216e5,
   432e5,
   864e5
-], Cx = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-function jx({
+], jx = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+function Sx({
   baseEpochMs: e = 0,
   timeMode: t = "LOCAL",
   viewportStartMs: n = 0,
@@ -10848,7 +10848,7 @@ function jx({
     if (!r || !e) return [];
     const L = e + n, ie = L + r, ne = t === "UTC", q = [], H = ne ? 0 : Bs(L).offsetMin * 60 * 1e3, Ae = L + H, $e = ie + H, Ie = new Date(Ae);
     for (Ie.setUTCHours(0, 0, 0, 0), Ie.getTime() < Ae && Ie.setUTCDate(Ie.getUTCDate() + 1); Ie.getTime() <= $e; ) {
-      const xe = Ie.getTime() - H, Me = (xe - L) / r * 100, tt = String(Ie.getUTCDate()).padStart(2, "0"), gt = Cx[Ie.getUTCMonth()], ce = `${tt} ${gt}`;
+      const xe = Ie.getTime() - H, Me = (xe - L) / r * 100, tt = String(Ie.getUTCDate()).padStart(2, "0"), gt = jx[Ie.getUTCMonth()], ce = `${tt} ${gt}`;
       q.push({ epoch: xe, pct: Me, dateLabel: ce }), Ie.setUTCDate(Ie.getUTCDate() + 1);
     }
     return q;
@@ -10947,7 +10947,7 @@ function jx({
             /* @__PURE__ */ s.jsx("span", { className: "tick-label", children: L.label })
           ] }, L.epoch)),
           j && /* @__PURE__ */ s.jsx(
-            Ex,
+            Cx,
             {
               stationHostname: m,
               activeStationName: y,
@@ -11044,7 +11044,7 @@ function jx({
   );
 }
 const Bn = (e) => String(e).padStart(2, "0");
-function Sx({
+function Mx({
   baseEpochMs: e = 0,
   timeMode: t = "LOCAL",
   totalDurationMs: n = 36e5,
@@ -11180,7 +11180,7 @@ function Sx({
     ] })
   ] });
 }
-function Mx({
+function bx({
   minimapRef: e,
   baseEpochMs: t = 0,
   timeMode: n = "LOCAL",
@@ -11234,7 +11234,7 @@ function Mx({
     }
   );
 }
-function bx({
+function Ix({
   earliestMediaMs: e,
   latestMediaMs: t,
   hasActiveCut: n,
@@ -11360,11 +11360,11 @@ function bx({
 }
 const Ms = /* @__PURE__ */ new Map(), sl = /* @__PURE__ */ new Map();
 let Ds = [], jl = 0;
-const mh = 3, Ix = 8e3, Tx = 80;
+const mh = 3, Tx = 8e3, Ax = 80;
 function Gp() {
-  setTimeout(Ax, 0);
+  setTimeout($x, 0);
 }
-function Ax() {
+function $x() {
   var e;
   if (!(jl >= mh || Ds.length === 0))
     for (Ds = Ds.filter((t) => {
@@ -11372,10 +11372,10 @@ function Ax() {
       return !((n = t.signal) != null && n.aborted);
     }); jl < mh && Ds.length > 0; ) {
       const t = Ds.pop();
-      !t || (e = t.signal) != null && e.aborted || (jl++, $x(t));
+      !t || (e = t.signal) != null && e.aborted || (jl++, Rx(t));
     }
 }
-async function $x(e) {
+async function Rx(e) {
   const { key: t, hostname: n, startEpoch: r, endEpoch: l, frameCount: o, signal: a, resolve: i, displayId: c } = e;
   let d = !1, v = null;
   const p = () => {
@@ -11383,14 +11383,14 @@ async function $x(e) {
   };
   v = setTimeout(() => {
     p(), i(null);
-  }, Ix);
+  }, Tx);
   try {
     const m = `/api/v1/extractor-advanced/spritesheet?hostname=${encodeURIComponent(n)}&startEpoch=${r}&endEpoch=${l}&frameCount=${o}&tileWidth=100&tileHeight=50${c ? `&displayId=${encodeURIComponent(c)}` : ""}`, y = await fetch(m, { signal: a });
     if (y.ok && y.status !== 204) {
       const j = await y.blob();
       if (j && j.size > 1500) {
         const C = URL.createObjectURL(j);
-        if (Ms.size >= Tx) {
+        if (Ms.size >= Ax) {
           const P = Ms.keys().next().value, w = Ms.get(P);
           w && URL.revokeObjectURL(w), Ms.delete(P);
         }
@@ -11459,7 +11459,7 @@ const gh = {
   clear() {
     Ms.forEach((e) => URL.revokeObjectURL(e)), Ms.clear(), sl.clear(), Ds = [], jl = 0;
   }
-}, Rx = (e) => e <= 60 * 1e3 ? { tileDurationMs: 5 * 1e3, framesPerTile: 4 } : e <= 5 * 60 * 1e3 ? { tileDurationMs: 20 * 1e3, framesPerTile: 4 } : e <= 30 * 60 * 1e3 ? { tileDurationMs: 2 * 60 * 1e3, framesPerTile: 4 } : e <= 2 * 60 * 60 * 1e3 ? { tileDurationMs: 8 * 60 * 1e3, framesPerTile: 5 } : e <= 8 * 60 * 60 * 1e3 ? { tileDurationMs: 30 * 60 * 1e3, framesPerTile: 5 } : e <= 24 * 60 * 60 * 1e3 ? { tileDurationMs: 2 * 60 * 60 * 1e3, framesPerTile: 5 } : e <= 72 * 60 * 60 * 1e3 ? { tileDurationMs: 6 * 60 * 60 * 1e3, framesPerTile: 4 } : e <= 7 * 24 * 60 * 60 * 1e3 ? { tileDurationMs: 14 * 60 * 60 * 1e3, framesPerTile: 4 } : { tileDurationMs: Math.max(24 * 60 * 60 * 1e3, Math.round(e / 14)), framesPerTile: 4 }, Zn = (e) => e.startEpochMs ?? e.StartEpochMs ?? e.startEpoch ?? e.start ?? 0, Lr = (e) => e.endEpochMs ?? e.EndEpochMs ?? e.endEpoch ?? e.end ?? 0;
+}, Lx = (e) => e <= 60 * 1e3 ? { tileDurationMs: 5 * 1e3, framesPerTile: 4 } : e <= 5 * 60 * 1e3 ? { tileDurationMs: 20 * 1e3, framesPerTile: 4 } : e <= 30 * 60 * 1e3 ? { tileDurationMs: 2 * 60 * 1e3, framesPerTile: 4 } : e <= 2 * 60 * 60 * 1e3 ? { tileDurationMs: 8 * 60 * 1e3, framesPerTile: 5 } : e <= 8 * 60 * 60 * 1e3 ? { tileDurationMs: 30 * 60 * 1e3, framesPerTile: 5 } : e <= 24 * 60 * 60 * 1e3 ? { tileDurationMs: 2 * 60 * 60 * 1e3, framesPerTile: 5 } : e <= 72 * 60 * 60 * 1e3 ? { tileDurationMs: 6 * 60 * 60 * 1e3, framesPerTile: 4 } : e <= 7 * 24 * 60 * 60 * 1e3 ? { tileDurationMs: 14 * 60 * 60 * 1e3, framesPerTile: 4 } : { tileDurationMs: Math.max(24 * 60 * 60 * 1e3, Math.round(e / 14)), framesPerTile: 4 }, Zn = (e) => e.startEpochMs ?? e.StartEpochMs ?? e.startEpoch ?? e.start ?? 0, Lr = (e) => e.endEpochMs ?? e.EndEpochMs ?? e.endEpoch ?? e.end ?? 0;
 function Jc({
   hostname: e,
   displayId: t = "mon-0",
@@ -11479,7 +11479,7 @@ function Jc({
 }) {
   const [C, P] = u.useState({}), w = u.useRef(C);
   w.current = C;
-  const g = u.useMemo(() => Rx(l), [l]), x = u.useMemo(() => {
+  const g = u.useMemo(() => Lx(l), [l]), x = u.useMemo(() => {
     if (n.length === 0 || !o || l <= 0) return [];
     const { tileDurationMs: N, framesPerTile: _ } = g, U = [], R = o + r, F = R + l, oe = R - N, re = F + N, X = [...n].sort((L, ie) => Zn(L) - Zn(ie)), D = j ? c || [] : [...c || [], ...d || []], K = (L, ie) => !D || D.length === 0 ? !1 : D.some((ne) => {
       const q = ne.startEpochMs ?? ne.startEpoch ?? ne.start ?? 0, H = ne.endEpochMs ?? ne.endEpoch ?? ne.end ?? 0;
@@ -11726,7 +11726,7 @@ function Jc({
     S < 100 && /* @__PURE__ */ s.jsx("div", { className: "mask-dimmed right-mask", style: { left: `${Math.max(0, S)}%`, right: 0 } })
   ] });
 }
-function Lx({
+function Ox({
   station: e,
   isExpanded: t = !1,
   onToggleExpand: n,
@@ -12084,7 +12084,7 @@ function Va(e, t = 100, n = 24, r = 1, l = {}) {
   }
   return `${v}${p} Z`;
 }
-function Ox(e, t = 100, n = 24, r = 1) {
+function Dx(e, t = 100, n = 24, r = 1) {
   let l = null, o = null;
   e && typeof e == "object" && !Array.isArray(e) && e.sys && e.mic ? (l = e.sys, o = e.mic) : Array.isArray(e) && (l = e.map((c, d) => Math.min(1, Math.max(0.02, c * (1 + 0.12 * Math.sin(d * 0.45))))), o = e.map((c, d) => Math.min(1, Math.max(0.02, c * (0.92 + 0.15 * Math.cos(d * 0.38))))));
   const a = Va(l, t, n, r, {
@@ -12098,7 +12098,7 @@ function Ox(e, t = 100, n = 24, r = 1) {
 }
 const sa = ["#06B6D4", "#8B5CF6", "#10B981", "#F59E0B", "#EC4899", "#3B82F6"];
 function Qp({ peaks: e, channelMode: t = "both", effectiveGain: n = 1, isLoadingWaveform: r = !1, laneColor: l = "#06B6D4" }) {
-  const o = t === "both", a = t === "sys", i = t === "mic", c = u.useMemo(() => !o || !e ? null : Ox(e, 100, 24, n), [o, e, n]), d = u.useMemo(() => o || !e ? null : Va(e, 100, 24, n, { yCenter: 12, maxHalfHeight: 10.5 }), [o, e, n]);
+  const o = t === "both", a = t === "sys", i = t === "mic", c = u.useMemo(() => !o || !e ? null : Dx(e, 100, 24, n), [o, e, n]), d = u.useMemo(() => o || !e ? null : Va(e, 100, 24, n, { yCenter: 12, maxHalfHeight: 10.5 }), [o, e, n]);
   if (r)
     return /* @__PURE__ */ s.jsxs("div", { className: "waveform-loading-shimmer", title: "Decoding Station Audio Waveform...", children: [
       /* @__PURE__ */ s.jsx("div", { className: "shimmer-scanner" }),
@@ -12159,7 +12159,7 @@ function Qp({ peaks: e, channelMode: t = "both", effectiveGain: n = 1, isLoading
     }
   ) });
 }
-function Dx({
+function Px({
   clip: e,
   lane: t,
   laneColor: n,
@@ -12284,7 +12284,7 @@ Drag body: Move in time • Drag edges: Trim • Click tag: Toggle channel • D
     }
   );
 }
-function Px({
+function _x({
   clip: e,
   vpStartEpoch: t,
   viewportDurationMs: n,
@@ -12347,7 +12347,7 @@ Double-click to expand multitrack audio lanes`,
     }
   );
 }
-function _x({
+function Fx({
   audioPlan: e,
   stations: t = [],
   viewportStartMs: n = 0,
@@ -12915,7 +12915,7 @@ function _x({
               T.clips.map((ee) => {
                 const he = t.find((_e) => _e.id === ee.sourceStationId), Ge = he ? he.displayName || he.hostname || he.id : ee.sourceStationId;
                 return ee.endEpochMs <= b || ee.startEpochMs >= B ? null : /* @__PURE__ */ s.jsx(
-                  Dx,
+                  Px,
                   {
                     clip: ee,
                     lane: T,
@@ -13150,7 +13150,7 @@ function _x({
             ] }) : me.map((T) => {
               const Q = t.find((te) => te.id === T.sourceStationId), G = Q ? Q.displayName || Q.hostname || Q.id : T.sourceStationId;
               return T.endEpochMs <= b || T.startEpochMs >= B ? null : /* @__PURE__ */ s.jsx(
-                Px,
+                _x,
                 {
                   clip: T,
                   vpStartEpoch: b,
@@ -13168,7 +13168,7 @@ function _x({
     }
   );
 }
-function Fx({
+function Bx({
   canvasLayoutTimeline: e,
   activeKfIndex: t = 0,
   onSelectKeyframe: n,
@@ -13391,7 +13391,7 @@ Drag: Reposition timestamp • Click: Seek • Right-click: Delete`,
     )
   ] });
 }
-function Bx({
+function Wx({
   baseEpochMs: e = 0,
   timeMode: t = "LOCAL",
   viewportStartMs: n = 0,
@@ -13456,8 +13456,8 @@ function Bx({
     )
   ] });
 }
-const Wx = To.memo(Bx);
-function Ux({
+const Ux = To.memo(Wx);
+function zx({
   contextMenu: e,
   baseEpochMs: t = 0,
   timeMode: n = "LOCAL",
@@ -13506,7 +13506,7 @@ function Ux({
   );
   return Ts.createPortal(v, document.body);
 }
-function zx({
+function Hx({
   isRangeValid: e,
   onExport: t,
   isEstimating: n,
@@ -13550,12 +13550,12 @@ function zx({
     }
   );
 }
-const Hx = (e) => {
+const Kx = (e) => {
   if (!e || e <= 0) return "0 MB";
   const t = e / (1024 * 1024);
   return t >= 1e3 ? `${(t / 1024).toFixed(1)} GB` : `${Math.round(t)} MB`;
 };
-function Kx({
+function Vx({
   stationIdsKey: e,
   inPointMs: t,
   outPointMs: n,
@@ -13597,9 +13597,9 @@ function Kx({
     return () => {
       clearTimeout(p), v.abort();
     };
-  }, [e, t, n, r]), { estimateData: o, isEstimating: i, formatEstimateSize: Hx };
+  }, [e, t, n, r]), { estimateData: o, isEstimating: i, formatEstimateSize: Kx };
 }
-function Vx({
+function Yx({
   viewportDurationMs: e,
   totalDurationMs: t,
   playheadMs: n,
@@ -13754,7 +13754,7 @@ function Jp({
   const _e = ((Pe = H == null ? void 0 : H.keyframes) == null ? void 0 : Pe[Ae]) || ((rt = H == null ? void 0 : H.keyframes) == null ? void 0 : rt[0]), Be = u.useMemo(() => {
     var ue;
     return ((ue = _e == null ? void 0 : _e.layout) == null ? void 0 : ue.placements) || [];
-  }, [_e]), dt = u.useMemo(() => e.find((ue) => ue.id === t) || null, [e, t]), Je = (S == null ? void 0 : S.globalFirstMs) ?? null, wt = (S == null ? void 0 : S.globalLastMs) ?? null, Et = u.useMemo(() => (C > 500 || w < d - 500) && w - C >= 1e3, [C, w, d]), Gt = u.useMemo(() => e.map((ue) => ue.id).sort().join(","), [e]), { estimateData: Lt, isEstimating: et, formatEstimateSize: ht } = Kx({
+  }, [_e]), dt = u.useMemo(() => e.find((ue) => ue.id === t) || null, [e, t]), Je = (S == null ? void 0 : S.globalFirstMs) ?? null, wt = (S == null ? void 0 : S.globalLastMs) ?? null, Et = u.useMemo(() => (C > 500 || w < d - 500) && w - C >= 1e3, [C, w, d]), Gt = u.useMemo(() => e.map((ue) => ue.id).sort().join(","), [e]), { estimateData: Lt, isEstimating: et, formatEstimateSize: ht } = Vx({
     stationIdsKey: Gt,
     inPointMs: C,
     outPointMs: w,
@@ -13766,7 +13766,7 @@ function Jp({
     if (pe <= 0) return M;
     const ye = Math.max(0, Math.min(ue - V, pe));
     return Math.round(M + ye / pe * ee);
-  }, [M, ee]), { draggingTarget: st, handleStartDrag: Re } = Vx({
+  }, [M, ee]), { draggingTarget: st, handleStartDrag: Re } = Yx({
     viewportDurationMs: ee,
     totalDurationMs: d,
     playheadMs: y,
@@ -13831,7 +13831,7 @@ function Jp({
       children: [
         /* @__PURE__ */ s.jsxs("div", { className: "timeline-top-deck", children: [
           /* @__PURE__ */ s.jsx("div", { className: "timeline-badge-slot", children: /* @__PURE__ */ s.jsx(
-            Sx,
+            Mx,
             {
               baseEpochMs: i,
               timeMode: c,
@@ -13845,7 +13845,7 @@ function Jp({
           /* @__PURE__ */ s.jsxs("div", { className: "timeline-meters-track", children: [
             /* @__PURE__ */ s.jsxs("div", { className: "timeline-overview-strip", children: [
               /* @__PURE__ */ s.jsx(
-                Mx,
+                bx,
                 {
                   minimapRef: J,
                   baseEpochMs: i,
@@ -13861,7 +13861,7 @@ function Jp({
                 }
               ),
               /* @__PURE__ */ s.jsx(
-                bx,
+                Ix,
                 {
                   earliestMediaMs: Je,
                   latestMediaMs: wt,
@@ -13886,7 +13886,7 @@ function Jp({
               )
             ] }),
             /* @__PURE__ */ s.jsx("div", { className: "ruler-container-offset", children: /* @__PURE__ */ s.jsx(
-              jx,
+              Sx,
               {
                 baseEpochMs: i,
                 timeMode: c,
@@ -14045,7 +14045,7 @@ function Jp({
                 se && (e.length > 0 ? Ge.map((ue) => {
                   const Ze = !!(t && ue.id === t), V = Q === ue.id, pe = o ? o[ue.id] ?? !0 : !0;
                   return /* @__PURE__ */ s.jsx(
-                    Lx,
+                    Ox,
                     {
                       station: ue,
                       isExpanded: V && T(ue) > 1,
@@ -14077,7 +14077,7 @@ function Jp({
                   /* @__PURE__ */ s.jsx("span", { children: "NO STATIONS SELECTED — TIMELINE CHANNELS MUTED" })
                 ] })),
                 e.length > 0 && /* @__PURE__ */ s.jsx(
-                  _x,
+                  Fx,
                   {
                     audioPlan: b,
                     stations: e,
@@ -14095,7 +14095,7 @@ function Jp({
                   }
                 ),
                 /* @__PURE__ */ s.jsx(
-                  Fx,
+                  Bx,
                   {
                     canvasLayoutTimeline: H,
                     activeKfIndex: Ae,
@@ -14116,7 +14116,7 @@ function Jp({
                 )
               ] }),
               /* @__PURE__ */ s.jsx(
-                zx,
+                Hx,
                 {
                   isRangeValid: De,
                   onExport: x,
@@ -14130,7 +14130,7 @@ function Jp({
           }
         ),
         /* @__PURE__ */ s.jsx(
-          Wx,
+          Ux,
           {
             baseEpochMs: i,
             timeMode: c,
@@ -14143,7 +14143,7 @@ function Jp({
           }
         ),
         /* @__PURE__ */ s.jsx(
-          Ux,
+          zx,
           {
             contextMenu: nt,
             baseEpochMs: i,
@@ -14158,7 +14158,7 @@ function Jp({
     }
   );
 }
-function Yx({ station: e, isSelected: t, onToggle: n, meta: r }) {
+function Xx({ station: e, isSelected: t, onToggle: n, meta: r }) {
   const l = e.displayName || e.hostname || e.name || "", o = r == null ? void 0 : r.isLoading;
   return /* @__PURE__ */ s.jsxs(
     "div",
@@ -14238,7 +14238,7 @@ function Yx({ station: e, isSelected: t, onToggle: n, meta: r }) {
     }
   );
 }
-function Xx({ station: e, isSelected: t, onToggle: n, meta: r }) {
+function Gx({ station: e, isSelected: t, onToggle: n, meta: r }) {
   const l = e.displayName || e.hostname || e.name || "", o = r == null ? void 0 : r.isLoading;
   return /* @__PURE__ */ s.jsxs(
     "div",
@@ -14271,7 +14271,7 @@ function Xx({ station: e, isSelected: t, onToggle: n, meta: r }) {
     }
   );
 }
-function Gx({ station: e, isSelected: t, onToggle: n, meta: r }) {
+function Qx({ station: e, isSelected: t, onToggle: n, meta: r }) {
   var c, d;
   const l = e.displayName || e.hostname || e.name || "", o = r == null ? void 0 : r.isLoading, a = !o && ((r == null ? void 0 : r.coveragePct) <= 0 || (r == null ? void 0 : r.recordedDuration) === "00:00:00"), i = o ? "loading" : a ? "critical" : ((c = r.trafficStatus) == null ? void 0 : c.level) || (r.hasGaps ? "critical" : "optimal");
   return /* @__PURE__ */ s.jsxs("label", { className: `station-row ${t ? "selected" : ""}`, children: [
@@ -14302,7 +14302,7 @@ function Gx({ station: e, isSelected: t, onToggle: n, meta: r }) {
     ] })
   ] });
 }
-function Qx({
+function Jx({
   searchTerm: e,
   onSearchChange: t,
   sortAlpha: n,
@@ -14526,7 +14526,7 @@ function Qx({
     ] })
   ] });
 }
-function Jx({
+function Zx({
   currentPage: e,
   totalPages: t,
   pageSize: n,
@@ -14624,7 +14624,7 @@ function Jx({
     ] })
   ] });
 }
-function Zx({
+function qx({
   selectedStationIds: e = [],
   allStations: t = [],
   onToggleStation: n,
@@ -14756,18 +14756,18 @@ function yh(e, t, n = Zp) {
     badgeClass: "status-critical"
   };
 }
-function qx(e) {
+function e1(e) {
   if (!e || e <= 0) return "00:00:00";
   const t = Math.floor(e / 1e3), n = Math.floor(t / 3600), r = Math.floor(t % 3600 / 60), l = t % 60, o = (a) => String(a).padStart(2, "0");
   return `${o(n)}:${o(r)}:${o(l)}`;
 }
-function e1(e) {
+function t1(e) {
   if (!e || e <= 0) return "0 MB";
   const t = e / (1024 * 1024 * 1024);
   return t >= 1 ? `${t.toFixed(1)} GB` : `${(e / (1024 * 1024)).toFixed(0)} MB`;
 }
-function t1(e, t = [], n = { baseEpochMs: 0, durationMs: 0 }, r = Zp) {
-  const { baseEpochMs: l, durationMs: o } = n, a = !!(e != null && e.hasAudio), i = (e == null ? void 0 : e.audioChannels) || (a ? "AUDIO STREAM" : "MUTED"), c = (e == null ? void 0 : e.resolution) || (e != null && e.width && (e != null && e.height) ? `${e.height}p` : "1080p"), d = (e == null ? void 0 : e.fps) || 30, v = (e == null ? void 0 : e.fileSize) || (e != null && e.bytesRecorded ? e1(e.bytesRecorded) : "--");
+function n1(e, t = [], n = { baseEpochMs: 0, durationMs: 0 }, r = Zp) {
+  const { baseEpochMs: l, durationMs: o } = n, a = !!(e != null && e.hasAudio), i = (e == null ? void 0 : e.audioChannels) || (a ? "AUDIO STREAM" : "MUTED"), c = (e == null ? void 0 : e.resolution) || (e != null && e.width && (e != null && e.height) ? `${e.height}p` : "1080p"), d = (e == null ? void 0 : e.fps) || 30, v = (e == null ? void 0 : e.fileSize) || (e != null && e.bytesRecorded ? t1(e.bytesRecorded) : "--");
   if (!o || o <= 0 || !Array.isArray(t) || t.length === 0) {
     const h = yh(0, !0, r);
     return {
@@ -14831,7 +14831,7 @@ function t1(e, t = [], n = { baseEpochMs: 0, durationMs: 0 }, r = Zp) {
   const S = I > 0 || w < 100, M = yh(w, S, r);
   return {
     coveragePct: w,
-    recordedDuration: qx(C),
+    recordedDuration: e1(C),
     totalRecordedMs: C,
     hasAudio: a,
     audioChannels: i,
@@ -14844,8 +14844,8 @@ function t1(e, t = [], n = { baseEpochMs: 0, durationMs: 0 }, r = Zp) {
     segments: g.length > 0 ? g : [{ type: "gap", startPct: 0, widthPct: 100 }]
   };
 }
-const n1 = Object.freeze([]), s1 = 12;
-function r1({
+const s1 = Object.freeze([]), r1 = 12;
+function l1({
   isOpen: e,
   onToggle: t,
   onClose: n,
@@ -14858,7 +14858,7 @@ function r1({
   isLoadingSegments: d = !1,
   onApply: v,
   onOpenRangeModal: p,
-  systemTabs: m = n1,
+  systemTabs: m = s1,
   recordingSegments: y = {},
   baseEpochMs: j = 0,
   durationMs: C = 0
@@ -14934,7 +14934,7 @@ function r1({
   }, [P, m, r]), H = u.useMemo(() => q.find((se) => se.id === g) || q[0], [q, g]), Ae = u.useMemo(() => !H || H.id === "all" ? r.map((se) => se.id) : H.stationIds || [], [H, r]), $e = u.useMemo(() => !y || Object.keys(y).length === 0 ? r.filter((se) => se.isLoaded || se.segments && se.segments.length > 0).length : r.filter((se) => y[se.id] !== void 0 || se.isLoaded).length, [r, y]), Ie = u.useMemo(() => !!(d || c && r.length > 0 || r.length > 0 && $e < r.length && Object.keys(y).length > 0), [d, c, r.length, $e, y]), Ue = u.useMemo(() => {
     const se = /* @__PURE__ */ new Map(), me = { baseEpochMs: j, durationMs: C };
     for (const T of r) {
-      const G = !(y && y[T.id] !== void 0 || T.isLoaded === !0 || T.segments && T.segments.length > 0) && (Ie || c || d), te = y && y[T.id] || T.segments || [], J = t1(T, te, me);
+      const G = !(y && y[T.id] !== void 0 || T.isLoaded === !0 || T.segments && T.segments.length > 0) && (Ie || c || d), te = y && y[T.id] || T.segments || [], J = n1(T, te, me);
       se.set(T.id, {
         ...J,
         hasAudio: T.hasAudio !== void 0 ? T.hasAudio : J == null ? void 0 : J.hasAudio,
@@ -14954,7 +14954,7 @@ function r1({
     if (H.id !== "all" && !Ae.includes(se.id) || !(se.displayName || se.hostname || se.name || "").toLowerCase().includes(I.toLowerCase())) return !1;
     const T = l.includes(se.id), Q = Ue.get(se.id);
     return $ === "selected" ? T : $ === "unselected" ? !T : $ === "gaps" ? Q == null ? void 0 : Q.hasGaps : $ === "audio" ? Q == null ? void 0 : Q.hasAudio : !0;
-  }).sort((se, me) => M ? (se.displayName || se.hostname || "").localeCompare(me.displayName || me.hostname || "") : 0), [xe, H, Ae, I, $, l, M, Ue]), tt = u.useMemo(() => N !== null ? N : Me.length > s1 ? "table" : "grid", [N, Me.length]), gt = tt === "table" ? F : re, ce = Math.max(1, Math.ceil(Me.length / gt));
+  }).sort((se, me) => M ? (se.displayName || se.hostname || "").localeCompare(me.displayName || me.hostname || "") : 0), [xe, H, Ae, I, $, l, M, Ue]), tt = u.useMemo(() => N !== null ? N : Me.length > r1 ? "table" : "grid", [N, Me.length]), gt = tt === "table" ? F : re, ce = Math.max(1, Math.ceil(Me.length / gt));
   u.useEffect(() => {
     K(1);
   }, [g, I, $, tt]), u.useEffect(() => {
@@ -15091,7 +15091,7 @@ function r1({
         ) })
       ] }),
       /* @__PURE__ */ s.jsx(
-        Qx,
+        Jx,
         {
           searchTerm: I,
           onSearchChange: S,
@@ -15183,15 +15183,6 @@ function r1({
           children: je.map((se) => {
             const me = l.includes(se.id), T = Ue.get(se.id);
             return ne === "is-full-width" ? tt === "grid" ? /* @__PURE__ */ s.jsx(
-              Yx,
-              {
-                station: se,
-                isSelected: me,
-                onToggle: o,
-                meta: T
-              },
-              se.id
-            ) : /* @__PURE__ */ s.jsx(
               Xx,
               {
                 station: se,
@@ -15209,12 +15200,21 @@ function r1({
                 meta: T
               },
               se.id
+            ) : /* @__PURE__ */ s.jsx(
+              Qx,
+              {
+                station: se,
+                isSelected: me,
+                onToggle: o,
+                meta: T
+              },
+              se.id
             );
           })
         }
       ),
       ne === "is-full-width" && /* @__PURE__ */ s.jsx(
-        Jx,
+        Zx,
         {
           currentPage: D,
           totalPages: ce,
@@ -15229,7 +15229,7 @@ function r1({
       ),
       ne === "is-full-width" && /* @__PURE__ */ s.jsxs("div", { className: "hub-footer-action-bar", children: [
         /* @__PURE__ */ s.jsx(
-          Zx,
+          qx,
           {
             selectedStationIds: l,
             allStations: r,
@@ -15255,7 +15255,7 @@ function r1({
     ] }) })
   ] });
 }
-const $n = (e) => String(e).padStart(2, "0"), l1 = [
+const $n = (e) => String(e).padStart(2, "0"), o1 = [
   { label: "00", val: 0, angle: 0 },
   { label: "01", val: 1, angle: 30 },
   { label: "02", val: 2, angle: 60 },
@@ -15268,7 +15268,7 @@ const $n = (e) => String(e).padStart(2, "0"), l1 = [
   { label: "09", val: 9, angle: 270 },
   { label: "10", val: 10, angle: 300 },
   { label: "11", val: 11, angle: 330 }
-], o1 = [
+], a1 = [
   { label: "12", val: 12, angle: 0 },
   { label: "13", val: 13, angle: 30 },
   { label: "14", val: 14, angle: 60 },
@@ -15344,7 +15344,7 @@ function vh({
       window.removeEventListener("pointermove", E), window.removeEventListener("pointerup", N);
     };
   }, [c, w, g]);
-  const I = u.useMemo(() => p % 12 * 30, [p]), S = u.useMemo(() => m % 60 * 6, [m]), M = u.useMemo(() => y % 60 * 6, [y]), h = j ? o1 : l1, $ = u.useMemo(() => {
+  const I = u.useMemo(() => p % 12 * 30, [p]), S = u.useMemo(() => m % 60 * 6, [m]), M = u.useMemo(() => y % 60 * 6, [y]), h = j ? a1 : o1, $ = u.useMemo(() => {
     const E = [];
     for (let N = 0; N < 60; N++) {
       const _ = (N * 6 - 90) * (Math.PI / 180), U = N % 5 === 0, R = 104, F = U ? 93 : 98;
@@ -15509,7 +15509,7 @@ function vh({
   ] });
 }
 const ra = 7 * 24 * 60 * 60 * 1e3, Ht = (e) => String(e).padStart(2, "0");
-function a1({
+function i1({
   isOpen: e,
   onClose: t,
   currentRange: n,
@@ -16023,8 +16023,8 @@ function a1({
     document.body
   );
 }
-const qp = "extractor_incident_bookmarks_fallback", i1 = ["itb_studio_bookmarks", "itb_bookmarks", qp];
-function c1({
+const qp = "extractor_incident_bookmarks_fallback", c1 = ["itb_studio_bookmarks", "itb_bookmarks", qp];
+function u1({
   isOpen: e,
   onClose: t,
   currentState: n,
@@ -16032,7 +16032,7 @@ function c1({
   timeMode: l
 }) {
   const o = l || (n == null ? void 0 : n.timeMode) || "LOCAL", [a, i] = u.useState([]), [c, d] = u.useState(""), [v, p] = u.useState(!1), [m, y] = u.useState(!1), [j, C] = u.useState(null), [P, w] = u.useState(""), g = u.useCallback((R) => {
-    i1.forEach((F) => {
+    c1.forEach((F) => {
       try {
         localStorage.setItem(F, JSON.stringify(R));
       } catch {
@@ -16380,7 +16380,7 @@ function em() {
   }
   return "Guest Operator";
 }
-function u1(e) {
+function d1(e) {
   if (!e || e.length === 0)
     return { minX: 0, minY: 0, totalWidth: 1920, totalHeight: 1080 };
   const t = Math.min(...e.map((o) => o.X ?? o.x ?? 0)), n = Math.min(...e.map((o) => o.Y ?? o.y ?? 0)), r = Math.max(...e.map((o) => (o.X ?? o.x ?? 0) + (o.Width || o.width || 1920))), l = Math.max(...e.map((o) => (o.Y ?? o.y ?? 0) + (o.Height || o.height || 1080)));
@@ -16391,7 +16391,7 @@ function u1(e) {
     totalHeight: Math.max(1, l - n)
   };
 }
-function d1(e, t) {
+function h1(e, t) {
   if (!e || !t || t.totalWidth <= 0 || t.totalHeight <= 0)
     return { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 };
   const n = e.X ?? e.x ?? 0, r = e.Y ?? e.y ?? 0, l = e.Width || e.width || 1920, o = e.Height || e.height || 1080;
@@ -16402,7 +16402,7 @@ function d1(e, t) {
     heightPct: o / t.totalHeight * 100
   };
 }
-function h1({
+function f1({
   station: e,
   baseEpochMs: t = 0,
   totalDurationMs: n = 36e5,
@@ -16515,7 +16515,7 @@ function h1({
   }, [b, Me]), ce = u.useMemo(() => {
     const V = b.find((pe) => (pe.displayId ?? "").toLowerCase() === (tt || "").toLowerCase());
     return V ? V.displayName || `Screen ${V.displayNumber || 2}` : "Screen 2";
-  }, [b, tt]), je = u.useMemo(() => q !== "director" && q !== "split" && q !== "pip" && q !== "canvas" ? !0 : !!((xe == null ? void 0 : xe.isManualOverride) ?? (xe == null ? void 0 : xe.IsManualOverride)), [q, xe]), [Ve, ze] = u.useState({}), nt = u.useRef(null), [We, se] = u.useState({ width: 0, height: 0 }), me = u.useMemo(() => u1(b), [b]);
+  }, [b, tt]), je = u.useMemo(() => q !== "director" && q !== "split" && q !== "pip" && q !== "canvas" ? !0 : !!((xe == null ? void 0 : xe.isManualOverride) ?? (xe == null ? void 0 : xe.IsManualOverride)), [q, xe]), [Ve, ze] = u.useState({}), nt = u.useRef(null), [We, se] = u.useState({ width: 0, height: 0 }), me = u.useMemo(() => d1(b), [b]);
   u.useEffect(() => {
     if (!B || q !== "canvas" && q !== "all-displays" || o)
       return;
@@ -16950,7 +16950,7 @@ function h1({
             maxHeight: "100%"
           },
           children: b.map((V, pe) => {
-            const ye = d1(V, me), He = (V.displayId ?? V.DisplayId ?? `mon-${pe}`).toLowerCase(), qe = Ve[He] || (He === Me ? Re : null), xt = !!(V.isPrimary ?? V.IsPrimary);
+            const ye = h1(V, me), He = (V.displayId ?? V.DisplayId ?? `mon-${pe}`).toLowerCase(), qe = Ve[He] || (He === Me ? Re : null), xt = !!(V.isPrimary ?? V.IsPrimary);
             return /* @__PURE__ */ s.jsxs(
               "div",
               {
@@ -17067,7 +17067,7 @@ function h1({
   ] });
 }
 const Qi = 2200, Ji = 400;
-function f1({
+function p1({
   currentEpochMs: e = 0,
   keystrokes: t = [],
   keystrokeMode: n = "BURN_IN"
@@ -17106,7 +17106,7 @@ function f1({
     d < i.length - 1 && /* @__PURE__ */ s.jsx("span", { className: "keycap-plus", children: "+" })
   ] }, d)) }) }) : null;
 }
-const p1 = [
+const m1 = [
   {
     title: "PLAYBACK & SHUTTLE (NLE)",
     shortcuts: [
@@ -17177,7 +17177,7 @@ function tm({ isOpen: e, onClose: t }) {
         ] }),
         /* @__PURE__ */ s.jsx("button", { type: "button", className: "btn-close-modal", onClick: t, title: "Close (Esc)", children: "✕" })
       ] }),
-      /* @__PURE__ */ s.jsx("div", { className: "modal-body-grid", children: p1.map((n, r) => /* @__PURE__ */ s.jsxs("div", { className: "shortcut-group-panel", children: [
+      /* @__PURE__ */ s.jsx("div", { className: "modal-body-grid", children: m1.map((n, r) => /* @__PURE__ */ s.jsxs("div", { className: "shortcut-group-panel", children: [
         /* @__PURE__ */ s.jsx("h4", { className: "group-title", children: n.title }),
         /* @__PURE__ */ s.jsx("div", { className: "group-items-list", children: n.shortcuts.map((l, o) => /* @__PURE__ */ s.jsxs("div", { className: "shortcut-row", children: [
           /* @__PURE__ */ s.jsx("div", { className: "keys-cluster", children: l.keys.map((a, i) => a === "or" || a === "+" || a === "← / →" || a === "Z / Y" ? /* @__PURE__ */ s.jsx("span", { className: "key-separator", children: a }, i) : /* @__PURE__ */ s.jsx("kbd", { className: "tactical-kbd", children: a }, i)) }),
@@ -17196,7 +17196,7 @@ const kh = (e, t = 30) => {
   const n = Math.max(0, e), r = Math.floor(n / 1e3), l = Math.floor(r / 3600), o = Math.floor(r % 3600 / 60), a = r % 60, i = Math.floor(n % 1e3 / 1e3 * t), c = (d) => String(d).padStart(2, "0");
   return `${c(l)}:${c(o)}:${c(a)}.${c(i)}`;
 };
-function m1({
+function g1({
   isOpen: e,
   station: t,
   initialDisplayId: n = null,
@@ -17494,7 +17494,7 @@ function m1({
       ] }),
       /* @__PURE__ */ s.jsxs("div", { className: "spotlight-viewport-canvas", children: [
         /* @__PURE__ */ s.jsx(
-          h1,
+          f1,
           {
             station: t,
             baseEpochMs: a,
@@ -17521,7 +17521,7 @@ function m1({
           }
         ),
         /* @__PURE__ */ s.jsx(
-          f1,
+          p1,
           {
             currentEpochMs: ot,
             keystrokes: D,
@@ -17996,7 +17996,7 @@ ${E}`));
     document.body
   );
 }
-function g1({
+function x1({
   menu: e,
   // { x, y, station }
   onClose: t,
@@ -18068,16 +18068,16 @@ function g1({
     }
   );
 }
-function x1({
+function y1({
   isOpen: e,
   onClose: t,
   onConfirm: n,
   compositionSummary: r = {},
   title: l = "MASTER MP4 EXPORT CONFIRMATION"
 }) {
-  const o = r.canvasWidth || 2736, a = r.canvasHeight || 1440, i = o / a, c = r.resolution || "2K";
+  const o = r.canvasWidth || 2560, a = r.canvasHeight || 1440, i = o / a, c = r.resolution || "2K";
   let d;
-  Math.abs(i - 19 / 10) < 0.05 ? d = "19:10 NOC Extended" : Math.abs(i - 16 / 10) < 0.05 ? d = "16:10 WUXGA / WQXGA" : Math.abs(i - 32 / 9) < 0.15 ? d = "32:9 Dual Screen" : Math.abs(i - 21 / 9) < 0.15 ? d = "21:9 Ultrawide" : Math.abs(i - 4 / 3) < 0.15 ? d = "4:3 Standard" : Math.abs(i - 16 / 9) < 0.05 ? d = "16:9 Broadcast" : d = `${Math.round(i * 100) / 100}:1 Custom`;
+  Math.abs(i - 16 / 9) < 0.05 ? d = "16:9 Broadcast" : Math.abs(i - 16 / 10) < 0.05 ? d = "16:10 WUXGA / WQXGA" : Math.abs(i - 19 / 10) < 0.05 ? d = "19:10 NOC Extended" : Math.abs(i - 32 / 9) < 0.15 ? d = "32:9 Dual Screen" : Math.abs(i - 21 / 9) < 0.15 ? d = "21:9 Ultrawide" : Math.abs(i - 4 / 3) < 0.15 ? d = "4:3 Standard" : d = `${Math.round(i * 100) / 100}:1 Custom`;
   const p = ((M, h) => {
     const $ = Math.round(M * h / 2073600 * 6 * 10) / 10, E = Math.round($ * 60 / 8 * 10) / 10;
     return `~${$} Mbps (~${E} MB/min)`;
@@ -18256,7 +18256,7 @@ function x1({
     document.body
   );
 }
-function y1(e, t, n, r, l = null) {
+function v1(e, t, n, r, l = null) {
   const [o, a] = u.useState([]), [i, c] = u.useState({}), [d, v] = u.useState(!1), p = u.useRef(o);
   p.current = o;
   const m = u.useCallback(async () => {
@@ -18385,7 +18385,7 @@ function y1(e, t, n, r, l = null) {
     movieBoundaries: j
   };
 }
-function v1({
+function N1({
   timelineBaseEpochMs: e,
   inPointMs: t,
   outPointMs: n,
@@ -18448,10 +18448,10 @@ function v1({
     togglePlaySmart: _
   };
 }
-function N1(e) {
+function k1(e) {
   return 1 - Math.pow(1 - e, 3);
 }
-function k1({
+function w1({
   containerRef: e,
   totalTimelineDurationMs: t,
   initialZoom: n = 1,
@@ -18469,7 +18469,7 @@ function k1({
     if (Math.abs(S) < 1) return;
     const M = performance.now(), h = ($) => {
       const E = $ - M, N = Math.min(1, E / x);
-      i(Math.round(I + S * N1(N))), N < 1 ? c.current = requestAnimationFrame(h) : c.current = null;
+      i(Math.round(I + S * k1(N))), N < 1 ? c.current = requestAnimationFrame(h) : c.current = null;
     };
     c.current = requestAnimationFrame(h);
   }, []), C = u.useCallback((g, x) => {
@@ -18532,7 +18532,7 @@ function k1({
     jumpViewportTo: w
   };
 }
-function w1({
+function E1({
   activeStationId: e,
   spotlightStationId: t,
   timelineStations: n = [],
@@ -18765,7 +18765,7 @@ const wh = (e = "LOCAL") => {
   const a = r.replace(" ", "T"), i = new Date(a).getTime();
   return isNaN(i) ? Date.now() : i;
 };
-function E1() {
+function C1() {
   var Xs, dn;
   const e = u.useMemo(() => Jg() || {}, []), [t, n] = u.useState(() => {
     var A, le;
@@ -18918,7 +18918,7 @@ function E1() {
       }) : de;
     });
   }, [p, T, G, H]);
-  const { allStations: J, recordingSegments: ee, isLoadingStations: he, movieBoundaries: Ge } = y1(
+  const { allStations: J, recordingSegments: ee, isLoadingStations: he, movieBoundaries: Ge } = v1(
     p,
     m,
     t,
@@ -19063,7 +19063,7 @@ function E1() {
     isLooping: Zt,
     setIsLooping: _t,
     togglePlaySmart: cn
-  } = v1({
+  } = N1({
     timelineBaseEpochMs: p,
     inPointMs: T,
     outPointMs: G,
@@ -19084,7 +19084,7 @@ function E1() {
     resetZoom: Ze,
     fitRange: V,
     jumpViewportTo: pe
-  } = k1({
+  } = w1({
     containerRef: Lt,
     totalTimelineDurationMs: m,
     initialZoom: e.zoomLevel || 1,
@@ -19309,7 +19309,7 @@ function E1() {
       !document.fullscreenElement && gn && Qt(!1);
     };
     return document.addEventListener("fullscreenchange", A), () => document.removeEventListener("fullscreenchange", A);
-  }, [gn]), w1({
+  }, [gn]), E1({
     activeStationId: C,
     spotlightStationId: w,
     timelineStations: Yn,
@@ -19615,7 +19615,7 @@ function E1() {
         !Yr && /* @__PURE__ */ s.jsxs("div", { className: "studio-left-content", children: [
           /* @__PURE__ */ s.jsxs("div", { className: "studio-main-viewport-container", children: [
             /* @__PURE__ */ s.jsx(
-              yx,
+              vx,
               {
                 activeStation: mn,
                 timelineStations: Yn,
@@ -19836,7 +19836,7 @@ function E1() {
           )
         ] }),
         !gn && /* @__PURE__ */ s.jsx(
-          r1,
+          l1,
           {
             isOpen: Nt || Yr,
             onToggle: () => kt(!Nt),
@@ -19859,7 +19859,7 @@ function E1() {
       ] })
     ] }),
     /* @__PURE__ */ s.jsx(
-      a1,
+      i1,
       {
         isOpen: ye,
         onClose: () => He(!1),
@@ -19871,7 +19871,7 @@ function E1() {
       }
     ),
     /* @__PURE__ */ s.jsx(
-      c1,
+      u1,
       {
         isOpen: qe,
         onClose: () => xt(!1),
@@ -19902,7 +19902,7 @@ function E1() {
       }
     ),
     /* @__PURE__ */ s.jsx(
-      m1,
+      g1,
       {
         isOpen: Et,
         station: $s,
@@ -19951,7 +19951,7 @@ function E1() {
       }
     ),
     /* @__PURE__ */ s.jsx(
-      g1,
+      x1,
       {
         menu: E,
         onClose: () => N(null),
@@ -19960,7 +19960,7 @@ function E1() {
       }
     ),
     /* @__PURE__ */ s.jsx(
-      x1,
+      y1,
       {
         isOpen: ne,
         onClose: () => q(!1),
@@ -19973,7 +19973,7 @@ function E1() {
           stationsCount: Je.length,
           audioSegmentsCount: ((dn = Ut == null ? void 0 : Ut.segments) == null ? void 0 : dn.length) || 1,
           resolution: ($e == null ? void 0 : $e.resolution) || (H == null ? void 0 : H.resolution) || "2K",
-          canvasWidth: (H == null ? void 0 : H.width) || 2736,
+          canvasWidth: (H == null ? void 0 : H.width) || 2560,
           canvasHeight: (H == null ? void 0 : H.height) || 1440
         }
       }
@@ -20001,16 +20001,16 @@ sm();
     }
   }
 })();
-function C1(e, t = {}) {
+function j1(e, t = {}) {
   sm();
   const n = va.createRoot(e);
-  return n.render(To.createElement(E1, t)), () => {
+  return n.render(To.createElement(C1, t)), () => {
     n.unmount();
   };
 }
 export {
   nm as ExportJobMonitor,
-  E1 as ExtractorAdvancedStudio,
-  E1 as default,
-  C1 as mount
+  C1 as ExtractorAdvancedStudio,
+  C1 as default,
+  j1 as mount
 };

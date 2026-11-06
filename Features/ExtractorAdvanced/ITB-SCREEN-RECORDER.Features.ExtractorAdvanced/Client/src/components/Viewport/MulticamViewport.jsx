@@ -453,7 +453,7 @@ export default function MulticamViewport({
         }, 2200);
     }, []);
 
-    // Decoupled Canvas Resolution & Aspect Ratio State (Default: 2K, 19:10)
+    // Decoupled Canvas Resolution & Aspect Ratio State (Default: 2K, 16:9)
     const [selectedResolutionId, setSelectedResolutionId] = useState(() => {
         const fromTimeline = canvasLayoutTimeline?.resolution;
         if (fromTimeline && RESOLUTION_PRESETS.some(r => r.id === fromTimeline)) {
@@ -486,7 +486,7 @@ export default function MulticamViewport({
         } catch {
             // Ignore
         }
-        return '19:10'; // Default 19:10 per user specification
+        return DEFAULT_CANVAS_ASPECT; // Default 16:9 Broadcast
     });
 
     const canvasDimensions = useMemo(() => {

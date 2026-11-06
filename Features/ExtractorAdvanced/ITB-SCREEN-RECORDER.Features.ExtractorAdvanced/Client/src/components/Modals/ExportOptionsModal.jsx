@@ -13,18 +13,18 @@ export default function ExportOptionsModal({
     compositionSummary = {},
     title = 'MASTER MP4 EXPORT CONFIRMATION'
 }) {
-    const canvasW = compositionSummary.canvasWidth || 2736;
+    const canvasW = compositionSummary.canvasWidth || 2560;
     const canvasH = compositionSummary.canvasHeight || 1440;
     const aspect = canvasW / canvasH;
     const resolutionTier = compositionSummary.resolution || '2K';
 
     let aspectLabel;
-    if (Math.abs(aspect - (19 / 10)) < 0.05) aspectLabel = '19:10 NOC Extended';
+    if (Math.abs(aspect - (16 / 9)) < 0.05) aspectLabel = '16:9 Broadcast';
     else if (Math.abs(aspect - (16 / 10)) < 0.05) aspectLabel = '16:10 WUXGA / WQXGA';
+    else if (Math.abs(aspect - (19 / 10)) < 0.05) aspectLabel = '19:10 NOC Extended';
     else if (Math.abs(aspect - (32 / 9)) < 0.15) aspectLabel = '32:9 Dual Screen';
     else if (Math.abs(aspect - (21 / 9)) < 0.15) aspectLabel = '21:9 Ultrawide';
     else if (Math.abs(aspect - (4 / 3)) < 0.15) aspectLabel = '4:3 Standard';
-    else if (Math.abs(aspect - (16 / 9)) < 0.05) aspectLabel = '16:9 Broadcast';
     else aspectLabel = `${Math.round(aspect * 100) / 100}:1 Custom`;
 
 

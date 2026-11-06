@@ -3368,16 +3368,16 @@ To eliminate browser software decode fallback and preserve 60 FPS UI performance
    - Produces ~35% smaller chunk files on disk, cutting storage I/O, server read latency, and network transmission overhead across the entire forensic pipeline.
 
 
-## 62. Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/19:10 Operational Defaults & WYSIWYG Export Lock (2026-11-05)
+## 62. Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults & WYSIWYG Export Lock (2026-11-06)
 
 ### 62.1 The Architectural Necessity of Separating Resolution and Aspect Ratio
 
 Historically in NLE video editing systems, aspect ratio and canvas resolution were frequently bundled into single static tuples (e.g., `16:9 1080p` or `16:10 1200p`). While suitable for single-screen broadcast pipelines, this conflation introduces significant design flaws in enterprise multi-screen command-and-control (NOC) canvas environments:
 
 1. **Aspect Ratio and Resolution are Orthogonal Geometric Axes**:
-   - **Aspect Ratio ($W : H$)**: Governs the *geometric shape and proportions* of the canvas work surface (e.g. 19:10 NOC Extended, 16:10 WUXGA/WQXGA, 16:9 Broadcast, 21:9 Ultrawide, 32:9 Dual Screen, 4:3 Standard).
-   - **Resolution ($W \times H$ Pixels)**: Governs the *pixel density and coordinate space* of the canvas (e.g. 4K UHD, 2K QHD, 1080p FHD, 720p HD).
-   - An operator designing a layout on an ultra-wide or 19:10 workstation requires the freedom to set the operational density to **2K** (default) or **4K** without altering the physical aspect ratio or distorting screen arrangements.
+   - **Aspect Ratio ($W : H$)**: Governs the *geometric shape and proportions* of the canvas work surface (e.g. 16:9 Broadcast [Default], 16:10 WUXGA/WQXGA, 19:10 NOC Extended, 21:9 Ultrawide, 32:9 Dual Screen, 4:3 Standard).
+   - **Resolution ($W \times H$ Pixels)**: Governs the *pixel density and coordinate space* of the canvas (e.g. 4K UHD, 2K QHD [Default], 1080p FHD, 720p HD).
+   - An operator designing a layout on a broadcast or widescreen workstation requires the freedom to set the operational density to **2K** (default) or **4K** without altering the physical aspect ratio or distorting screen arrangements.
 
 2. **The WYSIWYG Integrity Invariant & Export Resolution Lock**:
    - In multi-workstation canvas composition, operators meticulously arrange screens, calibrate Aero-snap gaps, format custom display titles, position persistent Minimap radar HUDs, and orient the burned-in UTC wall clock.
@@ -3388,7 +3388,7 @@ Historically in NLE video editing systems, aspect ratio and canvas resolution we
 flowchart LR
     subgraph Staging["1. Workspace Staging (Left-Wing Toolbar)"]
         direction TB
-        AR["📐 Aspect Ratio Selector<br/>19:10 (Default) | 16:10 | 16:9 | 21:9 | 32:9 | 4:3"]
+        AR["📐 Aspect Ratio Selector<br/>16:9 Broadcast (Default) | 16:10 | 19:10 | 21:9 | 32:9 | 4:3"]
         RES["📺 Resolution Selector<br/>2K QHD (Default) | 4K UHD | 1080p FHD | 720p HD"]
         ENGINE["canvasResolutionEngine.js<br/>computeCanvasDimensions(Res, Aspect)"]
         AR --> ENGINE
@@ -3397,41 +3397,41 @@ flowchart LR
 
     subgraph Canvas["2. WYSIWYG Virtual Canvas"]
         direction TB
-        VIRTUAL["Virtual Bounds: 2736 × 1440 (2K • 19:10)<br/>• Proportional Placement Rescaling<br/>• Zero Distortion Macroblock Alignment<br/>• Multi-Monitor Tile Alignment"]
+        VIRTUAL["Virtual Bounds: 2560 × 1440 (2K • 16:9)<br/>• Proportional Placement Rescaling<br/>• Zero Distortion Macroblock Alignment<br/>• Multi-Monitor Tile Alignment"]
         ENGINE --> VIRTUAL
     end
 
     subgraph Export["3. Export Confirmation (ExportOptionsModal)"]
         direction TB
-        LOCK["🔒 Canvas Locked Specification<br/>Target Resolution: 2736 × 1440 (2K • 19:10)<br/>• Arbitrary Resolution Overrides Forbidden<br/>• Exact 1:1 WYSIWYG Master MP4 Rendering"]
+        LOCK["🔒 Canvas Locked Specification<br/>Target Resolution: 2560 × 1440 (2K • 16:9)<br/>• Arbitrary Resolution Overrides Forbidden<br/>• Exact 1:1 WYSIWYG Master MP4 Rendering"]
         VIRTUAL --> LOCK
     end
 ```
 
 ---
 
-### 62.2 Operational Defaults: 2K Resolution & 19:10 NOC Aspect Ratio
+### 62.2 Operational Defaults: 2K Resolution & 16:9 Broadcast Aspect Ratio
 
 The platform establishes the following enterprise defaults for all new forensic studio sessions:
 
 | Parameter | Default Value | Standard Virtual Bounds | Purpose & Operational Advantage |
 | :--- | :--- | :--- | :--- |
 | **Canvas Resolution** | **`2K`** (`RESOLUTION_PRESETS`) | Height: $1440\text{px}$ (Base) | High pixel density; preserves razor-sharp text, HUD telemetry, and application windows across multi-monitor tiles. |
-| **Canvas Aspect Ratio** | **`19:10`** (`ASPECT_PRESETS`) | Ratio: $1.900$ | Native wide NOC command console aspect ratio ($2736 \times 1440\text{px}$); optimizes horizontal tile real estate. |
-| **Virtual Bounds** | **`2736 × 1440`** | $W = 2736$, $H = 1440$ | Both dimensions are strictly even integers (`W % 2 == 0`, `H % 2 == 0`), guaranteeing zero H.264 macroblock padding errors. |
+| **Canvas Aspect Ratio** | **`16:9`** (`ASPECT_PRESETS`) | Ratio: $16 / 9 = 1.778$ | Universal industry-standard broadcast widescreen aspect ratio ($2560 \times 1440\text{px}$). |
+| **Virtual Bounds** | **`2560 × 1440`** | $W = 2560$, $H = 1440$ | Both dimensions are strictly even integers (`W % 2 == 0`, `H % 2 == 0`), guaranteeing zero H.264 macroblock padding errors. |
 
 #### Deterministic Resolution & Aspect Matrix (`computeCanvasDimensions`)
 
 ```javascript
 // Dimensions calculated deterministically across all resolution tiers:
-// 19:10 NOC Extended
-4K:  4104 × 2160    2K: 2736 × 1440 (Default)    FHD: 2052 × 1080    HD: 1368 × 720
+// 16:9 Broadcast (Default)
+4K:  3840 × 2160    2K: 2560 × 1440 (Default)    FHD: 1920 × 1080    HD: 1280 × 720
 
 // 16:10 WUXGA / WQXGA
 4K:  3840 × 2400    2K: 2560 × 1600 (WQXGA)      FHD: 1920 × 1200    HD: 1280 × 800
 
-// 16:9 Broadcast
-4K:  3840 × 2160    2K: 2560 × 1440 (QHD)        FHD: 1920 × 1080    HD: 1280 × 720
+// 19:10 NOC Extended
+4K:  4104 × 2160    2K: 2736 × 1440              FHD: 2052 × 1080    HD: 1368 × 720
 
 // 21:9 Ultrawide
 4K:  5120 × 2160    2K: 3440 × 1440              FHD: 2560 × 1080    HD: 1720 × 720
@@ -3444,16 +3444,16 @@ The platform establishes the following enterprise defaults for all new forensic 
 
 ### 62.3 Proportional Placements Rescaling Engine
 
-When an operator toggles the resolution (e.g. from 2K to 4K) or switches the aspect ratio (e.g. from 19:10 to 16:10):
+When an operator toggles the resolution (e.g. from 2K to 4K) or switches the aspect ratio (e.g. from 16:9 to 16:10 or 19:10):
 1. **Dynamic Scaling Factors**:
-   $$\text{ratioX} = \frac{\text{newW}}{\text{oldW}}, \quad \text{ratioY} = \frac{\text{newH}}{\text{oldH}}$$
+   $\text{ratioX} = \frac{\text{newW}}{\text{oldW}}, \quad \text{ratioY} = \frac{\text{newH}}{\text{oldH}}$
 2. **Deterministic Placement Rescaling**:
-   $$\begin{aligned}
+   $\begin{aligned}
    p.x' &= \operatorname{round}(p.x \times \text{ratioX}) \\
    p.y' &= \operatorname{round}(p.y \times \text{ratioY}) \\
    p.\text{width}' &= \operatorname{round}(p.\text{width} \times \text{ratioX}) \\
    p.\text{height}' &= \operatorname{round}(p.\text{height} \times \text{ratioY})
-   \end{aligned}$$
+   \end{aligned}$
 3. **Zero Distortion**: Existing screen tiles retain their exact relative positions, margins, and bounds without spilling outside the canvas or collapsing.
 
 ---
@@ -3462,9 +3462,9 @@ When an operator toggles the resolution (e.g. from 2K to 4K) or switches the asp
 
 1. **Canvas Left-Wing Toolbar**:
    - **Resolution Tool (`📺 2K`)**: Dedicated popout selector presenting `4K UHD`, `2K QHD (Default)`, `1080p FHD`, and `720p HD` with live dimension badges.
-   - **Aspect Ratio Tool (`📐 19:10`)**: Dedicated popout selector presenting `19:10 NOC Extended (Default)`, `16:10 WUXGA / WQXGA`, `16:9 Broadcast`, `21:9 Ultrawide`, `32:9 Dual Screen`, and `4:3 Standard`.
+   - **Aspect Ratio Tool (`📐 16:9`)**: Dedicated popout selector presenting `16:9 Broadcast (Default)`, `16:10 WUXGA / WQXGA`, `19:10 NOC Extended`, `21:9 Ultrawide`, `32:9 Dual Screen`, and `4:3 Standard`.
    - Popouts auto-close mutually and persist operator selections in `localStorage` (`itb_studio_canvas_resolution`, `itb_studio_canvas_aspect`).
 2. **Export Modal Lock (`ExportOptionsModal.jsx`)**:
    - Replaced the previous interactive resolution radio grid (`quality-grid`) with a tactical **Locked WYSIWYG Specification Banner**.
-   - Displays: `🔒 2736 × 1440 (2K • 19:10 NOC Extended) • ~12.2 Mbps • Canvas Locked`.
+   - Displays: `🔒 2560 × 1440 (2K • 16:9 Broadcast) • ~11.5 Mbps • Canvas Locked`.
    - The export payload strictly submits `compositionSummary.resolution` directly to `AdvanceJobManager.cs` as `"2K"`, ensuring 100% WYSIWYG forensic export fidelity.

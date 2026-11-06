@@ -12,44 +12,51 @@ import {
 } from '../utils/canvasResolutionEngine.js';
 
 describe('Canvas Resolution & Aspect Ratio Decoupling Invariants', () => {
-    test('1. Default Canvas Settings strictly enforce 2K resolution and 19:10 Aspect Ratio', () => {
+    test('1. Default Canvas Settings strictly enforce 2K resolution and 16:9 Aspect Ratio', () => {
         assert.equal(DEFAULT_CANVAS_RESOLUTION, '2K');
-        assert.equal(DEFAULT_CANVAS_ASPECT, '19:10');
-        assert.equal(DEFAULT_VIRTUAL_CANVAS_W, 2736);
+        assert.equal(DEFAULT_CANVAS_ASPECT, '16:9');
+        assert.equal(DEFAULT_VIRTUAL_CANVAS_W, 2560);
         assert.equal(DEFAULT_VIRTUAL_CANVAS_H, 1440);
 
         const defaultDims = computeCanvasDimensions(DEFAULT_CANVAS_RESOLUTION, DEFAULT_CANVAS_ASPECT);
-        assert.equal(defaultDims.w, 2736);
+        assert.equal(defaultDims.w, 2560);
         assert.equal(defaultDims.h, 1440);
-        assert.equal(defaultDims.w / defaultDims.h, 1.9);
+        assert.equal(defaultDims.w / defaultDims.h, 16 / 9);
 
-        // Verify presets exist in exported arrays
+        // Verify 2K preset exists in exported array
         const res2K = RESOLUTION_PRESETS.find(r => r.id === '2K');
         assert.ok(res2K, '2K resolution preset must exist');
 
+        // Verify 16:9 preset exists and is first
+        const aspect16_9 = ASPECT_PRESETS.find(a => a.id === '16:9');
+        assert.ok(aspect16_9, '16:9 aspect preset must exist');
+        assert.equal(aspect16_9.ratio, 16 / 9);
+
+        // Verify other aspect presets (16:10, 19:10, etc.) are available
+        const aspect16_10 = ASPECT_PRESETS.find(a => a.id === '16:10');
+        assert.ok(aspect16_10, '16:10 aspect preset must exist');
         const aspect19_10 = ASPECT_PRESETS.find(a => a.id === '19:10');
         assert.ok(aspect19_10, '19:10 aspect preset must exist');
-        assert.equal(aspect19_10.ratio, 1.9);
     });
 
-    test('2. computeCanvasDimensions calculates deterministic dimensions across all resolutions for 19:10 & 16:10', () => {
-        // 19:10 aspect
-        assert.deepEqual(computeCanvasDimensions('4K', '19:10'), { w: 4104, h: 2160 });
-        assert.deepEqual(computeCanvasDimensions('2K', '19:10'), { w: 2736, h: 1440 });
-        assert.deepEqual(computeCanvasDimensions('FHD', '19:10'), { w: 2052, h: 1080 });
-        assert.deepEqual(computeCanvasDimensions('HD', '19:10'), { w: 1368, h: 720 });
+    test('2. computeCanvasDimensions calculates deterministic dimensions across all resolutions for 16:9, 16:10 & 19:10', () => {
+        // 16:9 Broadcast (Default)
+        assert.deepEqual(computeCanvasDimensions('4K', '16:9'), { w: 3840, h: 2160 });
+        assert.deepEqual(computeCanvasDimensions('2K', '16:9'), { w: 2560, h: 1440 });
+        assert.deepEqual(computeCanvasDimensions('FHD', '16:9'), { w: 1920, h: 1080 });
+        assert.deepEqual(computeCanvasDimensions('HD', '16:9'), { w: 1280, h: 720 });
 
-        // 16:10 aspect
+        // 16:10 WUXGA / WQXGA
         assert.deepEqual(computeCanvasDimensions('4K', '16:10'), { w: 3840, h: 2400 });
         assert.deepEqual(computeCanvasDimensions('2K', '16:10'), { w: 2560, h: 1600 });
         assert.deepEqual(computeCanvasDimensions('FHD', '16:10'), { w: 1920, h: 1200 });
         assert.deepEqual(computeCanvasDimensions('HD', '16:10'), { w: 1280, h: 800 });
 
-        // 16:9 aspect
-        assert.deepEqual(computeCanvasDimensions('4K', '16:9'), { w: 3840, h: 2160 });
-        assert.deepEqual(computeCanvasDimensions('2K', '16:9'), { w: 2560, h: 1440 });
-        assert.deepEqual(computeCanvasDimensions('FHD', '16:9'), { w: 1920, h: 1080 });
-        assert.deepEqual(computeCanvasDimensions('HD', '16:9'), { w: 1280, h: 720 });
+        // 19:10 NOC Extended
+        assert.deepEqual(computeCanvasDimensions('4K', '19:10'), { w: 4104, h: 2160 });
+        assert.deepEqual(computeCanvasDimensions('2K', '19:10'), { w: 2736, h: 1440 });
+        assert.deepEqual(computeCanvasDimensions('FHD', '19:10'), { w: 2052, h: 1080 });
+        assert.deepEqual(computeCanvasDimensions('HD', '19:10'), { w: 1368, h: 720 });
 
         // 21:9 ultrawide
         assert.deepEqual(computeCanvasDimensions('2K', '21:9'), { w: 3440, h: 1440 });
@@ -69,25 +76,26 @@ describe('Canvas Resolution & Aspect Ratio Decoupling Invariants', () => {
         }
     });
 
-    test('4. getReadableAspectRatio identifies 19:10 and 16:10 ratios accurately', () => {
-        assert.equal(getReadableAspectRatio(2736, 1440), '19:10');
-        assert.equal(getReadableAspectRatio(4104, 2160), '19:10');
-        assert.equal(getReadableAspectRatio(2052, 1080), '19:10');
-        assert.equal(getReadableAspectRatio(1368, 720), '19:10');
+    test('4. getReadableAspectRatio identifies 16:9, 16:10 and 19:10 ratios accurately', () => {
+        assert.equal(getReadableAspectRatio(2560, 1440), '16:9');
+        assert.equal(getReadableAspectRatio(1920, 1080), '16:9');
+        assert.equal(getReadableAspectRatio(3840, 2160), '16:9');
 
         assert.equal(getReadableAspectRatio(2560, 1600), '16:10');
         assert.equal(getReadableAspectRatio(1920, 1200), '16:10');
 
-        assert.equal(getReadableAspectRatio(2560, 1440), '16:9');
-        assert.equal(getReadableAspectRatio(1920, 1080), '16:9');
+        assert.equal(getReadableAspectRatio(2736, 1440), '19:10');
+        assert.equal(getReadableAspectRatio(4104, 2160), '19:10');
+        assert.equal(getReadableAspectRatio(2052, 1080), '19:10');
+        assert.equal(getReadableAspectRatio(1368, 720), '19:10');
 
         assert.equal(getReadableAspectRatio(3440, 1440), '21:9');
         assert.equal(getReadableAspectRatio(5120, 1440), '32:9');
     });
 
     test('5. Proportional Placements Rescaling when switching Canvas Resolution or Aspect Ratio', () => {
-        const oldDims = computeCanvasDimensions('2K', '19:10'); // 2736 x 1440
-        const newDims = computeCanvasDimensions('4K', '19:10'); // 4104 x 2160
+        const oldDims = computeCanvasDimensions('2K', '16:9'); // 2560 x 1440
+        const newDims = computeCanvasDimensions('4K', '16:9'); // 3840 x 2160
 
         const ratioX = newDims.w / oldDims.w; // 1.5
         const ratioY = newDims.h / oldDims.h; // 1.5
@@ -121,10 +129,10 @@ describe('Canvas Resolution & Aspect Ratio Decoupling Invariants', () => {
 
     test('6. Export WYSIWYG Lock: export payload inherits canvas resolution strictly without override', () => {
         const canvasLayout = {
-            width: 2736,
+            width: 2560,
             height: 1440,
             resolution: '2K',
-            aspectRatio: '19:10'
+            aspectRatio: '16:9'
         };
 
         const exportJobPayload = {
@@ -136,8 +144,8 @@ describe('Canvas Resolution & Aspect Ratio Decoupling Invariants', () => {
         };
 
         assert.equal(exportJobPayload.resolution, '2K');
-        assert.equal(exportJobPayload.canvasWidth, 2736);
+        assert.equal(exportJobPayload.canvasWidth, 2560);
         assert.equal(exportJobPayload.canvasHeight, 1440);
-        assert.equal(exportJobPayload.aspectRatio, '19:10');
+        assert.equal(exportJobPayload.aspectRatio, '16:9');
     });
 });
