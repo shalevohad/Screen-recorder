@@ -81,7 +81,7 @@
 59. [Canvas Screen Custom Title Renaming & Video Burn-In Architecture (2026-11-05)](#59-canvas-screen-custom-title-renaming--video-burn-in-architecture-2026-11-05)
 60. [Canvas Placement Active-Edit Temporary Z-Index Elevation & Settle Invariant (2026-11-05)](#60-canvas-placement-active-edit-temporary-z-index-elevation--settle-invariant-2026-11-05)
 61. [High-Density Canvas Video Streaming Optimization, Hardware Decoder Governance & Constrained VBR Architecture (2026-11-05)](#61-high-density-canvas-video-streaming-optimization-hardware-decoder-governance--constrained-vbr-architecture-2026-11-05)
-62. [Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/19:10 Operational Defaults & WYSIWYG Export Lock (2026-11-05)](#62-decoupled-canvas-resolution--aspect-ratio-architecture-2k1910-operational-defaults--wysiwyg-export-lock-2026-11-05)
+62. [Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults, Manual Custom Resolution & WYSIWYG Export Lock (2026-11-06)](#62-decoupled-canvas-resolution--aspect-ratio-architecture-2k169-operational-defaults-manual-custom-resolution--wysiwyg-export-lock-2026-11-06)
 
 ---
 
@@ -3369,7 +3369,7 @@ To eliminate browser software decode fallback and preserve 60 FPS UI performance
    - Produces ~35% smaller chunk files on disk, cutting storage I/O, server read latency, and network transmission overhead across the entire forensic pipeline.
 
 
-## 62. Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults & WYSIWYG Export Lock (2026-11-06)
+## 62. Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults, Manual Custom Resolution & WYSIWYG Export Lock (2026-11-06)
 
 ### 62.1 The Architectural Necessity of Separating Resolution and Aspect Ratio
 
@@ -3469,3 +3469,33 @@ When an operator toggles the resolution (e.g. from 2K to 4K) or switches the asp
    - Replaced the previous interactive resolution radio grid (`quality-grid`) with a tactical **Locked WYSIWYG Specification Banner**.
    - Displays: `🔒 2560 × 1440 (2K • 16:9 Broadcast) • ~11.5 Mbps • Canvas Locked`.
    - The export payload strictly submits `compositionSummary.resolution` directly to `AdvanceJobManager.cs` as `"2K"`, ensuring 100% WYSIWYG forensic export fidelity.
+
+---
+
+### 62.5 Manual Custom Resolution Architecture & Macroblock Even Alignment
+
+To support specialized multi-monitor topologies, custom LED video walls, high-density radar installations, and arbitrary ultrawide aspect ratios (e.g., $3440 \times 1440$, $2560 \times 1080$, $1600 \times 900$, $2000 \times 1000$), operators can input custom canvas pixel dimensions directly in the Resolution Popout.
+
+1. **Inline Dimension Inputs & Validation**:
+   - Inside `MulticamViewport.jsx`'s Canvas Resolution popout, an operator can enter exact Width ($W$) and Height ($H$) in dedicated numeric inputs.
+   - When the popout opens, the fields are pre-populated with the current virtual canvas dimensions ($W$ and $H$).
+   - Pressing **`SET`** or hitting **`Enter`** triggers `handleApplyCustomResolution`.
+
+2. **H.264 Video Codec Macroblock Invariant (`sanitizeEvenDimension`)**:
+   - Video compression algorithms (H.264 / AVC, HEVC) divide frames into $16 \times 16$ or $2 \times 2$ macroblocks. If an odd width or height is passed to FFmpeg (`-vf scale=2561:1440`), the encoder immediately crashes with `width not divisible by 2`.
+   - The frontend engine strictly enforces macroblock alignment by sanitizing dimensions down to even integers:
+     $$\text{sanitized} = \text{val} - (\text{val} \pmod 2), \quad 320 \le W \le 7680, \quad 180 \le H \le 4320$$
+
+3. **Automatic Aspect Ratio Detection**:
+   - Setting a manual custom resolution dynamically computes the corresponding aspect ratio via `getReadableAspectRatio(newW, newH)`.
+   - Standard ratios ($16:9, 16:10, 19:10, 21:9, 32:9, 4:3, 1:1$) are automatically identified and set in the Aspect Ratio state (`selectedAspectId`).
+   - Custom non-standard ratios (e.g. $2.00:1$, $2.39:1$) are parsed cleanly via `parseAspectRatioString` and rendered in the NOC HUD without distortion.
+
+4. **Proportional Placements Rescaling**:
+   - When switching from any preset to a manual custom resolution (or between manual resolutions), existing canvas placements are automatically rescaled:
+     $$\text{scaleX} = \frac{W_{\text{new}}}{W_{\text{old}}}, \quad \text{scaleY} = \frac{H_{\text{new}}}{H_{\text{old}}}$$
+   - Placements maintain their precise relative positions and screen proportions across the canvas.
+
+5. **Backend Master MP4 Composition Support (`AdvanceJobManager.cs`)**:
+   - `AdvanceJobManager.ParseQualityResolution` natively parses exact custom dimensions (`"WIDTHxHEIGHT"`, e.g., `"3440X1440"`) and `"CUSTOM"`.
+   - When `"CUSTOM"` is specified, the master MP4 renderer extracts exact geometry from `request.CanvasLayout.Width` and `request.CanvasLayout.Height`, calculates an optimal bitrate matching pixel area, and renders a pixel-perfect standalone master video.

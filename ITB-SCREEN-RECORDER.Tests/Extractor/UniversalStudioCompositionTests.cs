@@ -236,6 +236,14 @@ public class UniversalStudioCompositionTests
         Assert.Equal(3840, custW);
         Assert.Equal(1080, custH);
         Assert.Equal(12000, custBr);
+
+        // Custom resolution identifier with fallback reference bounds
+        var (custRefW, custRefH, custRefBr) = AdvanceJobManager.ParseQualityResolution("CUSTOM", 3440.0 / 1440.0, 3440, 1440);
+        Assert.Equal(3440, custRefW);
+        Assert.Equal(1440, custRefH);
+        Assert.True(custRefBr > 10000);
+
+        Assert.Equal("CUSTOM", AdvanceJobManager.NormalizeQualityName("CUSTOM"));
     }
 
 

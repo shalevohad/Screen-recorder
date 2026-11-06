@@ -25,11 +25,15 @@ import {
 } from '../../utils/canvasStreamGovernor.js';
 import {
     RESOLUTION_PRESETS,
+    CUSTOM_RESOLUTION_ID,
     ASPECT_PRESETS,
     DEFAULT_CANVAS_RESOLUTION,
     DEFAULT_CANVAS_ASPECT,
     DEFAULT_VIRTUAL_CANVAS_W,
     DEFAULT_VIRTUAL_CANVAS_H,
+    sanitizeEvenDimension,
+    parseResolutionString,
+    parseAspectRatioString,
     computeCanvasDimensions,
     getReadableAspectRatio
 } from '../../utils/canvasResolutionEngine.js';
@@ -37,11 +41,15 @@ import './MulticamViewport.scss';
 
 export {
     RESOLUTION_PRESETS,
+    CUSTOM_RESOLUTION_ID,
     ASPECT_PRESETS,
     DEFAULT_CANVAS_RESOLUTION,
     DEFAULT_CANVAS_ASPECT,
     DEFAULT_VIRTUAL_CANVAS_W,
     DEFAULT_VIRTUAL_CANVAS_H,
+    sanitizeEvenDimension,
+    parseResolutionString,
+    parseAspectRatioString,
     computeCanvasDimensions,
     getReadableAspectRatio
 };
@@ -453,15 +461,40 @@ export default function MulticamViewport({
         }, 2200);
     }, []);
 
+    // Custom Canvas Dimensions State (for Manual / Custom Resolutions)
+    const [customCanvasDims, setCustomCanvasDims] = useState(() => {
+        const tw = canvasLayoutTimeline?.keyframes?.[0]?.layout?.width;
+        const th = canvasLayoutTimeline?.keyframes?.[0]?.layout?.height;
+        if (tw && th && tw >= 320 && th >= 180) {
+            return { w: sanitizeEvenDimension(tw), h: sanitizeEvenDimension(th, 180, 4320) };
+        }
+        try {
+            const sw = localStorage.getItem('itb_studio_canvas_custom_w');
+            const sh = localStorage.getItem('itb_studio_canvas_custom_h');
+            if (sw && sh) {
+                const pw = parseInt(sw, 10);
+                const ph = parseInt(sh, 10);
+                if (pw >= 320 && ph >= 180) {
+                    return { w: sanitizeEvenDimension(pw), h: sanitizeEvenDimension(ph, 180, 4320) };
+                }
+            }
+        } catch {
+            // Ignore
+        }
+        return { w: 2560, h: 1440 };
+    });
+
     // Decoupled Canvas Resolution & Aspect Ratio State (Default: 2K, 16:9)
     const [selectedResolutionId, setSelectedResolutionId] = useState(() => {
         const fromTimeline = canvasLayoutTimeline?.resolution;
-        if (fromTimeline && RESOLUTION_PRESETS.some(r => r.id === fromTimeline)) {
-            return fromTimeline;
+        if (fromTimeline) {
+            if (RESOLUTION_PRESETS.some(r => r.id === fromTimeline) || fromTimeline === CUSTOM_RESOLUTION_ID || parseResolutionString(fromTimeline)) {
+                return fromTimeline;
+            }
         }
         try {
             const stored = localStorage.getItem('itb_studio_canvas_resolution');
-            if (stored && RESOLUTION_PRESETS.some(r => r.id === stored)) return stored;
+            if (stored && (RESOLUTION_PRESETS.some(r => r.id === stored) || stored === CUSTOM_RESOLUTION_ID || parseResolutionString(stored))) return stored;
         } catch {
             // Ignore
         }
@@ -482,7 +515,7 @@ export default function MulticamViewport({
         }
         try {
             const stored = localStorage.getItem('itb_studio_canvas_aspect');
-            if (stored && ASPECT_PRESETS.some(p => p.id === stored)) return stored;
+            if (stored && (ASPECT_PRESETS.some(p => p.id === stored) || parseAspectRatioString(stored))) return stored;
         } catch {
             // Ignore
         }
@@ -490,18 +523,40 @@ export default function MulticamViewport({
     });
 
     const canvasDimensions = useMemo(() => {
-        return computeCanvasDimensions(selectedResolutionId, selectedAspectId);
-    }, [selectedResolutionId, selectedAspectId]);
+        return computeCanvasDimensions(selectedResolutionId, selectedAspectId, customCanvasDims);
+    }, [selectedResolutionId, selectedAspectId, customCanvasDims]);
 
     const virtualW = canvasDimensions.w;
     const virtualH = canvasDimensions.h;
 
     const activeAspectPreset = useMemo(() => {
-        const p = ASPECT_PRESETS.find(ap => ap.id === selectedAspectId) || ASPECT_PRESETS[0];
-        return { ...p, w: virtualW, h: virtualH };
+        const p = ASPECT_PRESETS.find(ap => ap.id === selectedAspectId);
+        if (p) return { ...p, w: virtualW, h: virtualH };
+        const customRatio = (virtualW && virtualH && virtualH > 0) ? (virtualW / virtualH) : (16 / 9);
+        return {
+            id: selectedAspectId,
+            label: `${selectedAspectId}`,
+            ratio: customRatio,
+            w: virtualW,
+            h: virtualH
+        };
     }, [selectedAspectId, virtualW, virtualH]);
 
     const currentAspect = activeAspectPreset.ratio;
+
+    // Manual / Custom Resolution Popout Inputs State
+    const [customWidthInput, setCustomWidthInput] = useState('');
+    const [customHeightInput, setCustomHeightInput] = useState('');
+    const [customResError, setCustomResError] = useState(null);
+
+    // Sync input dimensions whenever the resolution popout opens
+    useEffect(() => {
+        if (showResolutionPopout) {
+            setCustomWidthInput(String(virtualW));
+            setCustomHeightInput(String(virtualH));
+            setCustomResError(null);
+        }
+    }, [showResolutionPopout]);
 
     const [isFullWidth, setIsFullWidth] = useState(() => {
         try {
@@ -968,8 +1023,8 @@ export default function MulticamViewport({
     // Switch Resolution handler (scales placements proportionally to match new pixel density)
     const handleSelectResolution = useCallback((newResId) => {
         if (selectedResolutionId === newResId) return;
-        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId);
-        const newDims = computeCanvasDimensions(newResId, selectedAspectId);
+        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId, customCanvasDims);
+        const newDims = computeCanvasDimensions(newResId, selectedAspectId, customCanvasDims);
         setSelectedResolutionId(newResId);
         try {
             localStorage.setItem('itb_studio_canvas_resolution', newResId);
@@ -983,18 +1038,91 @@ export default function MulticamViewport({
             ...p,
             x: Math.round(p.x * ratioX),
             y: Math.round(p.y * ratioY),
-            width: Math.round(p.width * ratioX),
-            height: Math.round(p.height * ratioY)
+            width: Math.max(40, Math.round(p.width * ratioX)),
+            height: Math.max(30, Math.round(p.height * ratioY))
         }));
         updateActivePlacements(rescaled, `Resolution change to ${newResId}`);
         triggerToast(`Canvas Resolution: ${newResId} (${newDims.w}×${newDims.h})`, 'info', '📺');
-    }, [selectedResolutionId, selectedAspectId, currentPlacements, updateActivePlacements, triggerToast]);
+    }, [selectedResolutionId, selectedAspectId, customCanvasDims, currentPlacements, updateActivePlacements, triggerToast]);
+
+    // Apply Manual / Custom Resolution handler
+    const handleApplyCustomResolution = useCallback(() => {
+        const rawW = parseInt(customWidthInput, 10);
+        const rawH = parseInt(customHeightInput, 10);
+
+        if (isNaN(rawW) || isNaN(rawH)) {
+            setCustomResError('Enter valid numbers');
+            return;
+        }
+        if (rawW < 320 || rawW > 7680) {
+            setCustomResError('Width: 320 - 7680px');
+            return;
+        }
+        if (rawH < 180 || rawH > 4320) {
+            setCustomResError('Height: 180 - 4320px');
+            return;
+        }
+
+        setCustomResError(null);
+        const sanitizedW = sanitizeEvenDimension(rawW, 320, 7680);
+        const sanitizedH = sanitizeEvenDimension(rawH, 180, 4320);
+
+        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId, customCanvasDims);
+        const newDims = { w: sanitizedW, h: sanitizedH };
+
+        setCustomCanvasDims(newDims);
+        setSelectedResolutionId(CUSTOM_RESOLUTION_ID);
+
+        // Auto-detect and set corresponding aspect ratio
+        const detectedAspect = getReadableAspectRatio(sanitizedW, sanitizedH);
+        setSelectedAspectId(detectedAspect);
+
+        try {
+            localStorage.setItem('itb_studio_canvas_resolution', CUSTOM_RESOLUTION_ID);
+            localStorage.setItem('itb_studio_canvas_custom_w', String(sanitizedW));
+            localStorage.setItem('itb_studio_canvas_custom_h', String(sanitizedH));
+            localStorage.setItem('itb_studio_canvas_aspect', detectedAspect);
+        } catch {
+            // Ignore
+        }
+
+        if (oldDims.w !== newDims.w || oldDims.h !== newDims.h) {
+            const ratioX = newDims.w / oldDims.w;
+            const ratioY = newDims.h / oldDims.h;
+            const rescaled = currentPlacements.map(p => ({
+                ...p,
+                x: Math.round(p.x * ratioX),
+                y: Math.round(p.y * ratioY),
+                width: Math.max(40, Math.round(p.width * ratioX)),
+                height: Math.max(30, Math.round(p.height * ratioY))
+            }));
+            updateActivePlacements(rescaled, `Custom resolution set to ${sanitizedW}×${sanitizedH}`);
+        }
+
+        setShowResolutionPopout(false);
+        triggerToast(`Canvas Resolution: Custom (${sanitizedW}×${sanitizedH})`, 'info', '📺');
+    }, [customWidthInput, customHeightInput, selectedResolutionId, selectedAspectId, customCanvasDims, currentPlacements, updateActivePlacements, triggerToast]);
 
     // Switch Aspect Ratio handler (re-packing or rescaling existing placements proportionally to fill the target aspect)
     const handleSelectAspectRatio = useCallback((newAspectId) => {
         if (selectedAspectId === newAspectId) return;
-        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId);
-        const newDims = computeCanvasDimensions(selectedResolutionId, newAspectId);
+        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId, customCanvasDims);
+        let newDims;
+        if (selectedResolutionId === CUSTOM_RESOLUTION_ID && customCanvasDims?.h) {
+            const aspectObj = ASPECT_PRESETS.find(a => a.id === newAspectId);
+            const ratio = aspectObj ? aspectObj.ratio : (parseAspectRatioString(newAspectId) || (16 / 9));
+            const newW = sanitizeEvenDimension(Math.round(customCanvasDims.h * ratio), 320, 7680);
+            newDims = { w: newW, h: customCanvasDims.h };
+            setCustomCanvasDims(newDims);
+            try {
+                localStorage.setItem('itb_studio_canvas_custom_w', String(newDims.w));
+                localStorage.setItem('itb_studio_canvas_custom_h', String(newDims.h));
+            } catch {
+                // Ignore
+            }
+        } else {
+            newDims = computeCanvasDimensions(selectedResolutionId, newAspectId, customCanvasDims);
+        }
         setSelectedAspectId(newAspectId);
         try {
             localStorage.setItem('itb_studio_canvas_aspect', newAspectId);
@@ -1013,13 +1141,13 @@ export default function MulticamViewport({
                 ...p,
                 x: Math.round(p.x * ratioX),
                 y: Math.round(p.y * ratioY),
-                width: Math.round(p.width * ratioX),
-                height: Math.round(p.height * ratioY)
+                width: Math.max(40, Math.round(p.width * ratioX)),
+                height: Math.max(30, Math.round(p.height * ratioY))
             }));
             updateActivePlacements(rescaled, `Aspect change to ${newAspectId}`);
         }
         triggerToast(`Canvas Aspect: ${newAspectId} (${newDims.w}×${newDims.h})`, 'info', '📐');
-    }, [selectedAspectId, selectedResolutionId, defaultStationFeeds, currentPlacements, availableFeeds, updateActivePlacements, triggerToast]);
+    }, [selectedAspectId, selectedResolutionId, customCanvasDims, defaultStationFeeds, currentPlacements, availableFeeds, updateActivePlacements, triggerToast]);
 
     // -------------------------------------------------------------
     // FEEDS PALETTE ACTIONS: ADD / REMOVE / CLEAR
@@ -2827,17 +2955,19 @@ export default function MulticamViewport({
                                 setShowAspectPopout(false);
                                 setShowLayoutPresetsPopout(false);
                             }}
-                            title={`Canvas Resolution: ${selectedResolutionId} (${virtualW}×${virtualH}px) - Click to change`}
+                            title={`Canvas Resolution: ${selectedResolutionId === CUSTOM_RESOLUTION_ID ? `Custom (${virtualW}×${virtualH}px)` : selectedResolutionId} (${virtualW}×${virtualH}px) - Click to change`}
                         >
                             <span className="tool-icon">📺</span>
-                            <span className="tool-label">{selectedResolutionId}</span>
+                            <span className="tool-label" style={selectedResolutionId === CUSTOM_RESOLUTION_ID ? { fontSize: '7px' } : undefined}>
+                                {selectedResolutionId === CUSTOM_RESOLUTION_ID ? 'CUSTOM' : selectedResolutionId}
+                            </span>
                         </button>
 
                         {showResolutionPopout && (
-                            <div className="wing-floating-popout left-side-popout">
+                            <div className="wing-floating-popout left-side-popout resolution-popout">
                                 <div className="popout-title">CANVAS RESOLUTION</div>
                                 {RESOLUTION_PRESETS.map(res => {
-                                    const dims = computeCanvasDimensions(res.id, selectedAspectId);
+                                    const dims = computeCanvasDimensions(res.id, selectedAspectId, customCanvasDims);
                                     return (
                                         <button
                                             key={res.id}
@@ -2853,6 +2983,65 @@ export default function MulticamViewport({
                                         </button>
                                     );
                                 })}
+
+                                <div className="popout-divider" />
+
+                                <div className="custom-res-container">
+                                    <div className="custom-res-header">
+                                        <span>MANUAL / CUSTOM</span>
+                                        {selectedResolutionId === CUSTOM_RESOLUTION_ID && (
+                                            <span className="custom-active-tag">ACTIVE</span>
+                                        )}
+                                    </div>
+                                    <div className="custom-res-inputs-row">
+                                        <div className="custom-dim-field">
+                                            <span className="field-lbl">W</span>
+                                            <input
+                                                type="number"
+                                                className="custom-dim-input"
+                                                min="320"
+                                                max="7680"
+                                                step="2"
+                                                value={customWidthInput}
+                                                onChange={(e) => setCustomWidthInput(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') handleApplyCustomResolution();
+                                                }}
+                                                placeholder="Width"
+                                                title="Width in pixels (320-7680, even)"
+                                            />
+                                        </div>
+                                        <span className="dim-times">×</span>
+                                        <div className="custom-dim-field">
+                                            <span className="field-lbl">H</span>
+                                            <input
+                                                type="number"
+                                                className="custom-dim-input"
+                                                min="180"
+                                                max="4320"
+                                                step="2"
+                                                value={customHeightInput}
+                                                onChange={(e) => setCustomHeightInput(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') handleApplyCustomResolution();
+                                                }}
+                                                placeholder="Height"
+                                                title="Height in pixels (180-4320, even)"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="btn-apply-custom-res"
+                                            onClick={handleApplyCustomResolution}
+                                            title="Apply custom resolution"
+                                        >
+                                            SET
+                                        </button>
+                                    </div>
+                                    {customResError && (
+                                        <div className="custom-res-error-msg">{customResError}</div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>

@@ -110,7 +110,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string normalized = qualityOrResolution.Trim().ToUpperInvariant();
 
-            if (normalized == "NATIVE" || normalized == "1:1" || normalized == "ORIGINAL")
+            if (normalized == "NATIVE" || normalized == "1:1" || normalized == "ORIGINAL" || normalized == "CUSTOM")
             {
                 int nw = fallbackRefW > 0 ? fallbackRefW : 1920;
                 int nh = fallbackRefH > 0 ? fallbackRefH : 1080;
@@ -173,7 +173,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             if (string.IsNullOrWhiteSpace(qualityOrResolution)) return "FHD";
             string normalized = qualityOrResolution.Trim().ToUpperInvariant();
-            if (normalized == "NATIVE" || normalized == "1:1" || normalized == "ORIGINAL" || normalized.Contains('X'))
+            if (normalized == "NATIVE" || normalized == "1:1" || normalized == "ORIGINAL" || normalized == "CUSTOM" || normalized.Contains('X'))
                 return normalized;
 
             return normalized switch

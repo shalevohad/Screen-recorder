@@ -2,11 +2,15 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     RESOLUTION_PRESETS,
+    CUSTOM_RESOLUTION_ID,
     ASPECT_PRESETS,
     DEFAULT_CANVAS_RESOLUTION,
     DEFAULT_CANVAS_ASPECT,
     DEFAULT_VIRTUAL_CANVAS_W,
     DEFAULT_VIRTUAL_CANVAS_H,
+    sanitizeEvenDimension,
+    parseResolutionString,
+    parseAspectRatioString,
     computeCanvasDimensions,
     getReadableAspectRatio
 } from '../utils/canvasResolutionEngine.js';
@@ -147,5 +151,92 @@ describe('Canvas Resolution & Aspect Ratio Decoupling Invariants', () => {
         assert.equal(exportJobPayload.canvasWidth, 2560);
         assert.equal(exportJobPayload.canvasHeight, 1440);
         assert.equal(exportJobPayload.aspectRatio, '16:9');
+    });
+
+    test('7. Manual Custom Resolution calculations, macroblock even-alignment sanitization & string parsing', () => {
+        // Validation: odd numbers are strictly sanitized down to even integers
+        assert.equal(sanitizeEvenDimension(2561), 2560);
+        assert.equal(sanitizeEvenDimension(1079), 1078);
+        assert.equal(sanitizeEvenDimension(3440), 3440);
+        assert.equal(sanitizeEvenDimension(1440), 1440);
+
+        // Clamping bounds
+        assert.equal(sanitizeEvenDimension(100, 320, 7680), 320);
+        assert.equal(sanitizeEvenDimension(9999, 320, 7680), 7680);
+
+        // parseResolutionString with various formats
+        assert.deepEqual(parseResolutionString('3440x1440'), { w: 3440, h: 1440 });
+        assert.deepEqual(parseResolutionString('2560X1080'), { w: 2560, h: 1080 });
+        assert.deepEqual(parseResolutionString('1920×1080'), { w: 1920, h: 1080 });
+        assert.deepEqual(parseResolutionString('  1600 x 900  '), { w: 1600, h: 900 });
+        assert.equal(parseResolutionString('invalid'), null);
+
+        // parseAspectRatioString
+        assert.equal(parseAspectRatioString('16:9'), 16 / 9);
+        assert.equal(parseAspectRatioString('2.39:1'), 2.39);
+        assert.equal(parseAspectRatioString('unknown'), null);
+
+        // computeCanvasDimensions with CUSTOM resolution mode and explicit customDims
+        const customRes1 = computeCanvasDimensions(CUSTOM_RESOLUTION_ID, '21:9', { w: 3440, h: 1440 });
+        assert.deepEqual(customRes1, { w: 3440, h: 1440 });
+
+        // computeCanvasDimensions with odd inputs in customDims gets sanitized
+        const customResOdd = computeCanvasDimensions(CUSTOM_RESOLUTION_ID, '16:9', { w: 2561, h: 1439 });
+        assert.deepEqual(customResOdd, { w: 2560, h: 1438 });
+
+        // computeCanvasDimensions directly with resolution string '3440x1440'
+        const customDirect = computeCanvasDimensions('3440x1440', '21:9');
+        assert.deepEqual(customDirect, { w: 3440, h: 1440 });
+    });
+
+    test('8. Proportional Placements Rescaling when switching from Preset to Manual Custom Resolution (and vice versa)', () => {
+        // Old: 2K (2560 x 1440)
+        // New: Custom Ultrawide 3440 x 1440
+        const oldDims = computeCanvasDimensions('2K', '16:9');
+        const newDims = computeCanvasDimensions(CUSTOM_RESOLUTION_ID, '21:9', { w: 3440, h: 1440 });
+
+        const ratioX = newDims.w / oldDims.w; // 3440 / 2560 = 1.34375
+        const ratioY = newDims.h / oldDims.h; // 1440 / 1440 = 1.0
+
+        const original = [
+            { stationId: 's1', x: 200, y: 100, width: 800, height: 600 }
+        ];
+
+        const rescaled = original.map(p => ({
+            ...p,
+            x: Math.round(p.x * ratioX),
+            y: Math.round(p.y * ratioY),
+            width: Math.max(40, Math.round(p.width * ratioX)),
+            height: Math.max(30, Math.round(p.height * ratioY))
+        }));
+
+        assert.equal(rescaled[0].x, Math.round(200 * 1.34375)); // 269
+        assert.equal(rescaled[0].y, 100);
+        assert.equal(rescaled[0].width, Math.round(800 * 1.34375)); // 1075
+        assert.equal(rescaled[0].height, 600);
+    });
+
+    test('9. Export Payload Lock with Custom Resolution WYSIWYG match', () => {
+        const customCanvasLayout = {
+            width: 3440,
+            height: 1440,
+            resolution: CUSTOM_RESOLUTION_ID,
+            aspectRatio: '21:9'
+        };
+
+        const exportJobPayload = {
+            stationIds: ['WS-01', 'WS-02'],
+            resolution: customCanvasLayout.resolution || 'CUSTOM',
+            videoQuality: customCanvasLayout.resolution || 'CUSTOM',
+            canvasWidth: customCanvasLayout.width,
+            canvasHeight: customCanvasLayout.height,
+            aspectRatio: customCanvasLayout.aspectRatio
+        };
+
+        assert.equal(exportJobPayload.resolution, 'CUSTOM');
+        assert.equal(exportJobPayload.videoQuality, 'CUSTOM');
+        assert.equal(exportJobPayload.canvasWidth, 3440);
+        assert.equal(exportJobPayload.canvasHeight, 1440);
+        assert.equal(exportJobPayload.aspectRatio, '21:9');
     });
 });
