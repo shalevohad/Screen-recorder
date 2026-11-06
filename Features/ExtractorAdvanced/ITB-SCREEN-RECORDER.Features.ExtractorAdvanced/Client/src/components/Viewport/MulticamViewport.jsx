@@ -960,7 +960,10 @@ export default function MulticamViewport({
                 timeline: internalTimeline
             });
         }
-    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, virtualW, virtualH, selectedResolutionId, selectedAspectId]);
+        if (onUpdateCanvasLayoutTimeline && internalTimeline) {
+            onUpdateCanvasLayoutTimeline(internalTimeline);
+        }
+    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, onUpdateCanvasLayoutTimeline, virtualW, virtualH, selectedResolutionId, selectedAspectId]);
 
     // Switch Resolution handler (scales placements proportionally to match new pixel density)
     const handleSelectResolution = useCallback((newResId) => {

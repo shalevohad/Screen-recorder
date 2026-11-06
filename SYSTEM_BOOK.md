@@ -1182,7 +1182,8 @@ When `LayoutMode = "custom"` or `CanvasLayout` is supplied in `AdvanceCutRequest
    - Stacking Chain: Overlays are sequentially daisy-chained ordered by `ZIndex` ascending:
      `[bg][feed_0]overlay=x=...:y=...[ol_0]; [ol_0][feed_1]overlay=x=...:y=...:enable='between(t,...)'[ol_1]...`
 4. **Master Audio Synthesis**: Audio is pulled from the designated `AudioSourceStation` (or mapped audio routing track), with mute intervals generating synchronized silence (`anullsrc`).
-5. **Output**: Renders directly to master `.mp4` with faststart metadata (`-movflags +faststart`).
+5. **Deadlock-Free Concurrent Stream Redirection**: Both RedirectStandardOutput and RedirectStandardError are captured concurrently (Task.WhenAll(stderrTask, stdoutTask, process.WaitForExitAsync())) to prevent OS pipe buffer saturation and guarantee deadlock immunity on long compositions.
+6. **Output**: Renders directly to master .mp4 with faststart metadata (-movflags +faststart).
 
 ### 5. API Usage Example (JSON & XML)
 

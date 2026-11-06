@@ -1324,7 +1324,7 @@ export default function ExtractorAdvancedStudio() {
                     compositionScope: compositionScope,
                     layoutMode: 'canvas',
                     canvasLayout: currentCanvasLayout,
-                    canvasLayoutTimeline: canvasLayoutTimeline,
+                    canvasLayoutTimeline: canvasLayoutTimeline || currentCanvasLayout?.timeline || null,
                     isPipSwapped: isPipSwapped,
                     isAutoDirectorEnabled: isAutoDirectorEnabled,
                     directorSegments: directorSegs,
@@ -1339,11 +1339,14 @@ export default function ExtractorAdvancedStudio() {
                 })
             });
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                const errorPayload = await response.json().catch(() => ({}));
+                throw new Error(errorPayload.message || errorPayload.error || `HTTP ${response.status}`);
+            }
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         } catch (error) {
             console.error('[Studio] Export failed:', error);
-            alert('Failed to launch background master MP4 export job.');
+            alert(`Failed to launch background master MP4 export job: ${error.message}`);
         }
     }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, currentCanvasLayout, canvasLayoutTimeline, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
 

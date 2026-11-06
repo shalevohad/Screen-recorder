@@ -1387,6 +1387,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 FileName = ffmpegPath,
                 Arguments = arguments,
                 RedirectStandardError = true,
+                RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -1396,7 +1397,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             ExtractorGarbageCollectorService.TrackProcess(process.Id);
 
             var stderrTask = process.StandardError.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+            await Task.WhenAll(stderrTask, stdoutTask, process.WaitForExitAsync(ct));
 
             if (process.ExitCode != 0)
             {
@@ -1920,6 +1922,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 FileName = ffmpegPath,
                 Arguments = arguments,
                 RedirectStandardError = true,
+                RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -1929,7 +1932,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             ExtractorGarbageCollectorService.TrackProcess(process.Id);
 
             var stderrTask = process.StandardError.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+            await Task.WhenAll(stderrTask, stdoutTask, process.WaitForExitAsync(ct));
 
             if (process.ExitCode != 0)
             {
@@ -1956,6 +1960,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 using var proc = Process.Start(psi);
                 if (proc == null) return false;
                 string output = proc.StandardOutput.ReadToEnd();
+                string error = proc.StandardError.ReadToEnd();
                 proc.WaitForExit(4000);
                 return output.Contains("audio", StringComparison.OrdinalIgnoreCase);
             }

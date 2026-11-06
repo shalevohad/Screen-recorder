@@ -795,4 +795,39 @@ public class ExternalApiAndCustomCanvasTests
         };
         Assert.Equal("Security Officer", baseReq.CreatedBy);
     }
+
+    [Fact]
+    public async Task CanvasExport_DeadlockFreeProcessExecution_CompletesWithoutHang()
+    {
+        string[] candidates = {
+            Path.Combine(AppContext.BaseDirectory, "Features", "ExtractorAdvanced", "ffmpeg.exe"),
+            Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
+            "ffmpeg.exe"
+        };
+        string? ffmpegPath = candidates.FirstOrDefault(File.Exists);
+        if (ffmpegPath == null) return;
+
+        // Run a synthetic test with both RedirectStandardOutput and RedirectStandardError set to true
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            Arguments = "-nostdin -v info -f lavfi -i color=c=black:s=640x360:d=0.5 -f null -",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var process = new System.Diagnostics.Process { StartInfo = psi };
+        process.Start();
+
+        var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+        await Task.WhenAll(stderrTask, stdoutTask, process.WaitForExitAsync(cts.Token));
+
+        Assert.Equal(0, process.ExitCode);
+        string err = await stderrTask;
+        Assert.False(string.IsNullOrEmpty(err), "Standard error should be drained without deadlocking");
+    }
 }
