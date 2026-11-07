@@ -41,7 +41,6 @@ jobs:
     # ─── שכבה 3: בדיקת תלויות עוינות והזיות חבילות (Socket Security) ──────
     - name: Scan NPM Dependencies with Socket.dev
       uses: socketsecurity/socket-action@v1
-      continue-on-error: true # מומלץ להפעיל במצב אזהרה תחילה עד הגדרת הטוקן
       with:
         api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 
@@ -91,8 +90,8 @@ jobs:
             # --ignore-scripts חוסם הרצת סקריפטים זדוניים בשלב ה-install
             npm ci --include=optional --ignore-scripts
 
-            echo "-> Running security audit (high + critical only)..."
-            npm audit --audit-level=high || echo "::warning::Audit issues found in $dir"
+            echo "-> Running security audit (critical vulnerabilities strictly fail build)..."
+            npm audit --audit-level=critical
 
             cd - > /dev/null
             echo ""

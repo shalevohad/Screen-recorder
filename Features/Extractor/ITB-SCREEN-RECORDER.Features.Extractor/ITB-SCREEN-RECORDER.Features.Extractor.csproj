@@ -33,8 +33,9 @@
 
 	<!-- קימפול ה-Widget בכל Build -->
 	<Target Name="CompileExtractorFrontend" BeforeTargets="Build" Condition="Exists('Client\package.json')">
-		<Message Importance="high" Text="[ITB EXTRACTOR PLUGIN] Building Client Widget..." />
+		<Message Importance="high" Text="[ITB EXTRACTOR PLUGIN] Auditing security and building Client Widget..." />
 		<Exec Command="npm install" WorkingDirectory="Client" Condition="!Exists('Client\node_modules')" />
+		<Exec Command="npm audit --audit-level=critical" WorkingDirectory="Client" />
 		<Exec Command="npm run build" WorkingDirectory="Client" ContinueOnError="false" />
 	</Target>
 

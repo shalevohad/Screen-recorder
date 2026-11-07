@@ -3627,3 +3627,37 @@ In forensic replay environments with multi-display workstations (e.g. `OHAD-DESK
    - In `TimelineTrack.scss`:
      - Elevated `.data-presence-layer` to `z-index: 15 !important` across all track containers (`track-canvas`, `station-collapsed-track`, and `station-child-display-track`), guaranteeing continuous visibility above all masks.
      - Enhanced `.gap-station-signal` styling with tactical red diagonal striping (`background-color: rgba(225, 29, 72, 0.14)`).
+
+
+---
+
+### 63.5 Supply-Chain Security Architecture, Socket.dev Gating & Pre-Flight Dependency Protocol
+
+#### Operational Background & Threat Model
+In air-gapped enterprise recording and C2 environments, third-party software dependencies (npm packages in React dashboards and NuGet packages in .NET engines) represent critical supply-chain attack vectors. Potential threats include:
+1. **Malicious Lifecycle Scripts**: `preinstall` or `postinstall` hooks executing arbitrary shell scripts or reverse shells.
+2. **Typosquatting & Dependency Confusion**: Malicious packages registered under names similar to legitimate packages.
+3. **Hidden Telemetry / Network Exfiltration**: Packages attempting outbound connections in violation of Rule 14 (Air-Gapped Invariant).
+4. **Known Critical CVEs**: Unpatched vulnerabilities in transitive dependencies enabling remote code execution (RCE) or denial of service (DoS).
+
+#### Mandatory Pre-Flight Dependency Vetting Protocol (Enforced for AI & Developers)
+To prevent introducing vulnerable or compromised packages before any code is written around them:
+1. **Pre-Flight Query on Socket.dev**:
+   Before running `npm install <package>`, `yarn add`, or `dotnet add package`, agents and developers MUST inspect the candidate package profile on [https://socket.dev/](https://socket.dev/) (e.g. `https://socket.dev/npm/package/<name>`).
+2. **Security Metrics Criteria**:
+   - **Supply Chain Risk Score**: Inspect for install scripts, executable binaries, network access, obfuscated code, or unverified authors.
+   - **Vulnerability Score & CVEs**: Must have **ZERO Critical CVEs** and zero unresolved high-severity vulnerabilities.
+   - **Maintenance & Quality Hygiene**: Must show active maintenance, established community adoption, and clean license compatibility.
+   - **Prohibited Flags**: Packages flagging Socket **Critical Alerts** (malware, typosquatting, protestware, shell execution) are **CATEGORICALLY PROHIBITED**.
+3. **Alternative Selection Before Implementation**:
+   - If a candidate package fails the security criteria, writing code dependent on it is strictly forbidden.
+   - The developer or AI agent MUST select a safe, highly-vetted alternative or implement the functionality using native platform APIs (Node.js standard library, native Web APIs, .NET standard library) *before* developing features around it.
+
+#### Multi-Tier Build-Breaking Security Enforcement
+The CI/CD pipeline and local build system enforce automated gating that halts the build upon detection of critical risks:
+1. **Local MSBuild Security Gate**:
+   `npm audit --audit-level=critical` is embedded directly into MSBuild targets (`CompileFrontend` in Server, `CompileExtractorFrontend` in Extractor, and `CompileAdvancedFrontend` in ExtractorAdvanced) with `ContinueOnError="false"`. Any critical vulnerability in frontend dependencies immediately breaks local `dotnet build`.
+2. **CI/CD Socket Security Policy Gate**:
+   In `.github/workflows/security-scan.yml`, `socketsecurity/socket-action@v1` runs with `continue-on-error: false`. If Socket.dev detects blocked risks, malware, or policy violations, the pipeline fails immediately.
+3. **CI/CD Audit & NuGet Gates**:
+   Both `security-scan.yml` and `node.js.yml` execute `npm audit --audit-level=critical` and `dotnet list package --vulnerable`, strictly aborting builds if vulnerable packages are detected.

@@ -47,6 +47,10 @@ jobs:
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
       run: npm test
 
+    - name: Security Vulnerability Gate (Fail on Critical Vulnerabilities)
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm audit --audit-level=critical
+
     - name: Build the source code
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
       run: npm run build --if-present

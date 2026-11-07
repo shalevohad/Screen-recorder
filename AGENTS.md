@@ -81,6 +81,11 @@ The absolute source of truth for behavioral invariants is [RULES.md](file:///c:/
 10. **Rule 14: Air-Gapped & Isolated Environment Invariant (Enforced)**
    - Zero external internet links, remote CDNs (cdnjs, unpkg, jsdelivr), or Google Fonts in code, templates, or styles.
    - Zero outbound analytics or cloud calls. All services, telemetry, and assets target internal LAN and operational intranet subnets (e.g. `128.x.x.x`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`, internal LAN DNS names like `itb-server`, `*.local`, `*.internal`, and local multicast `239.210.1.5`).
+11. **Rule 15: Pre-Flight Dependency Vetting via Socket.dev (Enforced)**
+   - AI agents and developers are **STRICTLY PROHIBITED** from introducing or installing any new npm or NuGet package without prior security evaluation on [https://socket.dev/](https://socket.dev/).
+   - Verification must occur **BEFORE** running `npm install`, adding packages, or writing dependent code.
+   - Packages with Critical Alerts, malware indicators, high supply chain risk, or unresolved Critical CVEs must be rejected immediately in favor of clean alternatives or native platform APIs.
+   - Local builds (`dotnet build`) and CI workflows enforce strict failure on any critical vulnerabilities.
 
 ---
 
@@ -137,3 +142,4 @@ When modifying existing files:
 3. Keep track of file locking semantics on recording storage directories.
 4. Keep `RULES.md` and `README.md` updated if new architectural rules are introduced.
 5. **Continuous System Book Sync**: Always update [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) whenever new features, endpoints, components, or structural patterns are introduced or modified.
+6. **Pre-Flight Dependency Verification via Socket.dev**: Before adding, installing, or modifying code dependent on any new npm or NuGet package, ALWAYS query and inspect its security profile on [https://socket.dev/](https://socket.dev/) (supply chain risk, author changes, install scripts, and CVEs). Never write code dependent on an unvetted or high-risk package. If risks exist, choose a secure alternative or use native platform APIs.
