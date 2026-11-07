@@ -12,7 +12,7 @@ public class FrontendBundleIntegrityTests
         var baseDir = AppContext.BaseDirectory;
         // Search upwards to solution root
         var dir = new DirectoryInfo(baseDir);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "ITB-SCREEN-RECORDER.sln")))
+        while (dir != null && dir.GetFiles("*.sln").Length == 0)
         {
             dir = dir.Parent;
         }
@@ -60,7 +60,7 @@ public class FrontendBundleIntegrityTests
         bool isWindows = OperatingSystem.IsWindows();
         var psi = new ProcessStartInfo
         {
-            FileName = isWindows ? "cmd.exe" : "npx",
+            FileName = isWindows ? "cmd.exe" : "npm",
             Arguments = isWindows ? "/c npm run lint" : "run lint",
             WorkingDirectory = clientDir,
             RedirectStandardOutput = true,
