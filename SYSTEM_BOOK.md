@@ -3704,3 +3704,41 @@ To guarantee that all operator tool menus, popouts, flyouts, and drawers render 
   2. Validates wing dock base (`z-index: 5000`) and active (`z-index: 20000`) elevation.
   3. Validates floating popouts (`z-index: 30000`) and auxiliary panels (`z-index: 25000`).
   4. Validates dynamic `.has-active-popout` class attachment and outside-click dismissal hooks.
+
+
+---
+
+### 63.7 Auto-Director Multi-Monitor Reflection Invariant (Read-Only Minimap HUD & Lock State)
+
+#### Operational Background & UX Ambiguity
+When a workstation with multiple physical displays (`mon-0`, `mon-1`, etc.) is placed on the NLE Canvas and Auto-Director is active (`isAutoDirectorEnabled === true`), screen cuts are computed deterministically based on keyboard and mouse activity across the timeline.
+
+Previously, the corner minimap HUD (`PersistentMinimapHud`) rendered monitor boxes (`[ 1 ]`, `[ 2 ]`) with interactive hover transforms and the browser hand pointer cursor (`cursor: pointer`), giving the false impression that operators could manually select displays during Auto-Director mode. Clicking had no effect or conflicted with Auto-Director, causing operator confusion.
+
+#### Architectural Solution: Pure State Reflection & Visual Lock
+To clearly communicate that the station display is under autonomous Auto-Director control:
+
+1. **Zero Interactive Pointer & Click Disabling**:
+   - When `mode === 'AUTO'`, `.hud-monitor-node.is-read-only` enforces `cursor: default !important;` (eliminating the hand pointer cursor).
+   - Hover scaling is disabled (`transform: none !important;`).
+   - Node click handlers enforce a strict guard: `if (isAuto) return;`, preventing manual display mutation.
+   - `CameraCardFeed` and `MulticamViewport` reject manual display overrides when Auto-Director is enabled.
+
+2. **Clear Auto-Director Reflection Badging**:
+   - **Header Badge**: Displays `⚡ AUTO-DIRECTOR : SCREEN X (LABEL) 🔒`, with a persistent lock icon indicating that selection is managed autonomously.
+   - **Sub-Badge Status Indicator**: Displays a tactical cyan dashed chip: `[ 👁️ AUTO-DIRECTOR REFLECTION ]`, explicitly stating that the minimap reflects playhead state rather than accepting inputs.
+   - **Monitor Box States**: Active monitor is illuminated with a cyan glow; inactive monitors are dimmed (`opacity: 0.38`).
+   - **Tooltips**: Clearly state: `Screen X (Active/Inactive) • Controlled by Auto-Director (Read-Only)`.
+
+3. **Manual Override Support (`mode === 'MANUAL'`)**:
+   - When Auto-Director is toggled OFF for that station, the minimap switches to `is-interactive`:
+     - Cursor restores to `cursor: pointer`.
+     - Header badge displays `✋ OVERRIDE : SCREEN X`.
+     - Clicking monitor nodes freely selects and locks the desired display.
+
+#### Automated Verification Suite
+- Verified by `Features/ExtractorAdvanced/Client/src/tests/canvasWallClockAndMinimapHud.test.js` (Tests 11 & 12):
+  1. Validates that in `mode === 'AUTO'`, the Minimap HUD renders the `AUTO-DIRECTOR REFLECTION` badge and lock icon.
+  2. Validates that node click handlers are guarded by `if (isAuto) return;`.
+  3. Validates that `.is-read-only` strictly enforces `cursor: default !important;` with zero hand pointer.
+  4. Validates that in `mode === 'MANUAL'`, `.is-interactive` restores `cursor: pointer`.

@@ -76,12 +76,12 @@ export default function CameraCardFeed({
     }, [directorPlan, station?.directorPlan, currentEpochMs]);
 
     const activeDisplayId = useMemo(() => {
+        if (stationDisplays.length > 1 && isAutoDirectorEnabled !== false && activeDirectorSegment) {
+            return (activeDirectorSegment.targetDisplayId || activeDirectorSegment.TargetDisplayId || 'mon-0').toLowerCase();
+        }
         if (manualDisplayId) return manualDisplayId.toLowerCase();
         if (targetDisplayId && targetDisplayId !== 'auto' && targetDisplayId !== 'director') {
             return targetDisplayId.toLowerCase();
-        }
-        if (stationDisplays.length > 1 && isAutoDirectorEnabled !== false && activeDirectorSegment) {
-            return (activeDirectorSegment.targetDisplayId || activeDirectorSegment.TargetDisplayId || 'mon-0').toLowerCase();
         }
         return (stationDisplays[0]?.displayId || 'mon-0').toLowerCase();
     }, [manualDisplayId, targetDisplayId, stationDisplays, isAutoDirectorEnabled, activeDirectorSegment]);
@@ -559,6 +559,7 @@ export default function CameraCardFeed({
                     displays={stationDisplays}
                     activeDisplayId={activeDisplayId}
                     onSelectDisplay={(newDispId) => {
+                        if (isAutoDirectorEnabled) return; // In Auto-Director mode, manual screen selection is locked
                         setManualDisplayId(newDispId);
                         onSelectDisplayId?.(newDispId);
                     }}

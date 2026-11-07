@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseClockPosition, formatClockPositionLabel, resolveFfmpegClockCoords, CORNER_POSITIONS } from '../utils/clockPositionStore.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
     it('1. Canvas UTC Wall Clock formats date and UTC time correctly from epoch ms', () => {
@@ -302,5 +308,41 @@ describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
         const z1_reordered = computeCardZIndex({ origIdx: 1, layerRank: reorderedPlacements[1].zIndex, selectedFeedIndex: null, isDragging: false, isResizing: false });
         assert.strictEqual(z0_reordered, 20, 'Card 0 permanently sits at layer 20 after explicit layer change');
         assert.strictEqual(z1_reordered, 10, 'Card 1 permanently sits at layer 10 after explicit layer change');
+    });
+
+    it('11. Auto-Director Screen Reflection Invariant: Minimap HUD renders as read-only reflection in AUTO mode', () => {
+        const scssPath = path.resolve(__dirname, '../components/Viewport/overlays/PersistentMinimapHud.scss');
+        const jsxPath = path.resolve(__dirname, '../components/Viewport/overlays/PersistentMinimapHud.jsx');
+        const scssContent = fs.readFileSync(scssPath, 'utf-8');
+        const jsxContent = fs.readFileSync(jsxPath, 'utf-8');
+
+        // Verify JSX contains read-only reflection badge and lock
+        assert.ok(jsxContent.includes('AUTO-DIRECTOR REFLECTION'), 'JSX must contain AUTO-DIRECTOR REFLECTION indicator');
+        assert.ok(jsxContent.includes('hud-lock-icon'), 'JSX must contain lock icon for Auto-Director reflection');
+
+        // Verify click guard in JSX
+        assert.match(
+            jsxContent,
+            /if\s*\(isAuto\)\s*return;/,
+            'Node onClick must strictly abort when isAuto is true'
+        );
+
+        // Verify SCSS enforces cursor: default !important with zero hand pointer
+        assert.match(
+            scssContent,
+            /&\.is-read-only\s*\{[^}]*cursor:\s*default\s*!important;/s,
+            '.is-read-only must declare cursor: default !important to eliminate the hand cursor'
+        );
+    });
+
+    it('12. Manual Override mode permits display switching and enables cursor: pointer', () => {
+        const scssPath = path.resolve(__dirname, '../components/Viewport/overlays/PersistentMinimapHud.scss');
+        const scssContent = fs.readFileSync(scssPath, 'utf-8');
+
+        assert.match(
+            scssContent,
+            /&\.is-interactive\s*\{[^}]*cursor:\s*pointer;/s,
+            '.is-interactive must declare cursor: pointer for manual override'
+        );
     });
 });

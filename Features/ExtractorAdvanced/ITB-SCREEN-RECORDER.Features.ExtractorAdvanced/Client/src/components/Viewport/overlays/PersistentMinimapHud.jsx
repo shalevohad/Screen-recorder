@@ -12,6 +12,8 @@ export default function PersistentMinimapHud({
     mode = 'AUTO', // 'AUTO' or 'MANUAL'
     activeTimeRange = ''
 }) {
+    const isAuto = mode === 'AUTO';
+
     // Calculate real physical topology bounds
     const bounds = useMemo(() => {
         if (!displays || displays.length <= 1) return null;
@@ -47,17 +49,35 @@ export default function PersistentMinimapHud({
 
     return (
         <aside 
-            className={`persistent-minimap-hud ${isTransitioning ? 'transition-inflection' : ''}`}
+            className={`persistent-minimap-hud ${isAuto ? 'is-auto-mode is-read-only' : 'is-manual-mode is-interactive'} ${isTransitioning ? 'transition-inflection' : ''}`}
             aria-label="Display Topology Minimap Radar"
             onClick={(e) => e.stopPropagation()}
         >
             <div className="hud-header">
-                <span className={`hud-badge ${mode.toLowerCase()}`}>
+                <span 
+                    className={`hud-badge ${mode.toLowerCase()} ${isAuto ? 'is-read-only' : 'is-interactive'}`}
+                    title={isAuto 
+                        ? "Auto-Director Active: Reflecting active screen at current playhead position (Locked / Read-Only)" 
+                        : "Manual Override: Click any screen box below to switch active display"
+                    }
+                >
                     <span className="hud-pulse" />
-                    {mode === 'MANUAL' ? '✋ OVERRIDE' : '⚡ AUTO'} : {activeLabel}
+                    <span className="hud-mode-text">{isAuto ? '⚡ AUTO-DIRECTOR' : '✋ OVERRIDE'}</span>
+                    <span className="hud-colon">:</span>
+                    <span className="hud-screen-text">{activeLabel}</span>
+                    {isAuto && (
+                        <span className="hud-lock-icon" title="Auto-Director is controlling screen cuts (Selection Read-Only)">🔒</span>
+                    )}
                     {activeTimeRange && <span className="hud-time-range"> [{activeTimeRange}]</span>}
                 </span>
             </div>
+
+            {isAuto && (
+                <div className="hud-reflection-indicator" title="Status reflection: Displays active screen selected by Auto-Director cuts">
+                    <span className="reflection-icon">👁️</span>
+                    <span className="reflection-text">AUTO-DIRECTOR REFLECTION</span>
+                </div>
+            )}
 
             {isTransitioning && (
                 <div className="hud-transition-alert">
@@ -83,12 +103,19 @@ export default function PersistentMinimapHud({
                         return (
                             <g 
                                 key={id} 
-                                className={`hud-monitor-node ${isActive ? 'is-active' : ''}`}
+                                className={`hud-monitor-node ${isActive ? 'is-active' : 'is-inactive'} ${isAuto ? 'is-read-only' : 'is-interactive'}`}
                                 onClick={(e) => {
                                     e.stopPropagation();
+                                    if (isAuto) return; // In Auto-Director mode, selection is locked to Auto-Director reflection
                                     onSelectDisplay?.(id);
                                 }}
                             >
+                                <title>
+                                    {isAuto
+                                        ? `Screen ${idx + 1} (${isActive ? 'Active by Auto-Director' : 'Inactive'}) • Auto-Director Reflection (Read-Only)`
+                                        : `Click to switch to Screen ${idx + 1}`
+                                    }
+                                </title>
                                 <rect
                                     x={x + 10}
                                     y={y + 10}

@@ -3596,6 +3596,8 @@ export default function MulticamViewport({
                                                 onDeselectStation={onDeselectStation}
                                                 targetDisplayId={p.displayId}
                                                 onSelectDisplayId={(dispId) => {
+                                                    const isStationAuto = stationAutoDirectorMap ? (stationAutoDirectorMap[st.id] ?? true) : true;
+                                                    if (isStationAuto) return; // Locked to Auto-Director
                                                     const next = currentPlacements.map((pl, idx) => {
                                                         if (idx === origIdx) {
                                                             return { ...pl, displayId: dispId };
