@@ -529,6 +529,10 @@ export default function SoloSpotlightModal({
                     currentEpochMs={currentCalculatedEpoch}
                     keystrokes={keystrokes}
                     keystrokeMode={keystrokeMode}
+                    targetStationId={station?.id || station?.hostname || station?.stationId}
+                    targetDisplayId={viewMode === 'canvas' || viewMode === 'all-displays' ? 'auto' : viewMode}
+                    displays={station?.displays || station?.Displays}
+                    directorPlan={directorPlan || station?.directorPlan}
                 />
 
                 <div className="canvas-scrim-top" />

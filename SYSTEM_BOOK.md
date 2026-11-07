@@ -3997,12 +3997,25 @@ Release **v1.0.70** delivers key forensic recording invariants, CI/CD supply cha
 | **Linux Server .run** | `ITB-SCREEN-RECORDER.Server.Linux.Installer.csproj` | `1.0.70` |
 | **System Diagnostics CLI** | `ITB-SCREEN-RECORDER.Diagnostics.csproj` | `1.0.70` |
 
-### 65.3 Regression & Quality Assurance Summary
+### 65.3 Focused Window Multi-Monitor Keystroke Routing & Master Canvas Overlay Rendering
+1. **Physical Focus Determination (`WindowsKeyboardCaptureProvider.cs`)**:
+   - Prioritizes `GetForegroundWindow()` and `GetWindowRect()` to compute the center coordinates of the currently active/focused application window where keystrokes are actually being delivered.
+   - Falls back to `GetCursorPos()` only if no focused window exists or the window is minimized.
+2. **Display Pipeline Mapping (`MultiDisplayPipelineManager.cs`)**:
+   - Implemented `ResolveDisplayIdForPoint(x, y)` which matches virtual desktop coordinates against active GPU capture pipelines (`_activePipelines`) and station display topology (`_currentTopology?.Displays`), stamping deterministic display identifiers (`mon-0`, `mon-1`).
+3. **End-to-End Ingestion & Fast Path Retention (`AgentController.cs` & `WorkerEngine.cs`)**:
+   - Ensured `X`, `Y`, and `DisplayId` are preserved across `WorkerEngine`, Fast Path live broadcast (`RecordFastKeystrokes`), periodic heartbeat (`Heartbeat`), and offline file synchronization (`IngestOfflineChunk`), eliminating coordinate/display stripping.
+4. **Studio Master Canvas & Viewport Playback HUD (`MulticamViewport.jsx` & `KeystrokePlaybackOverlay.jsx`)**:
+   - Extracted and filtered keystrokes by `targetStationId` and `targetDisplayId` (with dynamic Auto-Director support).
+   - Rendered `<KeystrokePlaybackOverlay>` inside each master canvas placement card (`.feed-content-viewport`), guaranteeing keycaps appear directly over the focused station and monitor window.
+   - Positioned live overlays in the Server Dashboard (`VirtualTopologyCanvas.jsx`) inside individual monitor sub-display boxes.
+
+### 65.4 Regression & Quality Assurance Summary
 - **MSBuild Solution Build**: 0 Errors, deterministic binary output.
 - **Server & Core Test Harness**: 453 Passed (100% green).
 - **Dashboard C2 Test Harness**: 34 Passed (100% green).
-- **Studio NLE / Extractor Test Harness**: 102 Passed (100% green, including new gap keystroke filter test).
-- **Total Solution Quality Score**: **589 / 589 Tests Passing**.
+- **Studio NLE / Extractor Test Harness**: 103 Passed (100% green, including multi-station & multi-display routing test).
+- **Total Solution Quality Score**: **590 / 590 Tests Passing**.
 
 
 

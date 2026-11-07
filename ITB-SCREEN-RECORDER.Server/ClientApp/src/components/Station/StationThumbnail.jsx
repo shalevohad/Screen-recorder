@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './StationThumbnail.scss';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import StationDisplayBar from './StationDisplayBar';
-import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAuth } from '../../context/AuthContext';
 import { useAudioSolo } from '../../context/AudioSoloContext';
 
@@ -323,6 +322,8 @@ export default function StationThumbnail(props) {
                             volume={audioVolume}
                             webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
                             onStreamAvailable={handleStreamAvailable}
+                            keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
+                            keystrokeMode={props.keystrokeMode || 'burn-in'}
                         />
                         <div className={`monitor-only-overlay ${isRecording ? 'hidden' : 'visible'}`}>
                             <button
@@ -359,15 +360,6 @@ export default function StationThumbnail(props) {
                         displays={displays}
                         activeDisplayId={activeDisplayId}
                         onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
-                    />
-                )}
-
-                {Boolean(isStreaming || isLive || props.recentKeystrokes?.length || props.keystrokes?.length || props.Keystrokes?.length) && (
-                    <LiveKeystrokeOverlay
-                        keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
-                        isLive={true}
-                        variant="viewport"
-                        mode={props.keystrokeMode || 'burn-in'}
                     />
                 )}
 

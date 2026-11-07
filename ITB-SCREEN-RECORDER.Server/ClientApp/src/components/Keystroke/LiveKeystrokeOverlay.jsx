@@ -18,7 +18,9 @@ export default function LiveKeystrokeOverlay({
     keystrokes = [],
     isLive = false,
     variant = 'viewport', // 'viewport' | 'fullscreen' | 'compact'
-    mode = 'burn-in'      // 'burn-in' | 'caption' | 'none'
+    mode = 'burn-in',     // 'burn-in' | 'caption' | 'none'
+    targetDisplayId = null,
+    displays = []
 }) {
     const normalizedMode = (mode || 'burn-in').toLowerCase().replace('_', '-');
 
@@ -31,8 +33,41 @@ export default function LiveKeystrokeOverlay({
         return null;
     }
 
-    // Extract the most recent event from active keystrokes
-    const latestEvent = Array.isArray(keystrokes) ? keystrokes[keystrokes.length - 1] : keystrokes;
+    // Extract the most recent event from active keystrokes matching the target display
+    const events = Array.isArray(keystrokes) ? keystrokes : [keystrokes];
+    let latestEvent = null;
+
+    for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i];
+        if (!ev) continue;
+
+        if (targetDisplayId && targetDisplayId !== 'canvas') {
+            let evDisp = (ev.displayId || ev.DisplayId || '').toLowerCase();
+            if (!evDisp && displays && displays.length > 0) {
+                const x = ev.x ?? ev.X;
+                const y = ev.y ?? ev.Y;
+                if (typeof x === 'number' && typeof y === 'number') {
+                    const match = displays.find(d => {
+                        const dx = d.X ?? d.x ?? 0;
+                        const dy = d.Y ?? d.y ?? 0;
+                        const dw = d.Width ?? d.width ?? 1920;
+                        const dh = d.Height ?? d.height ?? 1080;
+                        return x >= dx && x < dx + dw && y >= dy && y < dy + dh;
+                    });
+                    if (match) {
+                        evDisp = (match.DisplayId || match.displayId || 'mon-0').toLowerCase();
+                    }
+                }
+            }
+            if (!evDisp) evDisp = 'mon-0';
+            if (evDisp !== targetDisplayId.toLowerCase()) {
+                continue;
+            }
+        }
+        latestEvent = ev;
+        break;
+    }
+
     if (!latestEvent) {
         return null;
     }

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import FullscreenMinimapNavigator from './FullscreenMinimapNavigator';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
-import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAudioSolo } from '../../context/AudioSoloContext';
 import './FullscreenModal.scss';
 
@@ -332,20 +331,14 @@ export default function FullscreenModal(props) {
                         onStreamAvailable={(stream) => {
                             registerStationStream?.(hostname, stream);
                         }}
+                        keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
+                        keystrokeMode={props.keystrokeMode || 'burn-in'}
+                        keystrokeVariant="fullscreen"
                     />
 
                     <div className={`fullscreen-monitor-watermark ${isRecording ? 'hidden' : 'visible'}`}>
                         👁 MONITOR ONLY — NOT RECORDING
                     </div>
-
-                    {Boolean(isStreaming || isRecording || props.isLive || isVideoPlaying || props.recentKeystrokes?.length || props.keystrokes?.length) && (
-                        <LiveKeystrokeOverlay
-                            keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
-                            isLive={true}
-                            variant="fullscreen"
-                            mode={props.keystrokeMode || 'burn-in'}
-                        />
-                    )}
 
                     {activeDisplayId !== 'canvas' && displays.length > 1 && (
                         <FullscreenMinimapNavigator

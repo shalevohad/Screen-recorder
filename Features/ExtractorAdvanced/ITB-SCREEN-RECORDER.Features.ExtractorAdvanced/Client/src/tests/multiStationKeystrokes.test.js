@@ -266,4 +266,37 @@ describe('Multi-Station Keystrokes Timeline & Clustered Tooltip Invariants', () 
         assert.equal(filtered[2].epochMs, 18000);
         assert.equal(filtered[2].stationId, 'BETA');
     });
+
+    test('7. Keystroke station and display routing maps focused window accurately', () => {
+        const events = [
+            { epochMs: 1000, keyCombination: 'Ctrl+A', stationId: 'ALPHA', displayId: 'mon-0', x: 500, y: 500 },
+            { epochMs: 1500, keyCombination: 'Ctrl+B', stationId: 'ALPHA', displayId: 'mon-1', x: 2500, y: 500 },
+            { epochMs: 2000, keyCombination: 'Ctrl+C', stationId: 'BETA', displayId: 'mon-0', x: 400, y: 300 }
+        ];
+
+        const displaysAlpha = [
+            { displayId: 'mon-0', x: 0, y: 0, width: 1920, height: 1080 },
+            { displayId: 'mon-1', x: 1920, y: 0, width: 1920, height: 1080 }
+        ];
+
+        function matchEventForPlacement(ev, targetStation, targetDisplay) {
+            const evStation = (ev.stationId || ev.hostname || '').toLowerCase();
+            if (targetStation && evStation !== targetStation.toLowerCase()) return false;
+
+            let evDisp = (ev.displayId || '').toLowerCase();
+            if (!evDisp && displaysAlpha.length > 0) {
+                const match = displaysAlpha.find(d => ev.x >= d.x && ev.x < d.x + d.width && ev.y >= d.y && ev.y < d.y + d.height);
+                evDisp = match ? match.displayId : 'mon-0';
+            }
+            if (targetDisplay && targetDisplay.toLowerCase() !== evDisp) return false;
+            return true;
+        }
+
+        assert.equal(matchEventForPlacement(events[0], 'ALPHA', 'mon-0'), true);
+        assert.equal(matchEventForPlacement(events[0], 'ALPHA', 'mon-1'), false);
+        assert.equal(matchEventForPlacement(events[1], 'ALPHA', 'mon-1'), true);
+        assert.equal(matchEventForPlacement(events[1], 'ALPHA', 'mon-0'), false);
+        assert.equal(matchEventForPlacement(events[2], 'ALPHA', 'mon-0'), false);
+        assert.equal(matchEventForPlacement(events[2], 'BETA', 'mon-0'), true);
+    });
 });

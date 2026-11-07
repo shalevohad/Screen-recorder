@@ -631,6 +631,41 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             return instance;
         }
 
+        /// <summary>
+        /// Resolves the corresponding display identifier (e.g. "mon-0", "mon-1") containing the specified virtual desktop point.
+        /// Evaluates active GPU capture pipelines first, then station topology metadata, falling back to primary display or "mon-0".
+        /// </summary>
+        public string ResolveDisplayIdForPoint(int x, int y)
+        {
+            var pipelines = _activePipelines.Values.ToList();
+            if (pipelines.Count > 0)
+            {
+                var match = pipelines.FirstOrDefault(p =>
+                    x >= p.Descriptor.X && x < p.Descriptor.X + p.Descriptor.Width &&
+                    y >= p.Descriptor.Y && y < p.Descriptor.Y + p.Descriptor.Height);
+
+                if (match != null) return match.DisplayId;
+
+                var primary = pipelines.FirstOrDefault(p => p.IsPrimary);
+                return primary?.DisplayId ?? pipelines[0].DisplayId;
+            }
+
+            var topoDisplays = _currentTopology?.Displays;
+            if (topoDisplays != null && topoDisplays.Count > 0)
+            {
+                var match = topoDisplays.FirstOrDefault(d =>
+                    x >= d.X && x < d.X + d.Width &&
+                    y >= d.Y && y < d.Y + d.Height);
+
+                if (match != null) return match.DisplayId;
+
+                var primary = topoDisplays.FirstOrDefault(d => d.IsPrimary);
+                return primary?.DisplayId ?? topoDisplays[0].DisplayId;
+            }
+
+            return "mon-0";
+        }
+
         private static string ResolveDisplayDestination(string baseDestination, string displayId)
         {
             if (string.IsNullOrWhiteSpace(baseDestination))

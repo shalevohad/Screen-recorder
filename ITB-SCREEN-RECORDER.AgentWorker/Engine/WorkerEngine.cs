@@ -116,7 +116,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 KeyCombination = $"[{button}]",
                 TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime,
                 X = x,
-                Y = y
+                Y = y,
+                DisplayId = _displayManager.ResolveDisplayIdForPoint(x, y)
             };
             OnKeystrokeCaptured(k);
         }
@@ -125,6 +126,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         {
             // Keystrokes are captured whenever the station is streaming (for real-time dashboard live viewing)
             if (!_isStreaming) return;
+
+            // Resolve target physical/virtual monitor if not already stamped
+            if (string.IsNullOrEmpty(k.DisplayId))
+            {
+                k.DisplayId = _displayManager.ResolveDisplayIdForPoint(k.X, k.Y);
+            }
 
             // In-worker end-to-end payload encryption prior to disk storage or network dispatch
             if (!string.IsNullOrEmpty(_activeKeyId) && _activeKeyBytes != null && !string.IsNullOrEmpty(k.KeyCombination))

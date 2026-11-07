@@ -93,5 +93,41 @@
             }
         }
     }
+
+    // Master Canvas placement adaptation: Proportionally scale down keycaps inside canvas tiles
+    .feed-content-viewport & {
+        &.mode-burnin {
+            .keycap-cluster {
+                gap: 6px;
+                padding: 4px;
+
+                .keycap-badge {
+                    min-width: 34px;
+                    height: 32px;
+                    padding: 0 10px;
+                    border-width: 1.5px;
+                    border-radius: 6px;
+
+                    .keycap-text {
+                        font-size: 14px;
+                    }
+                }
+
+                .keycap-plus {
+                    font-size: 14px;
+                }
+            }
+        }
+
+        &.mode-caption {
+            bottom: 8px;
+            .caption-bar {
+                padding: 3px 10px;
+                .caption-text {
+                    font-size: 11px;
+                }
+            }
+        }
+    }
 }
 

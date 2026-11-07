@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import CameraCard from './views/Card/CameraCard.jsx';
 import CanvasUtcWallClock from './overlays/CanvasUtcWallClock.jsx';
 import ActiveAudioSourceOverlay from './overlays/ActiveAudioSourceOverlay.jsx';
+import KeystrokePlaybackOverlay from '../Player/KeystrokePlaybackOverlay.jsx';
 import { saveStudioSessionCache } from '../../utils/studioSessionStore.js';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import {
@@ -3630,6 +3631,17 @@ export default function MulticamViewport({
                                                 )}
                                             />
                                         </div>
+
+                                        {/* Keystroke Playback Overlay for this station and placement display */}
+                                        <KeystrokePlaybackOverlay
+                                            currentEpochMs={currentEpochMs}
+                                            keystrokes={keystrokes}
+                                            keystrokeMode={keystrokeMode}
+                                            targetStationId={p.stationId || st?.id || st?.hostname}
+                                            targetDisplayId={p.displayId}
+                                            displays={stDisplays}
+                                            directorPlan={directorPlan || st?.directorPlan}
+                                        />
 
                                         {/* Transparent Drag Surface overlay allowing instant drag over video */}
                                         <div

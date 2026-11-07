@@ -126,7 +126,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     {
                         EpochMs = k.EpochMs,
                         TimestampUtc = k.TimestampUtc,
-                        KeyCombination = clearTextCombo
+                        KeyCombination = clearTextCombo,
+                        X = k.X,
+                        Y = k.Y,
+                        DisplayId = k.DisplayId
                     });
                 }
             }
@@ -231,7 +234,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 {
                     EpochMs = k.EpochMs,
                     TimestampUtc = k.TimestampUtc,
-                    KeyCombination = clearTextCombo
+                    KeyCombination = clearTextCombo,
+                    X = k.X,
+                    Y = k.Y,
+                    DisplayId = k.DisplayId
                 });
             }
 
@@ -460,11 +466,28 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                                 if (extractedEpoch > 0 && !string.IsNullOrEmpty(keyCombination))
                                 {
                                     long normalizedEpochMs = extractedEpoch > 100_000_000_000L ? extractedEpoch : extractedEpoch * 1000;
+                                    int coordX = 0;
+                                    int coordY = 0;
+                                    string? dispId = null;
+
+                                    if (jsonRoot.TryGetProperty("x", out var xProp) && xProp.TryGetInt32(out var parsedX)) coordX = parsedX;
+                                    else if (jsonRoot.TryGetProperty("X", out var xCapProp) && xCapProp.TryGetInt32(out var parsedXCap)) coordX = parsedXCap;
+
+                                    if (jsonRoot.TryGetProperty("y", out var yProp) && yProp.TryGetInt32(out var parsedY)) coordY = parsedY;
+                                    else if (jsonRoot.TryGetProperty("Y", out var yCapProp) && yCapProp.TryGetInt32(out var parsedYCap)) coordY = parsedYCap;
+
+                                    if (jsonRoot.TryGetProperty("displayId", out var dProp)) dispId = dProp.GetString();
+                                    else if (jsonRoot.TryGetProperty("display_id", out var dSnakeProp)) dispId = dSnakeProp.GetString();
+                                    else if (jsonRoot.TryGetProperty("DisplayId", out var dCapProp)) dispId = dCapProp.GetString();
+
                                     ingestedKeystrokes.Add(new KeystrokeEventDto
                                     {
                                         EpochMs = normalizedEpochMs,
                                         KeyCombination = keyCombination,
-                                        TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(normalizedEpochMs).UtcDateTime
+                                        TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(normalizedEpochMs).UtcDateTime,
+                                        X = coordX,
+                                        Y = coordY,
+                                        DisplayId = dispId
                                     });
                                 }
                             }

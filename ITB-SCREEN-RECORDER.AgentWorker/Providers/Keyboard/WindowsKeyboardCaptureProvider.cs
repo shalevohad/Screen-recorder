@@ -222,19 +222,17 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
                         long epochMs = _getSyncedEpochMs();
                         int cursorX = 0;
                         int cursorY = 0;
-                        if (GetCursorPos(out var pt))
+
+                        IntPtr fg = GetForegroundWindow();
+                        if (fg != IntPtr.Zero && GetWindowRect(fg, out var r) && (r.Right > r.Left) && (r.Bottom > r.Top))
+                        {
+                            cursorX = (r.Left + r.Right) / 2;
+                            cursorY = (r.Top + r.Bottom) / 2;
+                        }
+                        else if (GetCursorPos(out var pt))
                         {
                             cursorX = pt.X;
                             cursorY = pt.Y;
-                        }
-                        else
-                        {
-                            IntPtr fg = GetForegroundWindow();
-                            if (fg != IntPtr.Zero && GetWindowRect(fg, out var r))
-                            {
-                                cursorX = (r.Left + r.Right) / 2;
-                                cursorY = (r.Top + r.Bottom) / 2;
-                            }
                         }
 
                         KeystrokeCaptured?.Invoke(new KeystrokeEventDto
