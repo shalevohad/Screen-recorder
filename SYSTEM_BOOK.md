@@ -3661,3 +3661,46 @@ The CI/CD pipeline and local build system enforce automated gating that halts th
    In `.github/workflows/security-scan.yml`, `socketsecurity/socket-action@v1` runs with `continue-on-error: false`. If Socket.dev detects blocked risks, malware, or policy violations, the pipeline fails immediately.
 3. **CI/CD Audit & NuGet Gates**:
    Both `security-scan.yml` and `node.js.yml` execute `npm audit --audit-level=critical` and `dotnet list package --vulnerable`, strictly aborting builds if vulnerable packages are detected.
+
+
+---
+
+### 63.6 Viewport Stacking Context, Wing Dock Priority & Popout Menu Elevation Invariant
+
+#### Operational Problem & Root Cause Analysis
+During forensic timeline editing in `MulticamViewport`, operators interacting with tool menus (e.g. clicking "GRID" to open `LAYOUT PRESETS` or opening `CANVAS RESOLUTION` / `CANVAS ASPECT`) encountered visual occlusion where the right half of the flyout menu was rendered underneath adjacent workstation placement cards (`canvas-feed-card-box`).
+
+Analysis revealed two interacting stacking context factors:
+1. **Unbounded Placement Card Z-Index**:
+   Workstation placement cards dynamically elevate their local `z-index` up to `1010+` when selected, and `2000` when dragging or resizing.
+2. **Sibling Stacking Context Trapping**:
+   - `.canvas-master-frame-16-9` was positioned relatively without an explicit integer `z-index`, so it did not establish a dedicated stacking context boundary. Its children (`z-index: 1010`–`2000`) participated directly in the parent container's stacking context.
+   - Concurrently, `.canvas-left-wing-dock` and `.canvas-right-wing-dock` possessed `z-index: 60`, which trapped their child popout menus (`.wing-floating-popout`) inside a lower stacking context.
+   - Sibling DOM rendering order placed `.canvas-master-frame-16-9` after `.canvas-left-wing-dock`, causing the selected card to paint directly on top of the popout menu.
+
+#### Architectural Stacking Hierarchy & Deterministic Resolution
+To guarantee that all operator tool menus, popouts, flyouts, and drawers render strictly **above** all workstation screens, video feeds, and placement frames under all conditions:
+
+1. **Master Canvas Stacking Context Boundary**:
+   - `.canvas-master-frame-16-9` explicitly defines `position: relative; z-index: 10;`.
+   - This encapsulates all internal elements (screen placement cards, drag marquees, snap lines, and feed inspectors) inside a single, bounded local stacking context at level 10.
+2. **Wing Docks & Popout Menu Priority Elevation**:
+   - `.canvas-left-wing-dock` and `.canvas-right-wing-dock` define `position: relative; z-index: 5000 !important;`.
+   - Hovering, focus-within, or having an open popout (`.has-active-popout`) dynamically elevates the wing dock to `z-index: 20000 !important;`.
+   - `.wing-popout-wrapper` defines `position: relative; z-index: 25000;`.
+   - `.wing-floating-popout` defines `z-index: 30000 !important;`, ensuring menus (Layout Presets, Aspect Ratio, Resolution Presets, Saved Presets) render unobstructed across the canvas surface.
+3. **Auxiliary Panels & Modal Elevation**:
+   - `.canvas-side-drawer` (Feeds & Layers Palette) is elevated to `z-index: 25000 !important;`.
+   - `.saved-presets-menu-popover` (Header Layout Presets) is elevated to `z-index: 30000 !important;`.
+   - `.keyframe-floating-island` is elevated to `z-index: 15000 !important;`.
+   - `.canvas-modal-backdrop` remains at `z-index: 100000;`.
+4. **Operator Dismissal & Outside-Click Ergonomics**:
+   - Each wing popout header includes an explicit close button (`.btn-close-pop` "✕").
+   - A global capturing listener (`handleOutsideClick`) automatically closes open popouts when an operator clicks anywhere on the canvas background, screens, or outside the wing docks.
+
+#### Automated Verification Suite
+- Verified by `Features/ExtractorAdvanced/Client/src/tests/viewportMenuStackingContext.test.js`:
+  1. Validates canvas frame local stacking context encapsulation (`z-index: 10`).
+  2. Validates wing dock base (`z-index: 5000`) and active (`z-index: 20000`) elevation.
+  3. Validates floating popouts (`z-index: 30000`) and auxiliary panels (`z-index: 25000`).
+  4. Validates dynamic `.has-active-popout` class attachment and outside-click dismissal hooks.

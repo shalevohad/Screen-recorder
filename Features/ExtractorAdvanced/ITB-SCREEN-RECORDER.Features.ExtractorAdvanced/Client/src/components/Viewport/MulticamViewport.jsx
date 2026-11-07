@@ -567,6 +567,26 @@ export default function MulticamViewport({
         }
     }, [showResolutionPopout]);
 
+    // Close wing popouts on outside click
+    useEffect(() => {
+        if (!showLayoutPresetsPopout && !showAspectPopout && !showResolutionPopout && !showPresetsMenu) {
+            return;
+        }
+
+        const handleOutsideClick = (e) => {
+            if (e.target.closest('.wing-floating-popout') || e.target.closest('.btn-wing-tool')) {
+                return;
+            }
+            setShowLayoutPresetsPopout(false);
+            setShowAspectPopout(false);
+            setShowResolutionPopout(false);
+            setShowPresetsMenu(false);
+        };
+
+        window.addEventListener('mousedown', handleOutsideClick, true);
+        return () => window.removeEventListener('mousedown', handleOutsideClick, true);
+    }, [showLayoutPresetsPopout, showAspectPopout, showResolutionPopout, showPresetsMenu]);
+
     const [isFullWidth, setIsFullWidth] = useState(() => {
         try {
             const stored = localStorage.getItem('itb_studio_canvas_fullwidth');
@@ -2845,7 +2865,7 @@ export default function MulticamViewport({
                     )}
 
                     <div className="canvas-stage-assembly">
-                        <aside className="canvas-left-wing-dock">
+                        <aside className={`canvas-left-wing-dock ${showLayoutPresetsPopout || showAspectPopout || showResolutionPopout ? 'has-active-popout' : ''}`}>
                     <button
                         type="button"
                         className={`btn-wing-tool ${showFeedsDrawer ? 'active' : ''}`}
@@ -2876,7 +2896,10 @@ export default function MulticamViewport({
 
                         {showLayoutPresetsPopout && (
                             <div className="wing-floating-popout left-side-popout">
-                                <div className="popout-title">LAYOUT PRESETS</div>
+                                <div className="popout-header">
+                                    <span className="popout-title">LAYOUT PRESETS</span>
+                                    <button type="button" className="btn-close-pop" onClick={() => setShowLayoutPresetsPopout(false)}>✕</button>
+                                </div>
                                 <button
                                     type="button"
                                     className={`popout-item ${selectedPresetId === 'auto-grid' ? 'active' : ''}`}
@@ -2974,7 +2997,10 @@ export default function MulticamViewport({
 
                         {showResolutionPopout && (
                             <div className="wing-floating-popout left-side-popout resolution-popout">
-                                <div className="popout-title">CANVAS RESOLUTION</div>
+                                <div className="popout-header">
+                                    <span className="popout-title">CANVAS RESOLUTION</span>
+                                    <button type="button" className="btn-close-pop" onClick={() => setShowResolutionPopout(false)}>✕</button>
+                                </div>
                                 {RESOLUTION_PRESETS.map(res => {
                                     const dims = computeCanvasDimensions(res.id, selectedAspectId, customCanvasDims);
                                     return (
@@ -3073,7 +3099,10 @@ export default function MulticamViewport({
 
                         {showAspectPopout && (
                             <div className="wing-floating-popout left-side-popout">
-                                <div className="popout-title">CANVAS ASPECT</div>
+                                <div className="popout-header">
+                                    <span className="popout-title">CANVAS ASPECT</span>
+                                    <button type="button" className="btn-close-pop" onClick={() => setShowAspectPopout(false)}>✕</button>
+                                </div>
                                 {ASPECT_PRESETS.map(ap => {
                                     const dims = computeCanvasDimensions(selectedResolutionId, ap.id);
                                     return (
@@ -3870,7 +3899,7 @@ export default function MulticamViewport({
                         <ActiveAudioSourceOverlay />
                     </div>
 
-                    <aside className="canvas-right-wing-dock">
+                    <aside className={`canvas-right-wing-dock ${showPresetsMenu ? 'has-active-popout' : ''}`}>
                     <button
                         type="button"
                         className="btn-wing-tool highlight-emerald"
