@@ -315,95 +315,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     else if (layoutMode == "director")
                     {
                         // Auto-Director Cut: dynamically switches between monitors according to plan.DirectorSegments with seamless millisecond dip-to-black transitions
-                        var dirSegments = plan.DirectorSegments;
-                        if (dirSegments != null && dirSegments.Count > 0)
-                        {
-                            long cutStartEpochMs = new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds();
-                            var segFilterOps = new List<string>();
-                            var concatInputLabels = new List<string>();
-
-                            for (int i = 0; i < dirSegments.Count; i++)
-                            {
-                                var seg = dirSegments[i];
-                                double segStartSec = MapEpochToOutputSeconds(seg.StartEpochMs, plan.ActiveSegments, maxDuration);
-                                double segEndSec = MapEpochToOutputSeconds(seg.EndEpochMs, plan.ActiveSegments, maxDuration);
-                                double segDur = segEndSec - segStartSec;
-                                if (segDur <= 0.05) continue;
-
-                                bool isSecondary = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) ||
-                                                   (seg.TargetDisplayId != null && seg.TargetDisplayId.EndsWith("-1", StringComparison.OrdinalIgnoreCase)) ||
-                                                   seg.TargetDisplayNumber > 1;
-                                int inIdx = isSecondary ? 1 : 0;
-                                string segOutLabel = $"[v_seg_{i}]";
-
-                                string startStr = segStartSec.ToString("0.00", CultureInfo.InvariantCulture);
-                                string endStr = segEndSec.ToString("0.00", CultureInfo.InvariantCulture);
-                                string durStr = segDur.ToString("0.00", CultureInfo.InvariantCulture);
-
-                                var segFilters = new List<string>
-                                {
-                                    $"trim=start={startStr}:end={endStr}",
-                                    "setpts=PTS-STARTPTS"
-                                };
-
-                                if (i > 0 && dirSegments.Count > 1)
-                                {
-                                    segFilters.Add("fade=type=in:start_time=0:duration=0.15");
-                                }
-                                if (i < dirSegments.Count - 1 && dirSegments.Count > 1)
-                                {
-                                    double outStart = Math.Max(0, segDur - 0.15);
-                                    segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", CultureInfo.InvariantCulture)}:duration=0.15");
-                                }
-
-                                // Auto-Director Screen Orientation HUD & Physical Minimap Overlay
-                                string dirFontClause = ResolveFontClause();
-                                if (!string.IsNullOrEmpty(dirFontClause) && dirSegments.Count > 1)
-                                {
-                                    int displayNum = inIdx + 1;
-                                    string displayAlias = (inIdx == 0) ? "MAIN" : "SECONDARY";
-                                    int totalDisplays = 2;
-
-                                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x0F172A@0.88:t=fill");
-                                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x06B6D4@0.85:t=2");
-                                    segFilters.Add($"drawtext={dirFontClause}text='⚡ AUTO-DIRECTOR':fontcolor=0x22D3EE:fontsize=10:x=34:y=30");
-                                    segFilters.Add($"drawtext={dirFontClause}text='VIEWING\\: SCREEN {displayNum} ({displayAlias})':fontcolor=white:fontsize=13:x=34:y=46");
-
-                                    for (int m = 0; m < totalDisplays; m++)
-                                    {
-                                        int boxX = 24 + 280 - 12 - (totalDisplays * 32) + (m * 32);
-                                        string mColor = (m == inIdx) ? "0x06B6D4" : "0x334155";
-                                        segFilters.Add($"drawbox=x={boxX}:y=36:w=26:h=18:color={mColor}:t=fill");
-                                        segFilters.Add($"drawtext={dirFontClause}text='{m + 1}':fontcolor=white:fontsize=10:x={boxX + 9}:y=40");
-                                    }
-
-                                    if (i > 0)
-                                    {
-                                        segFilters.Add($"drawtext={dirFontClause}text='▶ SWITCHED TO SCREEN {displayNum} ({displayAlias})':enable='between(t,0,2.5)':fontcolor=0x10B981:fontsize=15:box=1:boxcolor=0x0F172A@0.92:boxborderw=6:x=(w-tw)/2:y=28");
-                                    }
-                                }
-
-                                segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
-                                concatInputLabels.Add(segOutLabel);
-                            }
-
-                            if (concatInputLabels.Count > 1)
-                            {
-                                filterGraph = $"{string.Join("; ", segFilterOps)}; {string.Join("", concatInputLabels)}concat=n={concatInputLabels.Count}:v=1:a=0[vbase];";
-                            }
-                            else if (concatInputLabels.Count == 1)
-                            {
-                                filterGraph = $"{segFilterOps[0]}; {concatInputLabels[0]}null[vbase];";
-                            }
-                            else
-                            {
-                                filterGraph = "[0:v]copy[vbase];";
-                            }
-                        }
-                        else
-                        {
-                            filterGraph = "[0:v]copy[vbase];";
-                        }
+                        string dirFontClause = ResolveFontClause();
+                        var (dW, dH, dGraph) = BuildDirectorFilterGraph(
+                            plan.DirectorSegments, probe0, probe1, secondaryKey, plan.ActiveSegments, maxDuration, dirFontClause);
+                        filterGraph = dGraph;
                     }
                     else
                     {
@@ -737,6 +652,115 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
 
             return Math.Min(maxDuration, accumulatedSec);
+        }
+
+        /// <summary>
+        /// Formulates deterministic filtergraph operations for Auto-Director multi-monitor switching with uniform canvas scaling and SAR normalization.
+        /// Prevents FFmpeg [Parsed_concat] parameter mismatch (ExitCode -22) when workstations combine ultrawide (3440x1440) and standard (1920x1080) displays.
+        /// </summary>
+        public static (int TargetWidth, int TargetHeight, string FilterGraph) BuildDirectorFilterGraph(
+            IReadOnlyList<DirectorCutSegmentDto>? dirSegments,
+            ProbedStationMetadata probe0,
+            ProbedStationMetadata probe1,
+            string secondaryKey,
+            List<TimeInterval>? activeSegments,
+            double maxDuration,
+            string? dirFontClause)
+        {
+            if (dirSegments == null || dirSegments.Count == 0)
+            {
+                return (1920, 1080, "[0:v]null[vbase];");
+            }
+
+            int targetW = probe0.Width > 0 ? probe0.Width : 1920;
+            int targetH = probe0.Height > 0 ? probe0.Height : 1080;
+            if (probe1.Width > targetW) targetW = probe1.Width;
+            if (probe1.Height > targetH) targetH = probe1.Height;
+            targetW -= (targetW % 2);
+            targetH -= (targetH % 2);
+
+            var segFilterOps = new List<string>();
+            var concatInputLabels = new List<string>();
+
+            for (int i = 0; i < dirSegments.Count; i++)
+            {
+                var seg = dirSegments[i];
+                double segStartSec = MapEpochToOutputSeconds(seg.StartEpochMs, activeSegments, maxDuration);
+                double segEndSec = MapEpochToOutputSeconds(seg.EndEpochMs, activeSegments, maxDuration);
+                double segDur = segEndSec - segStartSec;
+                if (segDur <= 0.05) continue;
+
+                bool isSecondary = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) ||
+                                   (seg.TargetDisplayId != null && seg.TargetDisplayId.EndsWith("-1", StringComparison.OrdinalIgnoreCase)) ||
+                                   seg.TargetDisplayNumber > 1;
+                int inIdx = isSecondary ? 1 : 0;
+                string segOutLabel = $"[v_seg_{i}]";
+
+                string startStr = segStartSec.ToString("0.00", CultureInfo.InvariantCulture);
+                string endStr = segEndSec.ToString("0.00", CultureInfo.InvariantCulture);
+
+                var segFilters = new List<string>
+                {
+                    $"trim=start={startStr}:end={endStr}",
+                    "setpts=PTS-STARTPTS",
+                    $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+                };
+
+                if (i > 0 && dirSegments.Count > 1)
+                {
+                    segFilters.Add("fade=type=in:start_time=0:duration=0.15");
+                }
+                if (i < dirSegments.Count - 1 && dirSegments.Count > 1)
+                {
+                    double outStart = Math.Max(0, segDur - 0.15);
+                    segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", CultureInfo.InvariantCulture)}:duration=0.15");
+                }
+
+                // Auto-Director Screen Orientation HUD & Physical Minimap Overlay
+                if (!string.IsNullOrEmpty(dirFontClause) && dirSegments.Count > 1)
+                {
+                    int displayNum = inIdx + 1;
+                    string displayAlias = (inIdx == 0) ? "MAIN" : "SECONDARY";
+                    int totalDisplays = 2;
+
+                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x0F172A@0.88:t=fill");
+                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x06B6D4@0.85:t=2");
+                    segFilters.Add($"drawtext={dirFontClause}text='⚡ AUTO-DIRECTOR':fontcolor=0x22D3EE:fontsize=10:x=34:y=30");
+                    segFilters.Add($"drawtext={dirFontClause}text='VIEWING\\: SCREEN {displayNum} ({displayAlias})':fontcolor=white:fontsize=13:x=34:y=46");
+
+                    for (int m = 0; m < totalDisplays; m++)
+                    {
+                        int boxX = 24 + 280 - 12 - (totalDisplays * 32) + (m * 32);
+                        string mColor = (m == inIdx) ? "0x06B6D4" : "0x334155";
+                        segFilters.Add($"drawbox=x={boxX}:y=36:w=26:h=18:color={mColor}:t=fill");
+                        segFilters.Add($"drawtext={dirFontClause}text='{m + 1}':fontcolor=white:fontsize=10:x={boxX + 9}:y=40");
+                    }
+
+                    if (i > 0)
+                    {
+                        segFilters.Add($"drawtext={dirFontClause}text='▶ SWITCHED TO SCREEN {displayNum} ({displayAlias})':enable='between(t,0,2.5)':fontcolor=0x10B981:fontsize=15:box=1:boxcolor=0x0F172A@0.92:boxborderw=6:x=(w-tw)/2:y=28");
+                    }
+                }
+
+                segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
+                concatInputLabels.Add(segOutLabel);
+            }
+
+            string filterGraph;
+            if (concatInputLabels.Count > 1)
+            {
+                filterGraph = $"{string.Join("; ", segFilterOps)}; {string.Join("", concatInputLabels)}concat=n={concatInputLabels.Count}:v=1:a=0[vbase];";
+            }
+            else if (concatInputLabels.Count == 1)
+            {
+                filterGraph = $"{segFilterOps[0]}; {concatInputLabels[0]}null[vbase];";
+            }
+            else
+            {
+                filterGraph = "[0:v]null[vbase];";
+            }
+
+            return (targetW, targetH, filterGraph);
         }
 
         private static string ResolveFontClause()

@@ -630,9 +630,6 @@ export default function ExtractorAdvancedStudio() {
     const [activeStationKeystrokes, setActiveStationKeystrokes] = useState([]);
 
     const targetKeystrokeStations = useMemo(() => {
-        if (enrichedTimelineStations && enrichedTimelineStations.length > 0) {
-            return enrichedTimelineStations;
-        }
         if (timelineStations && timelineStations.length > 0) {
             return timelineStations;
         }
@@ -643,7 +640,7 @@ export default function ExtractorAdvancedStudio() {
             return [spotlightStation];
         }
         return [];
-    }, [enrichedTimelineStations, timelineStations, activeStation, spotlightStation]);
+    }, [timelineStations, activeStation, spotlightStation]);
 
     const targetKeystrokeStationsKey = useMemo(() => {
         return targetKeystrokeStations.map(s => `${s.id}:${s.hostname || s.id}:${s.displayName || ''}`).join('|');

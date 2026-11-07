@@ -3795,3 +3795,50 @@ To provide comprehensive multicam keystroke visibility across the master timelin
   3. Validates clustering algorithm multi-station detection and workstation counting.
   4. Validates tooltip grouping by workstation with key pill collapse.
   5. Validates multi-station and single-station header badge formatting.
+
+
+---
+
+### 63.9 Mixed-Resolution Auto-Director Filtergraph Normalization & Concat Parameter Immunity (ExitCode -22 Prevention)
+
+#### Operational Background
+In high-density forensic operations, workstations frequently pair displays with heterogeneous aspect ratios and resolutions — e.g. an ultra-wide primary monitor (`3440x1440`, 21:9) and a standard secondary monitor (`1920x1080`, 16:9). 
+
+When exporting an Auto-Director cut track for such stations via `SynchronizedTrackCutter.cs`, FFmpeg slices the timeline into discrete segment links based on operator keyboard/mouse focus switches (e.g. `[v_seg_0]` on `mon-0`, `[v_seg_1]` on `mon-1`, ..., `[v_seg_74]`). Previously, `SynchronizedTrackCutter.cs` applied only `trim` and `setpts` filters to these segments without uniform scaling or Sample Aspect Ratio (SAR) normalization. When FFmpeg's `concat` filter joined the links, it failed immediately with:
+```
+[Parsed_concat_75] Input link in0:v0 parameters (size 1920x1080, SAR 1:1) do not match the corresponding output link in0:v0 parameters (3440x1440, SAR 1:1)
+[Parsed_concat_75] Failed to configure output pad on Parsed_concat_75
+Error reinitializing filters! Task finished with error: Invalid argument (ExitCode -22)
+```
+
+#### Architectural Solution: Unified Dimension Derivation & SAR Normalization
+To guarantee deterministic concatenation across heterogeneous monitor topologies:
+
+1. **Standardized Target Dimension Formulation**:
+   - `SynchronizedTrackCutter.BuildDirectorFilterGraph` inspects both primary (`probe0`) and secondary (`probe1`) probes:
+     ```csharp
+     int targetW = probe0.Width > 0 ? probe0.Width : 1920;
+     int targetH = probe0.Height > 0 ? probe0.Height : 1080;
+     if (probe1.Width > targetW) targetW = probe1.Width;
+     if (probe1.Height > targetH) targetH = probe1.Height;
+     targetW -= (targetW % 2);
+     targetH -= (targetH % 2);
+     ```
+   - Standardizes target dimensions to the maximum monitor bounds (e.g. `3440x1440`), preserving full native resolution for ultra-wide displays without downsampling degradation.
+
+2. **Per-Segment Lanczos Scaling, Letterboxing & SAR Lock**:
+   - Every director segment link applies a uniform scaling and padding filterchain:
+     ```
+     scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1
+     ```
+   - Standard monitors (e.g. `1920x1080`) are upscaled cleanly to `2560x1440` and pillarboxed with black bars to fill `3440x1440` with `setsar=1`.
+   - Every single input link arriving at `concat=n={N}:v=1:a=0` is mathematically identical in width, height, and SAR, eliminating parameter mismatch.
+
+3. **FFmpeg Filtergraph Pass-Through Guard**:
+   - Empty or single-segment fallbacks now use the valid video pass-through filter `[0:v]null[vbase];` (replacing invalid `[0:v]copy[vbase];`).
+   - `AdvanceJobManager.cs` also enforces `setsar=1` on full-export director cuts.
+
+#### Automated Verification Suite
+- Verified by `ITB-SCREEN-RECORDER.Tests/Extractor/MultiDisplayTrackCutterTests.cs`:
+  1. `BuildDirectorFilterGraph_MixedDisplayResolutions_UltrawideAndFhd_NormalizesDimensionsAndSetsar`: Validates that paired 3440x1440 and 1920x1080 displays produce 3440x1440 canvas bounds with `setsar=1` on all segment links.
+  2. `BuildDirectorFilterGraph_SingleSegment_OutputsNullVbase`: Validates single segment fallback to `null[vbase]`.

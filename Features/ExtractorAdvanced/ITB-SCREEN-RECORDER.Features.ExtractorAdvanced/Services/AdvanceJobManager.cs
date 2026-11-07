@@ -1199,7 +1199,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         {
                             $"trim=start={startStr}:end={endStr}",
                             "setpts=PTS-STARTPTS",
-                            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black"
+                            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
                         };
 
                         if (i > 0 && dirSegments.Count > 1)

@@ -221,4 +221,68 @@ public class MultiDisplayTrackCutterTests : IDisposable
         Assert.False(plan.IsPipSwapped);
         Assert.Null(plan.TargetDisplayId);
     }
+
+    [Fact]
+    public void BuildDirectorFilterGraph_MixedDisplayResolutions_UltrawideAndFhd_NormalizesDimensionsAndSetsar()
+    {
+        // Simulate workstation with mixed resolutions (e.g. OHAD-DESKTOP: mon-0 is 3440x1440 ultrawide, mon-1 is 1920x1080 FHD)
+        var probe0 = new ProbedStationMetadata { Width = 3440, Height = 1440, Fps = 30.0, HasAudio = true };
+        var probe1 = new ProbedStationMetadata { Width = 1920, Height = 1080, Fps = 30.0, HasAudio = false };
+
+        var dirSegments = new List<DirectorCutSegmentDto>
+        {
+            new() { StartEpochMs = 1700000000000, EndEpochMs = 1700000005000, TargetDisplayId = "mon-0", TargetDisplayNumber = 1 },
+            new() { StartEpochMs = 1700000005000, EndEpochMs = 1700000010000, TargetDisplayId = "mon-1", TargetDisplayNumber = 2 }
+        };
+
+        var activeSegments = new List<TimeInterval>
+        {
+            new()
+            {
+                StartUtc = DateTimeOffset.FromUnixTimeMilliseconds(1700000000000).UtcDateTime,
+                EndUtc = DateTimeOffset.FromUnixTimeMilliseconds(1700000010000).UtcDateTime
+            }
+        };
+
+        var (targetW, targetH, filterGraph) = SynchronizedTrackCutter.BuildDirectorFilterGraph(
+            dirSegments, probe0, probe1, "mon-1", activeSegments, 10.0, null);
+
+        // Verify target dimensions are standardized to maximum monitor bounds
+        Assert.Equal(3440, targetW);
+        Assert.Equal(1440, targetH);
+
+        // Verify BOTH segments (from [0:v] and [1:v]) are scaled and padded to exact uniform dimensions with setsar=1
+        Assert.Contains("scale=3440:1440:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad=3440:1440:(ow-iw)/2:(oh-ih)/2:black,setsar=1", filterGraph);
+        Assert.Contains("[0:v]trim=", filterGraph);
+        Assert.Contains("[1:v]trim=", filterGraph);
+        Assert.Contains("concat=n=2:v=1:a=0[vbase]", filterGraph);
+    }
+
+    [Fact]
+    public void BuildDirectorFilterGraph_SingleSegment_OutputsNullVbase()
+    {
+        var probe0 = new ProbedStationMetadata { Width = 1920, Height = 1080, Fps = 30.0, HasAudio = true };
+        var probe1 = new ProbedStationMetadata { Width = 1920, Height = 1080, Fps = 30.0, HasAudio = false };
+
+        var dirSegments = new List<DirectorCutSegmentDto>
+        {
+            new() { StartEpochMs = 1700000000000, EndEpochMs = 1700000005000, TargetDisplayId = "mon-0", TargetDisplayNumber = 1 }
+        };
+
+        var activeSegments = new List<TimeInterval>
+        {
+            new()
+            {
+                StartUtc = DateTimeOffset.FromUnixTimeMilliseconds(1700000000000).UtcDateTime,
+                EndUtc = DateTimeOffset.FromUnixTimeMilliseconds(1700000005000).UtcDateTime
+            }
+        };
+
+        var (targetW, targetH, filterGraph) = SynchronizedTrackCutter.BuildDirectorFilterGraph(
+            dirSegments, probe0, probe1, "mon-1", activeSegments, 5.0, null);
+
+        Assert.Equal(1920, targetW);
+        Assert.Equal(1080, targetH);
+        Assert.Contains("[v_seg_0]null[vbase]", filterGraph);
+    }
 }
