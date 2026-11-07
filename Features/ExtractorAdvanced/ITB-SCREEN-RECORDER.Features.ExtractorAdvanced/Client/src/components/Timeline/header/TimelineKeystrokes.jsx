@@ -14,6 +14,7 @@ function TimelineKeystrokes({
     stationHostname = '',
     stations = [],
     keystrokes: propKeystrokes = null,
+    recordingSegments = {},
     baseEpochMs = 0,
     timeMode = 'LOCAL',
     viewportStartMs = 0,
@@ -91,9 +92,34 @@ function TimelineKeystrokes({
         return () => abortController.abort();
     }, [targetStations, baseEpochMs, viewportStartMs, viewportDurationMs, propKeystrokes]);
 
-    const activeKeystrokes = (propKeystrokes !== null && propKeystrokes !== undefined)
-        ? propKeystrokes
-        : fetchedKeystrokes;
+    const activeKeystrokes = useMemo(() => {
+        const raw = (propKeystrokes !== null && propKeystrokes !== undefined)
+            ? propKeystrokes
+            : fetchedKeystrokes;
+
+        if (!raw || !raw.length) return [];
+        if (!recordingSegments || Object.keys(recordingSegments).length === 0) return raw;
+
+        // Strictly filter out any keystrokes that occurred in gaps outside recorded video chunks
+        return raw.filter(evt => {
+            const stId = evt.stationId || evt.stationName || evt.stationHostname || evt.hostname;
+            const segments = (stId && recordingSegments[stId]) ||
+                             (stId && recordingSegments[stId.toLowerCase()]) ||
+                             (stId && recordingSegments[stId.toUpperCase()]);
+
+            if (segments && Array.isArray(segments) && segments.length > 0) {
+                return segments.some(seg => {
+                    const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
+                    const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
+                    return evt.epochMs >= s && evt.epochMs <= e;
+                });
+            }
+            if (segments && Array.isArray(segments) && segments.length === 0) {
+                return false;
+            }
+            return true;
+        });
+    }, [propKeystrokes, fetchedKeystrokes, recordingSegments]);
 
     // Pixel distance clustering algorithm (prevents DOM clutter and tick overlap)
     const clusters = useMemo(() => {

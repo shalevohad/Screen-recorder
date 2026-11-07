@@ -13,6 +13,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
     {
         Task<AgentHeartbeatResponse> ProcessHeartbeatAsync(AgentTelemetryReport report, string requestHost = null);
         void SetAgentStreamState(string hostname, bool shouldStream);
+        bool IsStationRecording(string hostname);
         IEnumerable<AgentTelemetryReport> GetAllAgents();
         Task<AgentStreamPolicy> GetAgentPolicyAsync(string hostname, string requestHost);
     }
@@ -156,6 +157,21 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     catch { }
                 });
             }
+        }
+
+        public bool IsStationRecording(string hostname)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return false;
+            string key = hostname.ToUpperInvariant();
+            if (_latestReports.TryGetValue(key, out var report))
+            {
+                return report.IsRecording;
+            }
+            if (_agentDesiredStates.TryGetValue(key, out bool desired))
+            {
+                return desired;
+            }
+            return false;
         }
 
         public IEnumerable<AgentTelemetryReport> GetAllAgents()

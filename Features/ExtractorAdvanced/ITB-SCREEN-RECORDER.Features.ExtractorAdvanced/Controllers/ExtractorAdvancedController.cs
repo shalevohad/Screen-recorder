@@ -93,8 +93,30 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             try
             {
+                var startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
+                var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
+
+                var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
+                if (chunks == null || chunks.Count == 0)
+                {
+                    return Ok(Array.Empty<KeystrokeEventDto>());
+                }
+
                 var events = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, lStart, lEnd);
-                return Ok(events);
+                if (events == null || events.Count == 0)
+                {
+                    return Ok(Array.Empty<KeystrokeEventDto>());
+                }
+
+                // Strictly filter out any keystrokes that occurred in gap regions outside of active recorded video chunks
+                var validEvents = events.Where(k => chunks.Any(c =>
+                {
+                    long cStart = new DateTimeOffset(c.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                    long cEnd = new DateTimeOffset(c.EndUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                    return k.EpochMs >= cStart && k.EpochMs <= cEnd;
+                })).ToList();
+
+                return Ok(validEvents);
             }
             catch (Exception ex)
             {

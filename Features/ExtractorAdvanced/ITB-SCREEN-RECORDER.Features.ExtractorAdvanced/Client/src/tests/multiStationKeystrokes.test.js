@@ -214,4 +214,56 @@ describe('Multi-Station Keystrokes Timeline & Clustered Tooltip Invariants', () 
         assert.equal(getTooltipHeader(singleCluster), 'KEYSTROKE BURST (4)');
         assert.equal(getTooltipHeader(singleEvent), 'KEYSTROKE');
     });
+
+    test('6. Keystroke Gap Filtering: keystrokes outside active video recording segments are excluded', () => {
+        const recordingSegments = {
+            'ALPHA': [
+                { startEpochMs: 10000, endEpochMs: 20000 },
+                { startEpochMs: 30000, endEpochMs: 40000 }
+            ],
+            'BETA': [
+                { startEpochMs: 15000, endEpochMs: 25000 }
+            ],
+            'GAMMA': [] // No recordings at all
+        };
+
+        const rawEvents = [
+            { epochMs: 12000, stationId: 'ALPHA', keyCombination: 'Ctrl+C' }, // Inside Alpha seg 1 -> keep
+            { epochMs: 25000, stationId: 'ALPHA', keyCombination: 'Space' },  // In Alpha gap (20000-30000) -> exclude!
+            { epochMs: 35000, stationId: 'ALPHA', keyCombination: 'Enter' },  // Inside Alpha seg 2 -> keep
+            { epochMs: 18000, stationId: 'BETA', keyCombination: 'Tab' },     // Inside Beta seg -> keep
+            { epochMs: 28000, stationId: 'BETA', keyCombination: 'Esc' },     // In Beta gap (>25000) -> exclude!
+            { epochMs: 12000, stationId: 'GAMMA', keyCombination: 'Alt' }     // Gamma has 0 recordings -> exclude!
+        ];
+
+        function filterKeystrokesBySegments(raw, segmentsMap) {
+            return raw.filter(evt => {
+                const stId = evt.stationId || evt.stationName || evt.stationHostname || evt.hostname;
+                const segments = (stId && segmentsMap[stId]) ||
+                                 (stId && segmentsMap[stId.toLowerCase()]) ||
+                                 (stId && segmentsMap[stId.toUpperCase()]);
+
+                if (segments && Array.isArray(segments) && segments.length > 0) {
+                    return segments.some(seg => {
+                        const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
+                        const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
+                        return evt.epochMs >= s && evt.epochMs <= e;
+                    });
+                }
+                if (segments && Array.isArray(segments) && segments.length === 0) {
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        const filtered = filterKeystrokesBySegments(rawEvents, recordingSegments);
+        assert.equal(filtered.length, 3, 'Only the 3 keystrokes within active video chunks should survive');
+        assert.equal(filtered[0].epochMs, 12000);
+        assert.equal(filtered[0].stationId, 'ALPHA');
+        assert.equal(filtered[1].epochMs, 35000);
+        assert.equal(filtered[1].stationId, 'ALPHA');
+        assert.equal(filtered[2].epochMs, 18000);
+        assert.equal(filtered[2].stationId, 'BETA');
+    });
 });

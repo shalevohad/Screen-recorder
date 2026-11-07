@@ -40,9 +40,10 @@ jobs:
 
     # ─── שכבה 3: בדיקת תלויות עוינות והזיות חבילות (Socket Security) ──────
     - name: Scan NPM Dependencies with Socket.dev
-      uses: socketsecurity/socket-action@v1
+      uses: SocketDev/action@v1
       with:
-        api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+        mode: firewall-free
+        socket-token: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 
     # ─── שכבה 4: סריקת פגיעויות ב-NuGet (.NET) ───────────────────────────
     - name: Setup .NET SDK

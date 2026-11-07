@@ -333,6 +333,7 @@ export default function TimelineBoard({
                             stations={stations}
                             showKeystrokes={Boolean(showRulerKeystrokes ?? showKeystrokes)}
                             keystrokes={keystrokes}
+                            recordingSegments={recordingSegments}
                         />
                     </div>
                 </div>

@@ -397,6 +397,12 @@ Handled by [`SynchronizedTrackCutter.cs`](./Features/Extractor/ITB-SCREEN-RECORD
 - **Physical Hostname & Role Alias Invariant**:
   - Keystroke queries in [`ExtractorAdvancedController.cs`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs) automatically resolve station role aliases (e.g. `AWS Commander` ➔ `PROJECT-LAPTOP`) against `_stationRoleProvider`, ensuring database queries never return empty results when queried by operational alias.
   - [`TimelineBoard.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx) and [`TimelineRuler.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.jsx) forward physical `stationHostname` alongside active display names and pass `keystrokes` down the component tree to guarantee reliable tick mark rendering when `+ RULER TICKS: ON` is active.
+- **Active Video Recording & Video Chunk Correlation (Strict Ingestion & Display Invariant)**:
+  - Keystrokes are strictly correlated with valid recorded video: keystrokes must NEVER be recorded, forwarded, or stored to the SQLite catalog if the workstation is not actively recording (`!_isStreaming || !_isRecording`).
+  - [`WorkerEngine.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/WorkerEngine.cs) and [`AgentSupervisorService.cs`](./ITB-SCREEN-RECORDER.AgentService/AgentSupervisorService.cs) immediately flush and drop keystrokes when recording is inactive, preventing idle keystrokes from being captured or sent over IPC.
+  - [`AgentController.cs`](./ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs) verifies recording state via `report.IsRecording` and `_telemetryState.IsStationRecording(hostname)` before persisting to the database.
+  - Forensic API ([`ExtractorAdvancedController.cs`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs)) queries active video chunks ([`IStorageScannerService`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/StorageScannerService.cs)) and strips out any keystrokes falling into timeline gaps outside of recorded video chunks.
+  - Studio Timeline UI ([`TimelineKeystrokes.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx)) validates all keystrokes against `recordingSegments`, completely eliminating false keystroke indicators in gap regions.
 
 ---
 
@@ -3659,7 +3665,7 @@ The CI/CD pipeline and local build system enforce automated gating that halts th
 1. **Local MSBuild Security Gate**:
    `npm audit --audit-level=critical` is embedded directly into MSBuild targets (`CompileFrontend` in Server, `CompileExtractorFrontend` in Extractor, and `CompileAdvancedFrontend` in ExtractorAdvanced) with `ContinueOnError="false"`. Any critical vulnerability in frontend dependencies immediately breaks local `dotnet build`.
 2. **CI/CD Socket Security Policy Gate**:
-   In `.github/workflows/security-scan.yml`, `socketsecurity/socket-action@v1` runs with `continue-on-error: false`. If Socket.dev detects blocked risks, malware, or policy violations, the pipeline fails immediately.
+   In `.github/workflows/security-scan.yml`, `SocketDev/action@v1` runs with `mode: firewall-free` and `socket-token: ${{ secrets.SOCKET_SECURITY_API_KEY }}`. If Socket.dev detects blocked risks, malware, or policy violations, the pipeline fails immediately.
 3. **CI/CD Audit & NuGet Gates**:
    Both `security-scan.yml` and `node.js.yml` execute `npm audit --audit-level=critical` and `dotnet list package --vulnerable`, strictly aborting builds if vulnerable packages are detected.
 

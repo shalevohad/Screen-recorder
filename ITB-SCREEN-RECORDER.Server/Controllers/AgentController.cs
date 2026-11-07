@@ -101,14 +101,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             List<KeystrokeEventDto>? decryptedKeystrokes = null;
             if (report.Keystrokes != null && report.Keystrokes.Count > 0)
             {
-                try
+                // Keystrokes are strictly stored to database only when the station is actively recording
+                if (report.IsRecording)
                 {
-                    await _catalogRepository.BulkInsertKeystrokesAsync(report.Hostname, report.Keystrokes);
-                    _logger.LogDebug("[TELEMETRY] Ingested {Count} live keystrokes for {Host}", report.Keystrokes.Count, report.Hostname);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                    try
+                    {
+                        await _catalogRepository.BulkInsertKeystrokesAsync(report.Hostname, report.Keystrokes);
+                        _logger.LogDebug("[TELEMETRY] Ingested {Count} live keystrokes for {Host}", report.Keystrokes.Count, report.Hostname);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                    }
                 }
 
                 decryptedKeystrokes = new List<KeystrokeEventDto>(report.Keystrokes.Count);
@@ -197,19 +201,23 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest("Invalid keystroke payload.");
             }
 
-            // 1. Asynchronously queue DB bulk insertion in background without blocking SignalR broadcast
-            _ = Task.Run(async () =>
+            // 1. Asynchronously queue DB bulk insertion in background ONLY if station is actively recording
+            bool isRecording = _telemetryState == null || _telemetryState.IsStationRecording(request.Hostname);
+            if (isRecording)
             {
-                try
+                _ = Task.Run(async () =>
                 {
-                    await _catalogRepository.BulkInsertKeystrokesAsync(request.Hostname, request.Keystrokes);
-                    _logger.LogDebug("[KEYSTROKES:FAST] Ingested {Count} fast keystrokes for {Host}", request.Keystrokes.Count, request.Hostname);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[KEYSTROKES:FAST] Failed to insert fast keystrokes for {Host}", request.Hostname);
-                }
-            });
+                    try
+                    {
+                        await _catalogRepository.BulkInsertKeystrokesAsync(request.Hostname, request.Keystrokes);
+                        _logger.LogDebug("[KEYSTROKES:FAST] Ingested {Count} fast keystrokes for {Host}", request.Keystrokes.Count, request.Hostname);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[KEYSTROKES:FAST] Failed to insert fast keystrokes for {Host}", request.Hostname);
+                    }
+                });
+            }
 
             // 2. Decrypt keystrokes if end-to-end encryption is configured
             var decryptedKeystrokes = new List<KeystrokeEventDto>(request.Keystrokes.Count);

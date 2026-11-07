@@ -33,7 +33,8 @@ export default function TimelineRuler({
     activeStationName = '',
     stations = [],
     showKeystrokes = true,
-    keystrokes = []
+    keystrokes = [],
+    recordingSegments = {}
 }) {
     const rulerRef = useRef(null);
     const [pixelWidth, setPixelWidth] = useState(1000);
@@ -326,6 +327,7 @@ export default function TimelineRuler({
                         pixelWidth={pixelWidth}
                         onSeek={onSeek}
                         keystrokes={keystrokes}
+                        recordingSegments={recordingSegments}
                     />
                 )}
 

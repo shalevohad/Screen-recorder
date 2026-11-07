@@ -427,9 +427,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 break;
                             }
 
-                            // Check for Fast Path messages to forward immediate keystrokes
+                            // Check for Fast Path messages to forward immediate keystrokes (only if actively recording)
                             if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
                             {
+                                if (!_isWorkerRecording) continue;
                                 try
                                 {
                                     string keyJson = line.Substring(4).Trim();
@@ -448,6 +449,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                             if (line.StartsWith("Keys|", StringComparison.OrdinalIgnoreCase))
                             {
+                                if (!_isWorkerRecording) continue;
                                 try
                                 {
                                     string keysJson = line.Substring(5).Trim();
@@ -565,11 +567,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // Dequeue keystrokes to transmit in current telemetry report tick
+                // Dequeue keystrokes to transmit in current telemetry report tick (only when actively recording)
                 var keysBatch = new List<KeystrokeEventDto>();
-                while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
+                if (isStreaming && _isWorkerRecording)
                 {
-                    keysBatch.Add(k);
+                    while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
+                    {
+                        keysBatch.Add(k);
+                    }
+                }
+                else
+                {
+                    while (_pendingKeystrokes.TryDequeue(out _)) { }
                 }
 
                 var report = new AgentTelemetryReport
