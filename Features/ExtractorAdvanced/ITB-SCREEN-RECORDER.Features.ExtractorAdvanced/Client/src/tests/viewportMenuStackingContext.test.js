@@ -152,4 +152,116 @@ describe('Viewport Stacking Context & Popout Menu Elevation Invariants', () => {
             'SCSS must declare z-index: 4500 for .floating-feed-inspector'
         );
     });
+
+    it('10. Canvas window border color popover is never clipped (overflow: visible !important and z-index: 100000 !important)', () => {
+        // Must declare overflow: visible !important on floating-feed-inspector and compact-hud-inspector
+        assert.match(
+            scssContent,
+            /\.floating-feed-inspector\.compact-hud-inspector\s*\{[^}]*overflow:\s*visible\s*!important;/s,
+            '.floating-feed-inspector.compact-hud-inspector must have overflow: visible !important to prevent popover clipping'
+        );
+        assert.match(
+            scssContent,
+            /\.floating-feed-inspector\s*\{[^}]*overflow:\s*visible\s*!important;/s,
+            '.floating-feed-inspector must have overflow: visible !important'
+        );
+        // Popover must declare z-index: 100000 !important
+        assert.match(
+            scssContent,
+            /\.compact-color-palette-popover\s*\{[^}]*z-index:\s*100000\s*!important;/s,
+            '.compact-color-palette-popover must declare z-index: 100000 !important'
+        );
+    });
+
+    it('11. Canvas window border color popover supports intelligent boundary positioning and outside-click dismissal', () => {
+        // JSX must calculate openUpwards and isNearRight based on placement coordinates
+        assert.match(
+            jsxContent,
+            /const\s+openUpwards\s*=\s*isNearBottom\s*&&\s*!isNearTop;/,
+            'JSX must compute openUpwards boundary check'
+        );
+        assert.match(
+            jsxContent,
+            /className=\{`compact-color-palette-popover\s+\$\{openUpwards\s*\?\s*'open-upwards'\s*:\s*'open-downwards'\}\s+\$\{isNearRight\s*\?\s*'align-right'\s*:\s*'align-left'\}`\}/,
+            'JSX must apply dynamic boundary positioning classes'
+        );
+        // Outside click dismiss handler must exist for showColorPicker
+        assert.match(
+            jsxContent,
+            /colorPickerRef\.current\s*&&\s*!colorPickerRef\.current\.contains\(e\.target\)/,
+            'JSX must dismiss color picker when clicking outside colorPickerRef'
+        );
+        // SCSS must define .open-upwards and .align-right
+        assert.match(
+            scssContent,
+            /&.open-upwards\s*\{[^}]*bottom:\s*calc\(100%\s*\+\s*6px\);/s,
+            'SCSS must position open-upwards palette above inspector'
+        );
+        assert.match(
+            scssContent,
+            /&.align-right\s*\{[^}]*right:\s*0;/s,
+            'SCSS must align palette to the right edge'
+        );
+    });
+
+    it('12. Keyframe Track Popover (.kf-inspector-popover) has z-index: 35000 !important and boundary clamping', () => {
+        const kfScssPath = path.resolve(__dirname, '../components/Timeline/tracks/CanvasKeyframeTrack.scss');
+        const kfJsxPath = path.resolve(__dirname, '../components/Timeline/tracks/CanvasKeyframeTrack.jsx');
+        const kfScss = fs.readFileSync(kfScssPath, 'utf-8');
+        const kfJsx = fs.readFileSync(kfJsxPath, 'utf-8');
+
+        // Elevate popover to z-index: 35000 !important (above playhead needle 500)
+        assert.match(
+            kfScss,
+            /\.kf-inspector-popover\s*\{[^}]*z-index:\s*35000\s*!important;/s,
+            '.kf-inspector-popover must declare z-index: 35000 !important'
+        );
+        // Elevate parent row to z-index: 25000 !important when popover is open
+        assert.match(
+            kfScss,
+            /has-active-popover\s*\{[^}]*z-index:\s*25000\s*!important;/s,
+            'CanvasKeyframeTrack row must elevate to z-index: 25000 !important when popover is active'
+        );
+        // Supports align-left and align-right clamping
+        assert.match(
+            kfScss,
+            /&.align-left\s*\{[^}]*left:\s*0;/s,
+            'SCSS must define align-left clamping'
+        );
+        assert.match(
+            kfScss,
+            /&.align-right\s*\{[^}]*right:\s*0;/s,
+            'SCSS must define align-right clamping'
+        );
+        assert.match(
+            kfJsx,
+            /const\s+popoverAlignClass\s*=\s*isNearLeft\s*\?\s*'align-left'\s*:\s*\(isNearRight\s*\?\s*'align-right'\s*:\s*'align-center'\);/,
+            'JSX must compute popoverAlignClass'
+        );
+    });
+
+    it('13. Station Context Menu clamps coordinates within viewport and has z-index: 100000 !important', () => {
+        const menuJsxPath = path.resolve(__dirname, '../components/Modals/StationContextMenu.jsx');
+        const menuScssPath = path.resolve(__dirname, '../components/Modals/StationContextMenu.scss');
+        const menuJsx = fs.readFileSync(menuJsxPath, 'utf-8');
+        const menuScss = fs.readFileSync(menuScssPath, 'utf-8');
+
+        // JSX edge clamping
+        assert.match(
+            menuJsx,
+            /const\s+posX\s*=\s*Math\.max\(10,\s*Math\.min\(x,\s*[\s\S]*?menuWidth\s*-\s*12\)\);/,
+            'StationContextMenu must clamp posX within viewport width'
+        );
+        assert.match(
+            menuJsx,
+            /const\s+posY\s*=\s*Math\.max\(10,\s*Math\.min\(y,\s*[\s\S]*?menuHeight\s*-\s*12\)\);/,
+            'StationContextMenu must clamp posY within viewport height'
+        );
+        // SCSS top priority z-index
+        assert.match(
+            menuScss,
+            /z-index:\s*100000\s*!important;/,
+            'StationContextMenu must declare z-index: 100000 !important'
+        );
+    });
 });

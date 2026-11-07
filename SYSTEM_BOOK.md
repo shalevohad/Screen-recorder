@@ -85,6 +85,7 @@
 63. [Master MP4 Real-Time Composition Telemetry, Auto-Director Multi-Station Focus Resolution & Canvas Mount Stabilization (2026-11-07)](#63-master-mp4-real-time-composition-telemetry-auto-director-multi-station-focus-resolution--canvas-mount-stabilization-2026-11-07)
 64. [Enterprise Release v1.0.50 & Unified Fleet Version Alignment (2026-11-07)](#64-enterprise-release-v1050--unified-fleet-version-alignment-2026-11-07)
 65. [Enterprise Release v1.0.70 & Forensic Gap Keystroke Elimination & CI/CD Security Hardening (2026-11-07)](#65-enterprise-release-v1070--forensic-gap-keystroke-elimination--cicd-security-hardening-2026-11-07)
+66. [Comprehensive Viewport Popover & Context Menu Stacking & Occlusion Immunity Architecture (2026-11-08)](#66-comprehensive-viewport-popover--context-menu-stacking--occlusion-immunity-architecture-2026-11-08)
 
 ---
 
@@ -4024,6 +4025,48 @@ Release **v1.0.70** delivers key forensic recording invariants, CI/CD supply cha
 - **Dashboard C2 Test Harness**: 34 Passed (100% green).
 - **Studio NLE / Extractor Test Harness**: 103 Passed (100% green, including multi-station & multi-display routing test).
 - **Total Solution Quality Score**: **590 / 590 Tests Passing**.
+
+---
+
+## 66. Comprehensive Viewport Popover & Context Menu Stacking & Occlusion Immunity Architecture (2026-11-08)
+
+### 66.1 Root Cause Analysis of Canvas Popover Occlusion
+A critical visual occlusion bug occurred in the Studio Canvas (`MulticamViewport.jsx`):
+1. **Overflow Clipping Trapping**: The floating placement inspector HUD (`.floating-feed-inspector.compact-hud-inspector`) had a fixed height of `28px` combined with `.floating-feed-inspector { overflow-x: auto; }`. Per the CSS 2.1 / W3C Overflow specification, applying `overflow-x: auto` automatically forces the computed value of `overflow-y` to become `auto`. Any child element positioned outside the 28px bounding box (such as `.compact-color-palette-popover` positioned at `top: calc(100% + 5px)`) was strictly clipped and hidden by the browser rendering engine, producing only a 0-width invisible scrollbar track inside the inspector toolbar.
+2. **Missing Boundary Direction Adaptation**: The palette popover had static `top: calc(100% + 5px); left: 0;` styling. In constellations where a workstation card was placed near the canvas bottom or near the right viewport border, the popover would bleed off-screen or collide with lower stage elements.
+3. **Missing Outside-Click & Selection Dismissal**: Clicking outside the popover or switching to another workstation card failed to dismiss the open palette, leaving stale state.
+
+### 66.2 Popover Elevation & Stacking Context Invariants
+To guarantee that menus, context menus, and toolbars across all views are never clipped or occluded:
+1. **Floating Feed Inspector HUD Unclipping**:
+   - Updated `.floating-feed-inspector.compact-hud-inspector` to `min-height: 28px; height: auto; overflow: visible !important;`.
+   - Updated `.floating-feed-inspector` to `overflow: visible !important;`.
+   - Elevated `.compact-color-palette-popover` to top-priority `z-index: 100000 !important;` with `pointer-events: auto;`.
+2. **Dynamic Multi-Axis Boundary Positioning**:
+   - `openUpwards`: Calculated dynamically in `MulticamViewport.jsx` (`isNearBottom && !isNearTop`). When a screen is in the lower canvas region, the palette opens upward (`bottom: calc(100% + 6px)`), completely preventing bottom edge clipping. When near the top, it opens downward (`top: calc(100% + 5px)`).
+   - `align-right`: Calculated dynamically when `centerXPct > 65` or card right edge exceeds `75%`. Clamps the popover against the right edge (`left: auto; right: 0;`), preventing horizontal off-screen bleed.
+3. **Outside-Click & Escape Dismissal**:
+   - Integrated `colorPickerRef` with global `mousedown` and `keydown` (`Escape`) listeners.
+   - Synchronously resets `setShowColorPicker(false)` whenever `selectedFeedIndex` changes.
+4. **Timeline Keyframe Track Inspector Popover Elevation**:
+   - Elevated `.kf-inspector-popover` to `z-index: 35000 !important;` (strictly higher than the timeline playhead needle at `z-index: 500`).
+   - Attached `.has-active-popover` to `.canvas-keyframe-track-row` (`z-index: 25000 !important;`) and `.kf-marker-diamond` (`z-index: 30000 !important;`).
+   - Added boundary clamping (`.align-left` at `<15%`, `.align-right` at `>85%`), preventing popover clipping against the 180px track header cell.
+5. **Station Context Menu Viewport Clamping**:
+   - Added `Math.max(10, Math.min(x, window.innerWidth - menuWidth - 12))` and `Math.max(10, Math.min(y, window.innerHeight - menuHeight - 12))` to `StationContextMenu.jsx`.
+   - Set `.station-context-menu-root` to `z-index: 100000 !important;`.
+6. **Station Overflow Chips Popover**:
+   - Elevated `.overflow-popover-menu.upward` to `z-index: 10000 !important;` with container-level relative elevation.
+
+### 66.3 Automated Test Coverage
+- Verified by `Features/ExtractorAdvanced/Client/src/tests/viewportMenuStackingContext.test.js`:
+  - `10. Canvas window border color popover is never clipped (overflow: visible !important and z-index: 100000 !important)`
+  - `11. Canvas window border color popover supports intelligent boundary positioning and outside-click dismissal`
+  - `12. Keyframe Track Popover (.kf-inspector-popover) has z-index: 35000 !important and boundary clamping`
+  - `13. Station Context Menu clamps coordinates within viewport and has z-index: 100000 !important`
+- All 13/13 tests in `viewportMenuStackingContext.test.js` passed (100% green).
+- All 110 tests across 17 suites in `ExtractorAdvanced/Client` passed (100% green).
+- All 455 unit & integration tests in `ITB-SCREEN-RECORDER.Tests` passed (100% green).
 
 
 

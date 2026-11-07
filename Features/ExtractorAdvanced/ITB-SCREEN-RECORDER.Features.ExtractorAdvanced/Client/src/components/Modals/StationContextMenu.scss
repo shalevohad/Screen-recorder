@@ -4,7 +4,7 @@
 
 .station-context-menu-root {
     position: fixed;
-    z-index: 99999;
+    z-index: 100000 !important;
     min-width: 195px;
     background: rgba(9, 13, 20, 0.96);
     backdrop-filter: blur(14px);

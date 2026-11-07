@@ -429,6 +429,31 @@ export default function MulticamViewport({
     const [showRotationControl, setShowRotationControl] = useState(false);
     const [showShadowControl, setShowShadowControl] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
+    const colorPickerRef = useRef(null);
+
+    // Close color picker on outside click or Escape
+    useEffect(() => {
+        if (!showColorPicker) return;
+        const handleClickOutside = (e) => {
+            if (colorPickerRef.current && !colorPickerRef.current.contains(e.target)) {
+                setShowColorPicker(false);
+            }
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setShowColorPicker(false);
+        };
+        window.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [showColorPicker]);
+
+    // Reset color picker when switching selected feed
+    useEffect(() => {
+        setShowColorPicker(false);
+    }, [selectedFeedIndex]);
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
     const [snapGuides, setSnapGuides] = useState({ vertical: null, horizontal: null });
@@ -3720,6 +3745,13 @@ export default function MulticamViewport({
                                 topStyle = `calc(${((p.y) / virtualH) * 100}% - 34px)`;
                             }
 
+                            // Intelligent Popover Boundary Positioning:
+                            // Detect if card is near canvas bottom or right edge to prevent menu occlusion
+                            const isNearBottom = (p.y / virtualH) > 0.60;
+                            const isNearTop = isDockedInsideTop || (p.y / virtualH) < 0.15;
+                            const openUpwards = isNearBottom && !isNearTop;
+                            const isNearRight = centerXPct > 65 || (cardLeftPct + cardWidthPct) > 75;
+
                             const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
                                 s.id === p.stationId || 
                                 s.hostname?.toLowerCase() === p.stationId?.toLowerCase()
@@ -3744,7 +3776,6 @@ export default function MulticamViewport({
                                         🎛️ #${layerRank}
                                     </span>
 
-                                    {/* Border Color Swatch Button & Popover */}
                                     {/* Screen Title Customization */}
                                     <div className="inspector-group title-rename-group">
                                         <span className="inspector-group-label">TITLE:</span>
@@ -3767,7 +3798,8 @@ export default function MulticamViewport({
                                         />
                                     </div>
 
-                                    <div className="inspector-group color-swatch-group">
+                                    {/* Border Color Swatch Button & Popover */}
+                                    <div className="inspector-group color-swatch-group" ref={colorPickerRef}>
                                         <button
                                             type="button"
                                             className="btn-mini-tool color-swatch-trigger"
@@ -3780,7 +3812,11 @@ export default function MulticamViewport({
                                             />
                                         </button>
                                         {showColorPicker && (
-                                            <div className="compact-color-palette-popover">
+                                            <div
+                                                className={`compact-color-palette-popover ${openUpwards ? 'open-upwards' : 'open-downwards'} ${isNearRight ? 'align-right' : 'align-left'}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
                                                 {PALETTE_COLORS.map(c => (
                                                     <button
                                                         key={c}

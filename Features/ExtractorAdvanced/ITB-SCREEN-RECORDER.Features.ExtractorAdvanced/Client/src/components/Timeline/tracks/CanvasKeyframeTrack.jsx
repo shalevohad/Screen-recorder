@@ -154,7 +154,7 @@ export default function CanvasKeyframeTrack({
     };
 
     return (
-        <div className="canvas-keyframe-track-row">
+        <div className={`canvas-keyframe-track-row ${selectedConfigKfIndex !== null ? 'has-active-popover' : ''}`}>
             {/* Minimalist 180px Header matching DirectorTrack */}
             <div className="track-header-cell">
                 <span className="track-icon">❖</span>
@@ -190,6 +190,10 @@ export default function CanvasKeyframeTrack({
                     if (leftPct < -2 || leftPct > 102) return null;
 
                     const isActive = idx === activeKfIndex;
+                    const isPopoverOpen = selectedConfigKfIndex === idx && !isThisDragging;
+                    const isNearLeft = leftPct < 15;
+                    const isNearRight = leftPct > 85;
+                    const popoverAlignClass = isNearLeft ? 'align-left' : (isNearRight ? 'align-right' : 'align-center');
                     const clockStr = formatTimelineClock(epoch, timeMode, { includeSeconds: true });
                     const transLabel = `${kf.transitionType || 'smooth'} (${kf.transitionDurationSec ?? 0.5}s)`;
                     const offsetSec = Math.max(0, (epoch - baseEpochMs) / 1000).toFixed(1);
@@ -197,7 +201,7 @@ export default function CanvasKeyframeTrack({
                     return (
                         <div
                             key={`kf-${idx}`}
-                            className={`kf-marker-diamond ${isActive ? 'is-active' : ''} ${isThisDragging ? 'is-dragging' : ''}`}
+                            className={`kf-marker-diamond ${isActive ? 'is-active' : ''} ${isThisDragging ? 'is-dragging' : ''} ${isPopoverOpen ? 'has-active-popover' : ''}`}
                             style={{ left: `${leftPct}%` }}
                             onMouseDown={(e) => handleMouseDownMarker(e, idx, kf)}
                             onContextMenu={(e) => {
@@ -216,9 +220,9 @@ export default function CanvasKeyframeTrack({
                                     <span className="tooltip-sub">+{offsetSec}s</span>
                                 </div>
                             )}
-                            {selectedConfigKfIndex === idx && !isThisDragging && (
+                            {isPopoverOpen && (
                                 <div
-                                    className="kf-inspector-popover"
+                                    className={`kf-inspector-popover ${popoverAlignClass}`}
                                     onClick={(e) => e.stopPropagation()}
                                     onMouseDown={(e) => e.stopPropagation()}
                                 >
