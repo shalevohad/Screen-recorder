@@ -200,17 +200,17 @@
                 align-items: center;
                 justify-content: center;
                 overflow: hidden;
-                /* Dim station-specific signal drop gaps so green recorded blocks remain prominent */
+                /* Station-specific signal drop / gap: clear tactical crimson with diagonal striping */
                 &.gap-station-signal {
-                    background-color: rgba(225, 29, 72, 0.07);
-                    border-left: 1px solid rgba(244, 63, 94, 0.35);
-                    border-right: 1px solid rgba(244, 63, 94, 0.35);
+                    background-color: rgba(225, 29, 72, 0.14);
+                    border-left: 1px solid rgba(244, 63, 94, 0.6);
+                    border-right: 1px solid rgba(244, 63, 94, 0.6);
 
                     .gap-pattern {
                         position: absolute;
                         inset: 0;
-                        opacity: 0.15;
-                        background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.3), rgba(244, 63, 94, 0.3) 10px, transparent 10px, transparent 20px);
+                        opacity: 0.25;
+                        background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.35), rgba(244, 63, 94, 0.35) 10px, transparent 10px, transparent 20px);
                     }
 
                     .gap-badge {
@@ -220,8 +220,8 @@
                         align-items: center;
                         gap: 6px;
                         padding: 2px 8px;
-                        background-color: rgba(15, 23, 42, 0.88);
-                        border: 1px solid rgba(244, 63, 94, 0.4);
+                        background-color: rgba(15, 23, 42, 0.92);
+                        border: 1px solid rgba(244, 63, 94, 0.65);
                         border-radius: 4px;
                         color: #FDA4AF;
                         font-family: 'JetBrains Mono', monospace;
@@ -229,7 +229,7 @@
                         font-weight: 800;
                         letter-spacing: 0.5px;
                         text-transform: uppercase;
-                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
                         white-space: nowrap;
 
                         &::before {
@@ -327,7 +327,7 @@
                 }
             }
         }
-        /* Green recorded data segment: enforce minimum visible width and glow */
+        /* Health Bar: Continuous 3px indicator. Green recorded segments & Red/Amber signal loss & gaps */
         .data-presence-layer {
             position: absolute;
             bottom: 0;
@@ -335,7 +335,11 @@
             right: 0;
             height: 3px;
             pointer-events: none;
-            z-index: 5;
+            z-index: 15 !important; // Must be elevated above dimmed masks (z-index 8 and 10)
+
+            &.has-stepper {
+                bottom: 12px !important;
+            }
 
             .data-presence-bar {
                 position: absolute;
@@ -344,9 +348,28 @@
                 height: 100% !important;
                 min-width: 4px !important; // Enforce minimum width to prevent disappearance of short segments
                 background-color: #10B981;
-                box-shadow: 0 0 10px #10B981, 0 0 18px rgba(52, 211, 153, 0.85);
-                border: 1px solid #6EE7B7;
-                border-radius: 2px;
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.85);
+                border-radius: 1px;
+
+                &.recorded-bar {
+                    background-color: #10B981 !important;
+                    box-shadow: 0 0 8px rgba(16, 185, 129, 0.85), 0 0 14px rgba(16, 185, 129, 0.4) !important;
+                    border: 1px solid #34D399;
+                }
+
+                &.gap-bar {
+                    &.gap-station {
+                        background-color: #F43F5E !important;
+                        box-shadow: 0 0 8px rgba(244, 63, 94, 0.85), 0 0 14px rgba(244, 63, 94, 0.4) !important;
+                        border: 1px solid #FB7185;
+                    }
+
+                    &.gap-global {
+                        background-color: #F59E0B !important;
+                        box-shadow: 0 0 8px rgba(245, 158, 11, 0.85), 0 0 14px rgba(245, 158, 11, 0.4) !important;
+                        border: 1px dashed #FCD34D;
+                    }
+                }
             }
         }
 
@@ -602,7 +625,7 @@
         right: 0;
         height: 3px !important;
         pointer-events: none;
-        z-index: 12 !important;
+        z-index: 15 !important;
 
         &.has-stepper {
             bottom: 12px !important;
@@ -614,9 +637,24 @@
             bottom: 0;
             height: 100% !important;
             min-width: 4px !important;
-            background-color: #10B981 !important;
-            box-shadow: 0 0 8px rgba(16, 185, 129, 0.8) !important;
             border-radius: 1px;
+
+            &.recorded-bar {
+                background-color: #10B981 !important;
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.85) !important;
+            }
+
+            &.gap-bar {
+                &.gap-station {
+                    background-color: #F43F5E !important;
+                    box-shadow: 0 0 8px rgba(244, 63, 94, 0.85) !important;
+                }
+
+                &.gap-global {
+                    background-color: #F59E0B !important;
+                    box-shadow: 0 0 8px rgba(245, 158, 11, 0.85) !important;
+                }
+            }
         }
     }
 }
@@ -1013,7 +1051,7 @@
                 right: 0;
                 height: 3px !important;
                 pointer-events: none;
-                z-index: 12 !important;
+                z-index: 15 !important;
 
                 .data-presence-bar {
                     position: absolute;
@@ -1021,9 +1059,24 @@
                     bottom: 0;
                     height: 100% !important;
                     min-width: 4px !important;
-                    background-color: #10B981 !important;
-                    box-shadow: 0 0 8px rgba(16, 185, 129, 0.8) !important;
                     border-radius: 1px;
+
+                    &.recorded-bar {
+                        background-color: #10B981 !important;
+                        box-shadow: 0 0 8px rgba(16, 185, 129, 0.85) !important;
+                    }
+
+                    &.gap-bar {
+                        &.gap-station {
+                            background-color: #F43F5E !important;
+                            box-shadow: 0 0 8px rgba(244, 63, 94, 0.85) !important;
+                        }
+
+                        &.gap-global {
+                            background-color: #F59E0B !important;
+                            box-shadow: 0 0 8px rgba(245, 158, 11, 0.85) !important;
+                        }
+                    }
                 }
             }
         }

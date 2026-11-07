@@ -414,7 +414,20 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                                 width = dWidth,
                                 height = dHeight,
                                 fps = dFps,
-                                bounds = new { x = idx * dWidth, y = 0, width = dWidth, height = dHeight }
+                                bounds = new { x = idx * dWidth, y = 0, width = dWidth, height = dHeight },
+                                segments = g.OrderBy(c => c.StartUtc).Select(c =>
+                                {
+                                    long sMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds();
+                                    long eMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds();
+                                    return (object)new
+                                    {
+                                        startEpoch = sMs,
+                                        endEpoch = eMs,
+                                        startEpochMs = sMs,
+                                        endEpochMs = eMs,
+                                        displayId = g.Key
+                                    };
+                                }).ToList()
                             };
                         })
                         .ToList();
@@ -434,7 +447,20 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                             width = width,
                             height = height,
                             fps = fps,
-                            bounds = new { x = 0, y = 0, width = width, height = height }
+                            bounds = new { x = 0, y = 0, width = width, height = height },
+                            segments = chunks.OrderBy(c => c.StartUtc).Select(c =>
+                            {
+                                long sMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds();
+                                long eMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds();
+                                return (object)new
+                                {
+                                    startEpoch = sMs,
+                                    endEpoch = eMs,
+                                    startEpochMs = sMs,
+                                    endEpochMs = eMs,
+                                    displayId = "mon-0"
+                                };
+                            }).ToList()
                         });
                     }
 
@@ -546,16 +572,44 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         {
                             long sMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds();
                             long eMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds();
+                            string dId = string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant();
                             return (object)new
                             {
                                 startEpoch = sMs,
                                 endEpoch = eMs,
                                 startEpochMs = sMs,
-                                endEpochMs = eMs
+                                endEpochMs = eMs,
+                                displayId = dId
                             };
                         }).ToList();
 
                     segmentsMap[stationId] = segList;
+
+                    // Group chunks per display to support granular per-monitor timeline and filmstrip rendering
+                    var displayGroups = chunks
+                        .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant());
+
+                    foreach (var dg in displayGroups)
+                    {
+                        var dSegList = dg
+                            .OrderBy(c => c.StartUtc)
+                            .Select(c =>
+                            {
+                                long sMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds();
+                                long eMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds();
+                                return (object)new
+                                {
+                                    startEpoch = sMs,
+                                    endEpoch = eMs,
+                                    startEpochMs = sMs,
+                                    endEpochMs = eMs,
+                                    displayId = dg.Key
+                                };
+                            }).ToList();
+
+                        segmentsMap[$"{stationId}/{dg.Key}"] = dSegList;
+                        segmentsMap[$"{stationId}_{dg.Key}"] = dSegList;
+                    }
                 });
 
                 return Ok(segmentsMap);

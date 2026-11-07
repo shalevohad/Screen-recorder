@@ -216,8 +216,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
             if (!string.IsNullOrEmpty(displayId))
             {
-                var matching = chunks.Where(c => string.Equals(c.DisplayId, cleanDisplay, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (matching.Count > 0) chunks = matching;
+                chunks = chunks.Where(c => string.Equals(c.DisplayId, cleanDisplay, StringComparison.OrdinalIgnoreCase)).ToList();
             }
             string ffmpegPath = ResolveFfmpegBinary();
 
@@ -235,9 +234,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (candidateChunks.Count == 0)
             {
                 var widerChunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc.AddSeconds(-15), endUtc.AddSeconds(15));
+                if (!string.IsNullOrEmpty(displayId))
+                {
+                    widerChunks = widerChunks.Where(c => string.Equals(c.DisplayId, cleanDisplay, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
                 candidateChunks = widerChunks
                     .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
-                    .OrderByDescending(c =>
+                    .OrderByDescending(c => c.StartUtc <= startUtc && startUtc <= c.EndUtc)
+                    .ThenByDescending(c =>
                     {
                         long overlapStart = Math.Max(startUtc.Ticks, c.StartUtc.Ticks);
                         long overlapEnd = Math.Min(endUtc.Ticks, c.EndUtc.Ticks);
@@ -248,8 +252,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (candidateChunks.Count == 0)
             {
-                byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
-                return new MemoryStream(blackTile);
+                // No candidate chunks exist for this specific display or temporal window.
+                // Return Stream.Null to return HTTP 204 NoContent and prevent cross-monitor false filmstrip tiles.
+                return Stream.Null;
             }
 
             foreach (var sampleChunk in candidateChunks)

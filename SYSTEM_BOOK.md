@@ -3587,3 +3587,43 @@ On initial studio load or workstation selection in `ExtractorAdvancedStudio`, sc
 2. **Circular State Update Loop Elimination**:
    - `useEffect` hooks synchronizing `canvasLayoutTimeline` between `MulticamViewport` and the parent studio caused circular ping-pong re-renders: the viewport notified the parent of layout adjustments, which passed back updated props, triggering another viewport re-render.
    - **Fix**: Decoupled synchronization using `internalTimelineRef` and removed `internalTimeline` from the dependency array, performing deep comparison against the ref before propagating updates upward. This eliminated circular re-renders and guaranteed instantaneous, zero-flicker canvas mounting.
+
+
+---
+
+### 63.4 Per-Monitor Recording Isolation, Red Gap Health Bar & Spritesheet Fallback Prevention
+
+#### Operational Background & Problem Statement
+In forensic replay environments with multi-display workstations (e.g. `OHAD-DESKTOP` with `Screen 1` and `Screen 2`), when a secondary display was powered off or disconnected mid-shift (such as `mon-1` ending at 07:58:35 while `mon-0` recorded until 08:29:44):
+1. **Phantom Filmstrip on Disconnected Screen**:
+   The secondary display's child timeline track in the studio continued rendering filmstrip thumbnail cards across the entire period where it was disconnected, showing thumbnails of the primary desktop (`mon-0`) while the multicam viewport above correctly showed a "NO SIGNAL" test pattern.
+2. **Missing Health Indicator in Gaps (No Red Bar)**:
+   The 3px status bar at the bottom of the timeline was completely invisible or missing across all non-recorded regions (leading buffer before recordings, signal loss periods, and trailing buffer). Operators expect an unbroken, continuous health bar across the entire timeline showing green for active video and red for signal loss / gaps.
+3. **Z-Index Occlusion by Dimmed Masks**:
+   The health bar was set to `z-index: 5`, causing it to be buried beneath the Auto-Director off-air mask (`director-mask-dimmed`, `z-index: 8`) and global cut-in/cut-out masks (`mask-dimmed`, `z-index: 10`).
+
+#### Root Cause Analysis
+1. **Frontend Segment Fallback**:
+   In `TimelineTrack.jsx`, child display tracks previously evaluated `activeSegments={(disp.segments && disp.segments.length > 0) ? disp.segments : activeSegments}`. Because `disp.segments` was not populated by the server in station topology endpoints, secondary displays inherited `activeSegments` (`mon-0`'s segments).
+2. **Backend Spritesheet Candidate Fallback**:
+   In `AdvancedExtractorService.cs`, when `displayId` was queried for an interval where `mon-1` had no chunks, `matching.Count > 0` evaluated to `false`, causing the service to fall back to `var candidateChunks = chunks;` (which contained `mon-0`'s chunks), extracting primary monitor frames for the secondary monitor.
+3. **Health Bar Data Gap Rendering**:
+   `data-presence-layer` previously only rendered `.data-presence-bar` elements for `recordedBars`. No elements were generated for `classifiedGaps`.
+
+#### Architectural Resolution
+1. **Strict Backend Per-Monitor Chunk Partitioning**:
+   - In `ExtractorAdvancedController.cs`:
+     - `/api/v1/extractor-advanced/stations`: `distinctDisplays` embeds `segments` filtered strictly to each monitor: `dispObj.segments = g.OrderBy(c => c.StartUtc).ToList()`.
+     - `/api/v1/extractor/timeline-segments`: Emits `displayId` on each segment DTO and creates compound lookup keys: `${stationId}/${displayId}` and `${stationId}_${displayId}`.
+   - In `AdvancedExtractorService.cs`:
+     - Strictly filters candidate chunks by `cleanDisplay`. If no chunks exist (`candidateChunks.Count == 0`), returns `Stream.Null`, causing the controller to return `204 NoContent`. Cross-monitor thumbnail bleeding is completely eliminated.
+2. **Frontend Child Display Segment Isolation**:
+   - In `TimelineTrack.jsx`:
+     - Computes `childSegs` strictly for each child display. Secondary monitors (`mon-1`+) evaluate against their specific segment arrays and strictly return `[]` if no recordings exist, preventing any fallback to `mon-0`.
+3. **Continuous Health Bar & Red Gap Architecture**:
+   - In `TimelineTrack.jsx`:
+     - `data-presence-layer` renders both recorded video (`recorded-bar`, `#10B981` emerald green) and signal loss/gaps (`gap-bar`, `#F43F5E` crimson red for station gaps; `#F59E0B` amber for global skipped gaps).
+     - Lowered badge threshold to `gap.widthPct > 2.5` for clear visibility of "NO SIGNAL" labels.
+   - In `TimelineTrack.scss`:
+     - Elevated `.data-presence-layer` to `z-index: 15 !important` across all track containers (`track-canvas`, `station-collapsed-track`, and `station-child-display-track`), guaranteeing continuous visibility above all masks.
+     - Enhanced `.gap-station-signal` styling with tactical red diagonal striping (`background-color: rgba(225, 29, 72, 0.14)`).

@@ -377,7 +377,7 @@ export function FilmstripCanvas({
                         title={gap.type === 'global' ? `Shared Gap: ${gap.durationSec}s will be skipped` : `Station Gap: ${gap.durationSec}s No-Signal`}
                     >
                         <div className="gap-pattern" />
-                        {gap.widthPct > 5 && (
+                        {gap.widthPct > 2.5 && (
                             <div className={`gap-badge ${gap.type === 'global' ? 'global-badge' : ''}`}>
                                 <span>{gap.type === 'global' ? `✂ SKIPPED (${gap.durationSec}s)` : 'NO SIGNAL'}</span>
                             </div>
@@ -435,13 +435,24 @@ export function FilmstripCanvas({
                 )
             ))}
 
-            {/* Health Bar (Thin 3px line indicating video presence) */}
+            {/* Health Bar (Thin 3px continuous line indicating video presence & signal loss) */}
             <div className={`data-presence-layer ${stepperSegments ? 'has-stepper' : ''}`}>
+                {/* 1. Recorded Video (Green #10B981) */}
                 {recordedBars.map(bar => (
                     <div
                         key={`bar_${bar.id}`}
-                        className="data-presence-bar"
+                        className="data-presence-bar recorded-bar"
                         style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
+                        title="Recorded Video"
+                    />
+                ))}
+                {/* 2. Signal Loss / Gaps (Red #F43F5E) & Global Gaps (Amber #F59E0B) */}
+                {classifiedGaps.map(gap => (
+                    <div
+                        key={`gap_bar_${gap.id}`}
+                        className={`data-presence-bar gap-bar ${gap.type === 'global' ? 'gap-global' : 'gap-station'}`}
+                        style={{ left: `${gap.leftPct}%`, width: `${gap.widthPct}%` }}
+                        title={gap.type === 'global' ? `Shared Gap: ${gap.durationSec}s skipped in export` : `Signal Loss / Gap: ${gap.durationSec}s (No Video)`}
                     />
                 ))}
             </div>
@@ -853,6 +864,20 @@ export default function TimelineTrack({
                         : `Screen ${dispNumber}${disp.isPrimary || dIdx === 0 ? ' (Main)' : ''}`;
                     const onCanvas = isDisplayOnCanvas(dispId);
 
+                    const childSegs = (() => {
+                        if (disp.segments && disp.segments.length > 0) return disp.segments;
+                        const key1 = `${stationId}/${dispId}`.toLowerCase();
+                        const key2 = `${hostname}/${dispId}`.toLowerCase();
+                        const key3 = `${stationId}_${dispId}`.toLowerCase();
+                        const key4 = `${hostname}_${dispId}`.toLowerCase();
+                        for (const [k, v] of Object.entries(recordingSegments || {})) {
+                            const lk = k.toLowerCase();
+                            if (lk === key1 || lk === key2 || lk === key3 || lk === key4) return v;
+                        }
+                        if (dispId === 'mon-0' || disp.isPrimary || dIdx === 0) return activeSegments;
+                        return [];
+                    })();
+
                     return (
                         <div
                             key={`${station.id}-${dispId}`}
@@ -882,7 +907,7 @@ export default function TimelineTrack({
                             <FilmstripCanvas
                                 hostname={hostname}
                                 displayId={dispId}
-                                activeSegments={(disp.segments && disp.segments.length > 0) ? disp.segments : activeSegments}
+                                activeSegments={childSegs}
                                 viewportStartMs={viewportStartMs}
                                 viewportDurationMs={viewportDurationMs}
                                 baseEpochMs={baseEpochMs}
