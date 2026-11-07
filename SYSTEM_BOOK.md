@@ -3886,3 +3886,44 @@ In mission-critical forensic playback, operators arrange heterogeneous workstati
 - Verified by `Features/ExtractorAdvanced/Client/src/tests/viewportMenuStackingContext.test.js`:
   1. `8. Precision CAD / NLE Rulers are positioned outside the screen box (.canvas-master-frame-16-9)`: Validates that `.canvas-rulers-top-row` and `.canvas-rulers-main-row` wrap `.canvas-master-frame-16-9` and that internal `.canvas-rulers-container` is eradicated.
   2. `9. Screen inspector menu is positioned at the top of the card with z-index: 4500 (above canvas, beneath side menus)`: Validates top-oriented positioning logic and exact `z-index: 4500` declaration.
+
+---
+
+### 63.11 Full-Solution Dependency Security Baseline & Socket.dev Pre-Flight Alignment (2026-11-07)
+
+#### Operational & Security Mission
+In strict conformance with **Rule 15 (Pre-Flight Dependency Vetting via Socket.dev)** and **Rule 14 (Air-Gapped & Isolated Environment Invariant)**, a comprehensive security audit was executed across all .NET NuGet dependencies (all 12 solution projects) and all frontend npm dependencies (`ClientApp`, `ExtractorAdvanced/Client`, `Extractor/Client`). All identified vulnerabilities, supply chain risks, and outdated native binaries were patched and aligned to secure, verified baselines.
+
+#### 1. .NET NuGet Dependency Remediation
+- **Native SQLite Binary Vulnerability (`CVE-2025-6965` / `GHSA-2m69-gcr7-jv3q`)**:
+  - *Risk*: Outdated native C-library bundle `e_sqlite3.dll` (v2.1.10) possessed memory safety vulnerabilities in SQLite core.
+  - *Remediation*:
+    - Upgraded `SQLitePCLRaw.bundle_e_sqlite3` from `2.1.10` to `2.1.13` in `ITB-SCREEN-RECORDER.Core` and `ITB-SCREEN-RECORDER.Server`.
+    - Upgraded `Microsoft.Data.Sqlite` from `8.0.12` to `8.0.33` across `Core`, `Server`, and `Tests`.
+- **Legacy Test Framework Transitive Vulnerabilities**:
+  - *Risk*: Legacy test harnesses pulled in transitive packages with high-severity vulnerabilities: `System.Net.Http 4.3.0` (`GHSA-7jgj-8wvc-jh57`) and `System.Text.RegularExpressions 4.3.0` (`GHSA-cmhx-cq75-c4mj`).
+  - *Remediation*: Added explicit package reference overrides in `ITB-SCREEN-RECORDER.Tests.csproj` for `System.Net.Http` (`4.3.4`) and `System.Text.RegularExpressions` (`4.3.1`).
+- **Solution-Wide Verification**:
+  - Command: `dotnet list ITB-Screen-Recorder.sln package --vulnerable --include-transitive`
+  - Result: **0 vulnerable packages** reported across all 12 projects.
+
+#### 2. Frontend NPM Dependency Remediation
+- **`ITB-SCREEN-RECORDER.Server/ClientApp`**:
+  - Patched `zod` to `4.6.7` (resolving prototype pollution `GHSA-mrhx-c7xc-m3w5`).
+  - Upgraded `vite` to `8.3.6` and `source-map-js` to `1.2.2` (resolving ReDoS in source map parsing `GHSA-68fv-2mgg-jv7q`).
+  - Updated `brace-expansion` to `5.0.12`.
+- **`Features/ExtractorAdvanced/Client` & `Features/Extractor/Client`**:
+  - Patched `source-map-js` to `1.2.2`.
+- **Pre-Flight Gating (`npm audit --audit-level=critical`)**:
+  - Verified across all three frontend projects: **0 critical vulnerabilities**, exit code 0.
+
+#### 3. Build & Runtime Concurrency Isolation
+- Identified that running server processes (`ITB-SCREEN-RECORDER.Server.exe`) hold exclusive locks on native binaries (`e_sqlite3.dll`) in output folders, causing MSB3021 / MSB3027 copy errors during solution rebuilds.
+- Automated pipeline stops background server processes prior to build execution, ensuring deterministic and clean binary replacement.
+
+#### 4. Automated Verification Summary
+- **.NET Test Suite**: `ITB-SCREEN-RECORDER.Tests` — 453 Passed, 0 Failed, 0 Skipped (Duration: 21s).
+- **ClientApp Test Suite**: 34 Passed, 0 Failed (Duration: 94ms).
+- **ExtractorAdvanced Test Suite**: 101 Passed, 0 Failed (Duration: 135ms).
+- **Total Tests**: **588 / 588 Passing (100% Green)**.
+

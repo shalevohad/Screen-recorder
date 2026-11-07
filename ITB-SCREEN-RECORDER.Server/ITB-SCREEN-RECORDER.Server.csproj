@@ -35,9 +35,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.89" />
-		<!-- 💡 חבילות SQLite מנוהלות ו-Native Bundle ישיר מ-NuGet -->
-		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
-		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
+		<!-- 💡 חבילות SQLite מנוהלות ו-Native Bundle ישיר מ-NuGet (Secured against GHSA-2m69-gcr7-jv3q) -->
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.33" />
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
