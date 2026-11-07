@@ -2367,11 +2367,13 @@ To achieve Premiere-grade non-linear editing (NLE) parity, ITB-SCREEN-RECORDER n
   - **Direct Actions**: `＋ KF` (or keyboard shortcut `K`) to explicitly mint a keyframe; `🗑️ DEL KF` to remove the active keyframe.
   - **Universal Playback Hotkey**: Spacebar toggles synchronized canvas play/pause.
 
-### 6. Backend Multi-Interval FFmpeg Export Alignment
-* In `AdvanceJobManager.cs`:
-  - When `CanvasLayoutTimeline.Keyframes.Count > 1`, the backend decomposes the mission into chronological intervals \([T_k, T_{k+1}]\).
-  - Each interval synthesizes a discrete FFmpeg canvas stage with its designated layout placements, trimming and padding each workstation track to exact sub-millisecond timestamps.
-  - Concatenation cross-fades and cuts match the frontend preview with 100% forensic fidelity.
+### 6. Backend Multi-Interval FFmpeg Export Alignment & Dynamic Keyframe Transitions
+* In `AdvanceJobManager.cs` (`BuildMultiKeyframeCanvasFiltergraph`):
+  - When `CanvasLayoutTimeline.Keyframes.Count > 1`, the backend evaluates the timeline against the export cut boundaries $[T_{start}, T_{end}]$ and decomposes the mission into chronological intervals $[T_k, T_{k+1}]$.
+  - The initial layout at $t=0$ accurately binds to the active keyframe at the In-Point.
+  - For each interval, a discrete FFmpeg canvas stage $[bg\_int\_k]$ is synthesized with exact placement coordinates, scales, borders, rotations, and labels.
+  - Smooth animations and transitions (`smooth`, `fade`, `linear`, `dip`, `wipeleft`, etc.) are synthesized via frame-accurate `xfade` filter chains. For each transition into interval $k$, an overlap lead-in delta $\Delta_k = \min(\text{transDur}, \frac{S_k - S_{k-1}}{2}, \frac{E_k - S_k}{2})$ is applied to the underlying video trims, ensuring zero time drift, frame-accurate camera synchronization, and continuous playback without solid black dropouts or flicker.
+  - When all transitions are cuts, the pipeline seamlessly defaults to zero-overhead stream concatenation (`concat=v=1:a=0`).
 
 ---
 ## 54. Master Export Video Quality & High-Fidelity CFR Framerate Pipeline (2026-11-03)
@@ -2483,6 +2485,12 @@ A dual-tier automated test harness covers all critical verification points acros
    Validates visually lossless `-crf 17` intermediate cut tracks to prevent double-compression degradation.
 8. **`NleMasterExportQualityTests.CanvasLayoutTimeline_KeyframeSerialization_PreservesTransitions`**:
    Validates DTO JSON and XML serialization/deserialization for multi-keyframe transition properties.
+9. **`NleMasterExportQualityTests.CanvasLayoutTimeline_TwoScreensWithKeyframeTransition_GeneratesSequentialLayoutsAndAnimation`**:
+   Validates that 2 screens on canvas transitioning via keyframe with animation into a second layout generates exact initial placements, sub-millisecond trim overlaps, and seamless `xfade` connection without solid black flicker.
+10. **`NleMasterExportQualityTests.CanvasLayoutTimeline_TwoScreensWithKeyframeTransition_ExecutesFfmpegEndToEnd_ProducingValidVideo`**:
+   End-to-end integration test invoking bundled FFmpeg with synthetic video inputs and asserting valid 100% compliant master MP4 generation.
+11. **`nleTimelineEngine.test.js` (Section 5)**:
+   Node integration test suite verifying two screens layout transformation, smooth positional easing, and precise settling into Layout 1.
 
 
 ---

@@ -1414,202 +1414,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (isTimeline)
             {
-                // Multi-Keyframe Canvas Timeline Synthesis
-                var sortedKeyframes = job.CanvasLayoutTimeline!.Keyframes.OrderBy(k => k.TimestampEpochMs).ToList();
-                long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                DateTime endUtc = startUtc.AddSeconds(exportedDurationSec);
+                var filterResult = BuildMultiKeyframeCanvasFiltergraph(
+                    job.CanvasLayoutTimeline!,
+                    tracks.Select(t => (t.StationId, t.DisplayId)).ToList(),
+                    startUtc,
+                    endUtc,
+                    targetFps,
+                    job.Resolution ?? job.VideoQuality,
+                    fontClause);
 
-                var intervals = new List<(double StartSec, double EndSec, AdvancedModels.CustomCanvasLayoutDto Layout, string TransType, double TransDur)>();
-
-                for (int k = 0; k < sortedKeyframes.Count; k++)
-                {
-                    var currentKf = sortedKeyframes[k];
-                    double kfStartSec = (k == 0) ? 0.0 : Math.Max(0, (currentKf.TimestampEpochMs - cutStartEpochMs) / 1000.0);
-                    double kfEndSec = (k < sortedKeyframes.Count - 1)
-                        ? Math.Max(0, (sortedKeyframes[k + 1].TimestampEpochMs - cutStartEpochMs) / 1000.0)
-                        : exportedDurationSec;
-
-                    kfStartSec = Math.Min(kfStartSec, exportedDurationSec);
-                    kfEndSec = Math.Min(kfEndSec, exportedDurationSec);
-
-                    if (kfEndSec - kfStartSec > 0.04)
-                    {
-                        intervals.Add((kfStartSec, kfEndSec, currentKf.Layout, currentKf.TransitionType ?? "smooth", Math.Max(0.1, currentKf.TransitionDurationSec)));
-                    }
-                }
-
-                if (intervals.Count == 0 && sortedKeyframes.Count > 0)
-                {
-                    intervals.Add((0.0, exportedDurationSec, sortedKeyframes[0].Layout, "cut", 0.0));
-                }
-
-                for (int intIdx = 0; intIdx < intervals.Count; intIdx++)
-                {
-                    var (intStartSec, intEndSec, intLayout, transType, transDur) = intervals[intIdx];
-                    double intDur = intEndSec - intStartSec;
-                    string intDurStr = intDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-                    int refW = intLayout.Width > 0 ? intLayout.Width : 1920;
-                    int refH = intLayout.Height > 0 ? intLayout.Height : 1080;
-                    double layoutAspect = (double)refW / refH;
-                    var (cW, cH, computedBitrate) = ParseQualityResolution(job.Resolution ?? job.VideoQuality, layoutAspect, refW, refH);
-                    targetBitrateKbps = computedBitrate;
-                    cW -= (cW % 2);
-                    cH -= (cH % 2);
-                    double scaleX = (double)cW / refW;
-                    double scaleY = (double)cH / refH;
-                    string intBgHex = NormalizeHexColor(intLayout.BackgroundColor, "0x070A10");
-
-                    string bgIntLabel = $"[bg_int_{intIdx}]";
-                    filterBuilder.Append($"color=c={intBgHex}:s={cW}x{cH}:d={intDurStr}:r={targetFps}{bgIntLabel}; ");
-
-                    var iSortedPlacements = intLayout.Placements.OrderBy(p => p.ZIndex).ToList();
-                    var iPlacementLabels = new List<string>();
-
-                    for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
-                    {
-                        var p = iSortedPlacements[pIdx];
-                        int inIdx = -1;
-                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
-                        {
-                            if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
-                                string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase))
-                            {
-                                inIdx = tIdx;
-                                break;
-                            }
-                        }
-                        if (inIdx < 0)
-                        {
-                            for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
-                            {
-                                if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
-                                    (string.Equals(tracks[tIdx].DisplayId, "director", StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(tracks[tIdx].DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    inIdx = tIdx;
-                                    break;
-                                }
-                            }
-                        }
-                        if (inIdx < 0)
-                        {
-                            for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
-                            {
-                                if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    inIdx = tIdx;
-                                    break;
-                                }
-                            }
-                        }
-                        if (inIdx < 0) inIdx = 0;
-
-                        int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * cW) : (int)Math.Round(p.Width * scaleX);
-                        int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * cH) : (int)Math.Round(p.Height * scaleY);
-                        if (targetW <= 0) targetW = cW;
-                        if (targetH <= 0) targetH = cH;
-                        targetW -= (targetW % 2);
-                        targetH -= (targetH % 2);
-
-                        string pLabel = $"[p_{intIdx}_{pIdx}]";
-                        string startStr = intStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-                        string endStr = intEndSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-
-                        var ops = new List<string>
-                        {
-                            $"trim=start={startStr}:end={endStr}",
-                            "setpts=PTS-STARTPTS",
-                            $"fps=fps={targetFps}:round=near",
-                            $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd",
-                            $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
-                        };
-
-                        if (Math.Abs(p.Rotation) > 0.01)
-                        {
-                            double rad = (p.Rotation * Math.PI) / 180.0;
-                            string radStr = rad.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture);
-                            ops.Add($"rotate={radStr}:ow='rotw({radStr})':oh='roth({radStr})':c=none");
-                        }
-
-                        if (p.BorderWidth > 0)
-                        {
-                            string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
-                            int scaledBorder = Math.Max(1, (int)Math.Round(p.BorderWidth * scaleX));
-                            ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={scaledBorder}");
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrEmpty(fontClause))
-                        {
-                            string safeLabel = EscapeFfmpegDrawtext(p.Label);
-                            int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
-                            ops.Add($"drawtext=expansion=none:{fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85:boxborderw=4");
-                        }
-
-                        filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
-                        iPlacementLabels.Add(pLabel);
-                    }
-
-                    string curSurface = bgIntLabel;
-                    for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
-                    {
-                        var p = iSortedPlacements[pIdx];
-                        string pLabel = iPlacementLabels[pIdx];
-                        string nxtSurface = (pIdx == iSortedPlacements.Count - 1) ? $"[raw_int_{intIdx}]" : $"[t_{intIdx}_{pIdx}]";
-
-                        int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * cW) : (int)Math.Round(p.X * scaleX);
-                        int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * cH) : (int)Math.Round(p.Y * scaleY);
-                        targetX -= (targetX % 2);
-                        targetY -= (targetY % 2);
-
-                        filterBuilder.Append($"{curSurface}{pLabel}overlay={targetX}:{targetY}:eof_action=pass:repeatlast=1{nxtSurface}; ");
-                        curSurface = nxtSurface;
-                    }
-
-                    // Transitions: fade in from black / smooth reveal
-                    string outIntLabel = $"[v_int_{intIdx}]";
-                    var transFilters = new List<string>();
-
-                    if (intIdx > 0)
-                    {
-                        double effTransDur = Math.Min(transDur, intDur / 2.0);
-                        string effDurStr = effTransDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-                        if (string.Equals(transType, "smooth", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(transType, "fade", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(transType, "dip", StringComparison.OrdinalIgnoreCase))
-                        {
-                            transFilters.Add($"fade=type=in:start_time=0:duration={effDurStr}");
-                        }
-                    }
-
-                    if (intIdx < intervals.Count - 1)
-                    {
-                        var nextKf = intervals[intIdx + 1];
-                        if (string.Equals(nextKf.TransType, "dip", StringComparison.OrdinalIgnoreCase))
-                        {
-                            double effNextDur = Math.Min(nextKf.TransDur, intDur / 2.0);
-                            double outStart = Math.Max(0, intDur - effNextDur);
-                            transFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}:duration={effNextDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
-                        }
-                    }
-
-                    if (transFilters.Count > 0)
-                    {
-                        filterBuilder.Append($"[raw_int_{intIdx}]{string.Join(",", transFilters)}{outIntLabel}; ");
-                    }
-                    else
-                    {
-                        filterBuilder.Append($"[raw_int_{intIdx}]null{outIntLabel}; ");
-                    }
-                }
-
-                var concatLabels = Enumerable.Range(0, intervals.Count).Select(i => $"[v_int_{i}]").ToList();
-                if (concatLabels.Count > 1)
-                {
-                    filterBuilder.Append($"{string.Join("", concatLabels)}concat=n={concatLabels.Count}:v=1:a=0[vbase]; ");
-                }
-                else
-                {
-                    filterBuilder.Append($"{concatLabels[0]}null[vbase]; ");
-                }
+                filterBuilder.Append(filterResult.FilterComplex);
+                targetBitrateKbps = filterResult.BitrateKbps;
             }
             else
             {
@@ -1920,7 +1736,313 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
         }
 
-        private static string NormalizeHexColor(string? hex, string defaultHex)
+        public class MultiKeyframeFiltergraphResult
+        {
+            public string FilterComplex { get; set; } = string.Empty;
+            public int CanvasWidth { get; set; }
+            public int CanvasHeight { get; set; }
+            public int BitrateKbps { get; set; }
+            public int IntervalCount { get; set; }
+            public List<(double NomStartSec, double NomEndSec, double ActualStartSec, double ActualEndSec, string TransType, double TransDur)> Intervals { get; set; } = new();
+        }
+
+        public static MultiKeyframeFiltergraphResult BuildMultiKeyframeCanvasFiltergraph(
+            AdvancedModels.CanvasLayoutTimelineDto timeline,
+            IReadOnlyList<(string StationId, string DisplayId)> tracks,
+            DateTime startUtc,
+            DateTime endUtc,
+            double targetFps = 30.0,
+            string? resolution = "1080P",
+            string? fontClause = null)
+        {
+            var result = new MultiKeyframeFiltergraphResult();
+            var sortedKeyframes = (timeline.Keyframes ?? new List<AdvancedModels.CanvasLayoutKeyframeDto>())
+                .OrderBy(k => k.TimestampEpochMs)
+                .ToList();
+            long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+            long cutEndEpochMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+            double exportedDurationSec = Math.Max(0.1, (endUtc - startUtc).TotalSeconds);
+
+            // 1. Determine keyframe active at cut start (t = 0)
+            int initKfIdx = 0;
+            for (int k = 0; k < sortedKeyframes.Count; k++)
+            {
+                if (sortedKeyframes[k].TimestampEpochMs <= cutStartEpochMs)
+                {
+                    initKfIdx = k;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            var relevantKeyframes = new List<AdvancedModels.CanvasLayoutKeyframeDto>();
+            if (sortedKeyframes.Count > 0)
+            {
+                relevantKeyframes.Add(sortedKeyframes[initKfIdx]);
+            }
+
+            for (int k = initKfIdx + 1; k < sortedKeyframes.Count; k++)
+            {
+                if (sortedKeyframes[k].TimestampEpochMs < cutEndEpochMs)
+                {
+                    relevantKeyframes.Add(sortedKeyframes[k]);
+                }
+            }
+
+            // 2. Build nominal intervals
+            var nominalIntervals = new List<(double NomStartSec, double NomEndSec, AdvancedModels.CustomCanvasLayoutDto Layout, string TransType, double TransDur)>();
+
+            for (int k = 0; k < relevantKeyframes.Count; k++)
+            {
+                var currentKf = relevantKeyframes[k];
+                double kfStartSec = (k == 0) ? 0.0 : Math.Max(0.0, (currentKf.TimestampEpochMs - cutStartEpochMs) / 1000.0);
+                double kfEndSec = (k < relevantKeyframes.Count - 1)
+                    ? Math.Max(0.0, (relevantKeyframes[k + 1].TimestampEpochMs - cutStartEpochMs) / 1000.0)
+                    : exportedDurationSec;
+
+                kfStartSec = Math.Clamp(kfStartSec, 0.0, exportedDurationSec);
+                kfEndSec = Math.Clamp(kfEndSec, 0.0, exportedDurationSec);
+
+                if (kfEndSec - kfStartSec > 0.04)
+                {
+                    string transType = currentKf.TransitionType ?? "smooth";
+                    double transDur = currentKf.TransitionDurationSec > 0 ? currentKf.TransitionDurationSec : 0.5;
+                    nominalIntervals.Add((kfStartSec, kfEndSec, currentKf.Layout ?? new AdvancedModels.CustomCanvasLayoutDto(), transType, transDur));
+                }
+            }
+
+            if (nominalIntervals.Count == 0 && sortedKeyframes.Count > 0)
+            {
+                nominalIntervals.Add((0.0, exportedDurationSec, sortedKeyframes[0].Layout ?? new AdvancedModels.CustomCanvasLayoutDto(), "cut", 0.0));
+            }
+
+            int numIntervals = nominalIntervals.Count;
+            result.IntervalCount = numIntervals;
+
+            // Compute effective transition duration (delta) into interval i (for i >= 1)
+            var deltas = new double[numIntervals];
+            bool hasAnyAnimatedTransitions = false;
+
+            for (int i = 1; i < numIntervals; i++)
+            {
+                string tType = (nominalIntervals[i].TransType ?? "smooth").Trim().ToLowerInvariant();
+                if (tType == "cut" || tType == "none")
+                {
+                    deltas[i] = 0.0;
+                }
+                else
+                {
+                    double prevNomDur = nominalIntervals[i].NomStartSec - nominalIntervals[i - 1].NomStartSec;
+                    double currNomDur = nominalIntervals[i].NomEndSec - nominalIntervals[i].NomStartSec;
+                    double maxAllowedDur = Math.Min(prevNomDur / 2.0, currNomDur / 2.0);
+                    double effDur = Math.Min(nominalIntervals[i].TransDur, maxAllowedDur);
+                    effDur = Math.Max(0.04, effDur);
+                    deltas[i] = effDur;
+                    hasAnyAnimatedTransitions = true;
+                }
+            }
+
+            // Determine master canvas resolution to keep all interval streams identical
+            int masterRefW = (numIntervals > 0 && nominalIntervals[0].Layout.Width > 0) ? nominalIntervals[0].Layout.Width : 1920;
+            int masterRefH = (numIntervals > 0 && nominalIntervals[0].Layout.Height > 0) ? nominalIntervals[0].Layout.Height : 1080;
+            double masterAspect = (double)masterRefW / masterRefH;
+            var (masterW, masterH, masterBitrate) = ParseQualityResolution(resolution, masterAspect, masterRefW, masterRefH);
+            masterW -= (masterW % 2);
+            masterH -= (masterH % 2);
+
+            result.CanvasWidth = masterW;
+            result.CanvasHeight = masterH;
+            result.BitrateKbps = masterBitrate;
+
+            var sb = new System.Text.StringBuilder();
+
+            for (int intIdx = 0; intIdx < numIntervals; intIdx++)
+            {
+                var (nomStartSec, nomEndSec, intLayout, transType, transDur) = nominalIntervals[intIdx];
+
+                double actualStartSec = (intIdx == 0) ? 0.0 : Math.Max(0.0, nomStartSec - deltas[intIdx]);
+                double actualEndSec = nomEndSec;
+                double actualDur = actualEndSec - actualStartSec;
+                string actualDurStr = actualDur.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+                result.Intervals.Add((nomStartSec, nomEndSec, actualStartSec, actualEndSec, transType, transDur));
+
+                int refW = intLayout.Width > 0 ? intLayout.Width : masterRefW;
+                int refH = intLayout.Height > 0 ? intLayout.Height : masterRefH;
+                double scaleX = (double)masterW / refW;
+                double scaleY = (double)masterH / masterRefH;
+                string intBgHex = NormalizeHexColor(intLayout.BackgroundColor, "0x070A10");
+
+                string bgIntLabel = $"[bg_int_{intIdx}]";
+                sb.Append($"color=c={intBgHex}:s={masterW}x{masterH}:d={actualDurStr}:r={targetFps}{bgIntLabel}; ");
+
+                var iSortedPlacements = (intLayout.Placements ?? new List<AdvancedModels.CanvasPlacementDto>())
+                    .OrderBy(p => p.ZIndex)
+                    .ToList();
+                var iPlacementLabels = new List<string>();
+
+                for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
+                {
+                    var p = iSortedPlacements[pIdx];
+                    int inIdx = -1;
+                    if (tracks != null)
+                    {
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+                        if (inIdx < 0)
+                        {
+                            for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                            {
+                                if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                                    (string.Equals(tracks[tIdx].DisplayId, "director", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(tracks[tIdx].DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    inIdx = tIdx;
+                                    break;
+                                }
+                            }
+                        }
+                        if (inIdx < 0)
+                        {
+                            for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                            {
+                                if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    inIdx = tIdx;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (inIdx < 0) inIdx = 0;
+
+                    int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * masterW) : (int)Math.Round(p.Width * scaleX);
+                    int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * masterH) : (int)Math.Round(p.Height * scaleY);
+                    if (targetW <= 0) targetW = masterW;
+                    if (targetH <= 0) targetH = masterH;
+                    targetW -= (targetW % 2);
+                    targetH -= (targetH % 2);
+
+                    string pLabel = $"[p_{intIdx}_{pIdx}]";
+                    string startStr = actualStartSec.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+                    string endStr = actualEndSec.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+                    var ops = new List<string>
+                    {
+                        $"trim=start={startStr}:end={endStr}",
+                        "setpts=PTS-STARTPTS",
+                        $"fps=fps={targetFps}:round=near",
+                        $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd",
+                        $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
+                    };
+
+                    if (Math.Abs(p.Rotation) > 0.01)
+                    {
+                        double rad = (p.Rotation * Math.PI) / 180.0;
+                        string radStr = rad.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture);
+                        ops.Add($"rotate={radStr}:ow='rotw({radStr})':oh='roth({radStr})':c=none");
+                    }
+
+                    if (p.BorderWidth > 0)
+                    {
+                        string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
+                        int scaledBorder = Math.Max(1, (int)Math.Round(p.BorderWidth * scaleX));
+                        ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={scaledBorder}");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrEmpty(fontClause))
+                    {
+                        string safeLabel = EscapeFfmpegDrawtext(p.Label);
+                        int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
+                        ops.Add($"drawtext=expansion=none:{fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85:boxborderw=4");
+                    }
+
+                    sb.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
+                    iPlacementLabels.Add(pLabel);
+                }
+
+                string curSurface = bgIntLabel;
+                for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
+                {
+                    var p = iSortedPlacements[pIdx];
+                    string pLabel = iPlacementLabels[pIdx];
+                    string nxtSurface = (pIdx == iSortedPlacements.Count - 1) ? $"[raw_int_{intIdx}]" : $"[t_{intIdx}_{pIdx}]";
+
+                    int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * masterW) : (int)Math.Round(p.X * scaleX);
+                    int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * masterH) : (int)Math.Round(p.Y * scaleY);
+                    targetX -= (targetX % 2);
+                    targetY -= (targetY % 2);
+
+                    sb.Append($"{curSurface}{pLabel}overlay={targetX}:{targetY}:eof_action=pass:repeatlast=1{nxtSurface}; ");
+                    curSurface = nxtSurface;
+                }
+            }
+
+            if (numIntervals == 1)
+            {
+                sb.Append($"[raw_int_0]null[vbase]; ");
+            }
+            else if (!hasAnyAnimatedTransitions)
+            {
+                var concatLabels = Enumerable.Range(0, numIntervals).Select(i => $"[raw_int_{i}]").ToList();
+                sb.Append($"{string.Join("", concatLabels)}concat=n={numIntervals}:v=1:a=0[vbase]; ");
+            }
+            else
+            {
+                string prevStreamLabel = "[raw_int_0]";
+
+                for (int i = 1; i < numIntervals; i++)
+                {
+                    string nextStreamLabel = $"[raw_int_{i}]";
+                    string outLabel = (i == numIntervals - 1) ? "[vbase]" : $"[xf_{i}]";
+
+                    double effDelta = deltas[i];
+                    string tType = (nominalIntervals[i].TransType ?? "smooth").Trim().ToLowerInvariant();
+
+                    string xfadeTrans;
+                    if (tType == "cut" || tType == "none" || effDelta <= 0.001)
+                    {
+                        effDelta = Math.Min(0.04, 1.0 / targetFps);
+                        xfadeTrans = "fade";
+                    }
+                    else if (tType == "dip" || tType == "dip-to-black" || tType == "fadeblack")
+                    {
+                        xfadeTrans = "fadeblack";
+                    }
+                    else if (tType == "wipeleft" || tType == "wiperight" || tType == "wipeup" || tType == "wipedown" ||
+                             tType == "slideleft" || tType == "slideright" || tType == "slideup" || tType == "slidedown" ||
+                             tType == "circleopen" || tType == "circleclose" || tType == "dissolve")
+                    {
+                        xfadeTrans = tType;
+                    }
+                    else
+                    {
+                        xfadeTrans = "fade";
+                    }
+
+                    double offsetSec = Math.Max(0.0, nominalIntervals[i].NomStartSec - effDelta);
+                    string durStr = effDelta.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+                    string offsetStr = offsetSec.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+                    sb.Append($"{prevStreamLabel}{nextStreamLabel}xfade=transition={xfadeTrans}:duration={durStr}:offset={offsetStr}{outLabel}; ");
+                    prevStreamLabel = outLabel;
+                }
+            }
+
+            result.FilterComplex = sb.ToString();
+            return result;
+        }
+
+        public static string NormalizeHexColor(string? hex, string defaultHex)
         {
             if (string.IsNullOrWhiteSpace(hex)) return defaultHex;
             hex = hex.Trim();

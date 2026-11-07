@@ -149,4 +149,280 @@ public class NleMasterExportQualityTests
         Assert.Single(timeline.Keyframes[0].Layout.Placements);
         Assert.Equal(2, timeline.Keyframes[1].Layout.Placements.Count);
     }
+
+    [Fact]
+    public void CanvasLayoutTimeline_TwoScreensWithKeyframeTransition_GeneratesSequentialLayoutsAndAnimation()
+    {
+        // ARRANGE:
+        // 2 Screens on Canvas in Layout 0 (Left/Right split):
+        // Screen A (WS-01/mon-0) at (0, 0, 960, 1080)
+        // Screen B (WS-02/mon-0) at (960, 0, 960, 1080)
+        //
+        // Keyframe 1 at 5.0 seconds into export changes them to Layout 1 (Fullscreen + PiP):
+        // Screen A (WS-01/mon-0) at (0, 0, 1920, 1080)
+        // Screen B (WS-02/mon-0) at (1400, 700, 480, 270)
+        // Transition: "smooth", Duration: 1.0s
+
+        var startUtc = new DateTime(2026, 11, 8, 10, 0, 0, DateTimeKind.Utc);
+        var endUtc = new DateTime(2026, 11, 8, 10, 0, 15, DateTimeKind.Utc); // 15s export
+        long inEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Resolution = "1080P",
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = inEpochMs, // t = 0s
+                    TransitionType = "cut",
+                    TransitionDurationSec = 0.0,
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1920,
+                        Height = 1080,
+                        Fps = 30.0,
+                        BackgroundColor = "#070A10",
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto
+                            {
+                                StationId = "WS-01",
+                                DisplayId = "mon-0",
+                                X = 0,
+                                Y = 0,
+                                Width = 960,
+                                Height = 1080,
+                                ZIndex = 0,
+                                Label = "Screen A"
+                            },
+                            new CanvasPlacementDto
+                            {
+                                StationId = "WS-02",
+                                DisplayId = "mon-0",
+                                X = 960,
+                                Y = 0,
+                                Width = 960,
+                                Height = 1080,
+                                ZIndex = 1,
+                                Label = "Screen B"
+                            }
+                        }
+                    }
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = inEpochMs + 5000, // t = 5s
+                    TransitionType = "smooth",
+                    TransitionDurationSec = 1.0,
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1920,
+                        Height = 1080,
+                        Fps = 30.0,
+                        BackgroundColor = "#070A10",
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto
+                            {
+                                StationId = "WS-01",
+                                DisplayId = "mon-0",
+                                X = 0,
+                                Y = 0,
+                                Width = 1920,
+                                Height = 1080,
+                                ZIndex = 0,
+                                Label = "Screen A Full"
+                            },
+                            new CanvasPlacementDto
+                            {
+                                StationId = "WS-02",
+                                DisplayId = "mon-0",
+                                X = 1400,
+                                Y = 700,
+                                Width = 480,
+                                Height = 270,
+                                ZIndex = 1,
+                                Label = "Screen B PiP"
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var tracks = new List<(string StationId, string DisplayId)>
+        {
+            ("WS-01", "mon-0"),
+            ("WS-02", "mon-0")
+        };
+
+        // ACT:
+        var result = AdvanceJobManager.BuildMultiKeyframeCanvasFiltergraph(
+            timeline,
+            tracks,
+            startUtc,
+            endUtc,
+            targetFps: 30.0,
+            resolution: "1080P",
+            fontClause: null);
+
+        // ASSERT:
+        Assert.NotNull(result);
+        Assert.Equal(2, result.IntervalCount);
+        Assert.Equal(1920, result.CanvasWidth);
+        Assert.Equal(1080, result.CanvasHeight);
+
+        // Interval 0 assertions:
+        var int0 = result.Intervals[0];
+        Assert.Equal(0.0, int0.NomStartSec);
+        Assert.Equal(5.0, int0.NomEndSec);
+        Assert.Equal(0.0, int0.ActualStartSec);
+        Assert.Equal(5.0, int0.ActualEndSec);
+
+        // Interval 1 assertions (smooth transition delta = 1.0s):
+        var int1 = result.Intervals[1];
+        Assert.Equal(5.0, int1.NomStartSec);
+        Assert.Equal(15.0, int1.NomEndSec);
+        Assert.Equal(4.0, int1.ActualStartSec); // S1 - delta = 5.0 - 1.0 = 4.0s
+        Assert.Equal(15.0, int1.ActualEndSec);
+        Assert.Equal("smooth", int1.TransType);
+        Assert.Equal(1.0, int1.TransDur);
+
+        string fc = result.FilterComplex;
+
+        // Interval 0 renders Layout 0 placements:
+        // [0:v] trimmed 0.000 to 5.000, scaled to 960:1080, overlaid at 0:0
+        Assert.Contains("trim=start=0.000:end=5.000", fc);
+        Assert.Contains("scale=960:1080", fc);
+        Assert.Contains("overlay=0:0:eof_action=pass:repeatlast=1", fc);
+        Assert.Contains("overlay=960:0:eof_action=pass:repeatlast=1[raw_int_0]", fc);
+
+        // Interval 1 renders Layout 1 placements:
+        // [0:v] trimmed 4.000 to 15.000, scaled to 1920:1080, overlaid at 0:0
+        Assert.Contains("trim=start=4.000:end=15.000", fc);
+        Assert.Contains("scale=1920:1080", fc);
+        Assert.Contains("scale=480:270", fc);
+        Assert.Contains("overlay=1400:700:eof_action=pass:repeatlast=1[raw_int_1]", fc);
+
+        // Transition: xfade connects [raw_int_0] and [raw_int_1] over 1.000s at offset 4.000s to produce [vbase]
+        Assert.Contains("[raw_int_0][raw_int_1]xfade=transition=fade:duration=1.000:offset=4.000[vbase];", fc);
+
+        // Invariant: MUST NOT produce fade=type=in on interval 1 without crossfade (no solid black flash)
+        Assert.DoesNotContain("fade=type=in", fc);
+    }
+
+    [Fact]
+    public void CanvasLayoutTimeline_TwoScreensWithKeyframeTransition_ExecutesFfmpegEndToEnd_ProducingValidVideo()
+    {
+        // End-to-End integration test running real FFmpeg with synthetic inputs and multi-keyframe transition
+        string baseDir = AppContext.BaseDirectory;
+        string ffmpegExe = Path.Combine(baseDir, "ffmpeg.exe");
+        if (!File.Exists(ffmpegExe))
+        {
+            // Search solution folders
+            string probePath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Features", "ExtractorAdvanced", "ITB-SCREEN-RECORDER.Features.ExtractorAdvanced", "Tools", "Win", "ffmpeg.exe"));
+            if (File.Exists(probePath)) ffmpegExe = probePath;
+        }
+
+        if (!File.Exists(ffmpegExe))
+        {
+            // If ffmpeg is not available on this platform/test runner, skip execution test
+            return;
+        }
+
+        var startUtc = new DateTime(2026, 11, 8, 10, 0, 0, DateTimeKind.Utc);
+        var endUtc = new DateTime(2026, 11, 8, 10, 0, 6, DateTimeKind.Utc); // 6s export
+        long inEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Resolution = "HD", // 1280x720 for fast test execution
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = inEpochMs,
+                    TransitionType = "cut",
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1280,
+                        Height = 720,
+                        BackgroundColor = "#0000FF",
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto { StationId = "WS-01", DisplayId = "mon-0", X = 0, Y = 0, Width = 640, Height = 720 },
+                            new CanvasPlacementDto { StationId = "WS-02", DisplayId = "mon-0", X = 640, Y = 0, Width = 640, Height = 720 }
+                        }
+                    }
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = inEpochMs + 3000, // at 3.0s
+                    TransitionType = "smooth",
+                    TransitionDurationSec = 0.5,
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1280,
+                        Height = 720,
+                        BackgroundColor = "#FF0000",
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto { StationId = "WS-01", DisplayId = "mon-0", X = 0, Y = 0, Width = 1280, Height = 720 },
+                            new CanvasPlacementDto { StationId = "WS-02", DisplayId = "mon-0", X = 800, Y = 400, Width = 400, Height = 250 }
+                        }
+                    }
+                }
+            }
+        };
+
+        var tracks = new List<(string StationId, string DisplayId)>
+        {
+            ("WS-01", "mon-0"),
+            ("WS-02", "mon-0")
+        };
+
+        var result = AdvanceJobManager.BuildMultiKeyframeCanvasFiltergraph(
+            timeline,
+            tracks,
+            startUtc,
+            endUtc,
+            targetFps: 30.0,
+            resolution: "HD",
+            fontClause: null);
+
+        string tempOutMp4 = Path.Combine(Path.GetTempPath(), $"test_keyframe_export_{Guid.NewGuid():N}.mp4");
+
+        try
+        {
+            // Input 0: green synthetic video (6.5s)
+            // Input 1: yellow synthetic video (6.5s)
+            string fullFilter = result.FilterComplex + " [vbase]fps=fps=30:round=near,format=yuv420p[outv]";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = ffmpegExe,
+                Arguments = $"-y -f lavfi -i color=c=green:s=640x720:d=6.5:r=30 -f lavfi -i color=c=yellow:s=640x720:d=6.5:r=30 -filter_complex \"{fullFilter}\" -map \"[outv]\" -c:v libx264 -preset ultrafast -t 6 \"{tempOutMp4.Replace('\\', '/')}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = System.Diagnostics.Process.Start(psi)!;
+            string stderr = proc.StandardError.ReadToEnd();
+            proc.WaitForExit(10000);
+
+            Assert.Equal(0, proc.ExitCode);
+            Assert.True(File.Exists(tempOutMp4), $"FFmpeg output file missing: {stderr}");
+            var fi = new FileInfo(tempOutMp4);
+            Assert.True(fi.Length > 1000, "Output MP4 should contain valid encoded data");
+        }
+        finally
+        {
+            if (File.Exists(tempOutMp4))
+            {
+                try { File.Delete(tempOutMp4); } catch { }
+            }
+        }
+    }
 }

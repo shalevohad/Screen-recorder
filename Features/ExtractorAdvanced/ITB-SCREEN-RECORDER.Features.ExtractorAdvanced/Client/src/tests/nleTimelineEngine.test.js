@@ -381,4 +381,157 @@ describe('NLE Timeline Engine - Critical Verification Test Suite', () => {
             assert.equal(duplicateResult.nextTimeline.keyframes.length, 3, 'Must not insert duplicate');
         });
     });
+
+    describe('5. Two Screens Layout Transformation with Keyframe Transition', () => {
+        // Layout 0: Split screen (2 screens side by side)
+        const screenA_Layout0 = {
+            stationId: 'WS-01',
+            displayId: 'mon-0',
+            x: 0,
+            y: 0,
+            width: 960,
+            height: 1080,
+            zIndex: 0
+        };
+
+        const screenB_Layout0 = {
+            stationId: 'WS-02',
+            displayId: 'mon-0',
+            x: 960,
+            y: 0,
+            width: 960,
+            height: 1080,
+            zIndex: 1
+        };
+
+        // Layout 1: Screen A fullscreen, Screen B PiP
+        const screenA_Layout1 = {
+            stationId: 'WS-01',
+            displayId: 'mon-0',
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            zIndex: 0
+        };
+
+        const screenB_Layout1 = {
+            stationId: 'WS-02',
+            displayId: 'mon-0',
+            x: 1400,
+            y: 700,
+            width: 480,
+            height: 270,
+            zIndex: 1
+        };
+
+        const keyframe0 = {
+            id: 'kf_0',
+            timestampEpochMs: BASE_EPOCH, // t = 0
+            transitionType: 'cut',
+            transitionDurationSec: 0.0,
+            layout: {
+                width: 1920,
+                height: 1080,
+                placements: [screenA_Layout0, screenB_Layout0]
+            }
+        };
+
+        const keyframe1 = {
+            id: 'kf_1',
+            timestampEpochMs: BASE_EPOCH + 5000, // t = 5.0s
+            transitionType: 'smooth',
+            transitionDurationSec: 1.0, // 1s smooth transition (4.0s -> 5.0s)
+            layout: {
+                width: 1920,
+                height: 1080,
+                placements: [screenA_Layout1, screenB_Layout1]
+            }
+        };
+
+        const twoScreenTimeline = [keyframe0, keyframe1];
+
+        it('displays exact Layout 0 initial configuration from start of cut until transition window', () => {
+            // At t = 0s
+            const at0 = interpolateKeyframePlacements({
+                keyframes: twoScreenTimeline,
+                currentEpochMs: BASE_EPOCH,
+                currentPlacements: keyframe0.layout.placements
+            });
+
+            const a0 = at0.find(p => p.stationId === 'WS-01');
+            const b0 = at0.find(p => p.stationId === 'WS-02');
+            assert.equal(a0.x, 0);
+            assert.equal(a0.width, 960);
+            assert.equal(b0.x, 960);
+            assert.equal(b0.width, 960);
+
+            // At t = 3.5s (before transition lead-in at 4.0s)
+            const at35 = interpolateKeyframePlacements({
+                keyframes: twoScreenTimeline,
+                currentEpochMs: BASE_EPOCH + 3500,
+                currentPlacements: keyframe0.layout.placements
+            });
+
+            const a35 = at35.find(p => p.stationId === 'WS-01');
+            const b35 = at35.find(p => p.stationId === 'WS-02');
+            assert.equal(a35.x, 0);
+            assert.equal(a35.width, 960);
+            assert.equal(b35.x, 960);
+            assert.equal(b35.width, 960);
+        });
+
+        it('smoothly animates positions and dimensions between Layout 0 and Layout 1 during transition window', () => {
+            // Mid-transition at t = 4.5s (50% progress)
+            const mid = interpolateKeyframePlacements({
+                keyframes: twoScreenTimeline,
+                currentEpochMs: BASE_EPOCH + 4500,
+                currentPlacements: keyframe0.layout.placements
+            });
+
+            const aMid = mid.find(p => p.stationId === 'WS-01');
+            const bMid = mid.find(p => p.stationId === 'WS-02');
+
+            // Screen A expands smoothly from 960 towards 1920
+            assert.ok(aMid.width > 960, `Screen A width (${aMid.width}) should have expanded past 960`);
+            assert.ok(aMid.width < 1920, `Screen A width (${aMid.width}) should not yet have reached 1920`);
+
+            // Screen B moves smoothly from x=960 towards x=1400 and shrinks from 960 towards 480
+            assert.ok(bMid.x > 960, `Screen B x (${bMid.x}) should have moved past 960`);
+            assert.ok(bMid.x < 1400, `Screen B x (${bMid.x}) should not yet have reached 1400`);
+            assert.ok(bMid.width < 960, `Screen B width (${bMid.width}) should have shrunk below 960`);
+            assert.ok(bMid.width > 480, `Screen B width (${bMid.width}) should not yet have reached 480`);
+        });
+
+        it('settles precisely into Layout 1 configuration after transition completes', () => {
+            // At t = 5.0s
+            const at5 = interpolateKeyframePlacements({
+                keyframes: twoScreenTimeline,
+                currentEpochMs: BASE_EPOCH + 5000,
+                currentPlacements: keyframe0.layout.placements
+            });
+
+            const a5 = at5.find(p => p.stationId === 'WS-01');
+            const b5 = at5.find(p => p.stationId === 'WS-02');
+            assert.equal(a5.x, 0);
+            assert.equal(a5.width, 1920);
+            assert.equal(b5.x, 1400);
+            assert.equal(b5.y, 700);
+            assert.equal(b5.width, 480);
+            assert.equal(b5.height, 270);
+
+            // At t = 10.0s (well after transition)
+            const at10 = interpolateKeyframePlacements({
+                keyframes: twoScreenTimeline,
+                currentEpochMs: BASE_EPOCH + 10000,
+                currentPlacements: keyframe0.layout.placements
+            });
+
+            const a10 = at10.find(p => p.stationId === 'WS-01');
+            const b10 = at10.find(p => p.stationId === 'WS-02');
+            assert.equal(a10.width, 1920);
+            assert.equal(b10.width, 480);
+            assert.equal(b10.x, 1400);
+        });
+    });
 });
