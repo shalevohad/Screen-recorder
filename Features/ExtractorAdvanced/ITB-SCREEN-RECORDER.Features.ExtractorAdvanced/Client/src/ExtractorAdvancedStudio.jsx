@@ -87,7 +87,7 @@ export default function ExtractorAdvancedStudio() {
     const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
     const [keystrokeMode, setKeystrokeMode] = useState(cached.keystrokeMode || 'BURN_IN');
     const [showRulerKeystrokes, setShowRulerKeystrokes] = useState(() => {
-        return typeof cached.showRulerKeystrokes === 'boolean' ? cached.showRulerKeystrokes : false;
+        return typeof cached.showRulerKeystrokes === 'boolean' ? cached.showRulerKeystrokes : true;
     });
 
     useEffect(() => {
@@ -629,13 +629,31 @@ export default function ExtractorAdvancedStudio() {
 
     const [activeStationKeystrokes, setActiveStationKeystrokes] = useState([]);
 
+    const targetKeystrokeStations = useMemo(() => {
+        if (enrichedTimelineStations && enrichedTimelineStations.length > 0) {
+            return enrichedTimelineStations;
+        }
+        if (timelineStations && timelineStations.length > 0) {
+            return timelineStations;
+        }
+        if (activeStation) {
+            return [activeStation];
+        }
+        if (spotlightStation) {
+            return [spotlightStation];
+        }
+        return [];
+    }, [enrichedTimelineStations, timelineStations, activeStation, spotlightStation]);
+
+    const targetKeystrokeStationsKey = useMemo(() => {
+        return targetKeystrokeStations.map(s => `${s.id}:${s.hostname || s.id}:${s.displayName || ''}`).join('|');
+    }, [targetKeystrokeStations]);
+
     useEffect(() => {
-        const targetStation = isSpotlightOpen ? (spotlightStation || activeStation) : activeStation;
-        const stationName = targetStation?.hostname || targetStation?.displayName || targetStation?.id;
         const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
         const shouldFetch = (normalizedMode !== 'NONE' && normalizedMode !== 'OFF') || showRulerKeystrokes;
 
-        if (!stationName || !timelineBaseEpochMs || !shouldFetch) {
+        if (!targetKeystrokeStations.length || !timelineBaseEpochMs || !shouldFetch) {
             setActiveStationKeystrokes([]);
             return;
         }
@@ -644,15 +662,35 @@ export default function ExtractorAdvancedStudio() {
         const endEpoch = timelineBaseEpochMs + totalTimelineDurationMs + 5000;
         const ac = new AbortController();
 
-        fetch(`/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(stationName)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`, { signal: ac.signal })
-            .then(res => res.ok ? res.json() : [])
-            .then(data => setActiveStationKeystrokes(Array.isArray(data) ? data : []))
+        const fetches = targetKeystrokeStations.map(st => {
+            const stationIdentifier = st.hostname || st.displayName || st.id;
+            const stationDisplayName = st.displayName || st.hostname || st.name || st.id;
+            return fetch(`/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(stationIdentifier)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`, { signal: ac.signal })
+                .then(res => res.ok ? res.json() : [])
+                .then(data => (Array.isArray(data) ? data : []).map(evt => ({
+                    ...evt,
+                    stationId: st.id,
+                    stationName: stationDisplayName,
+                    stationHostname: st.hostname || st.id
+                })))
+                .catch(err => {
+                    if (err.name !== 'AbortError') return [];
+                    throw err;
+                });
+        });
+
+        Promise.all(fetches)
+            .then(results => {
+                const combined = results.flat();
+                combined.sort((a, b) => (a.epochMs || 0) - (b.epochMs || 0));
+                setActiveStationKeystrokes(combined);
+            })
             .catch(err => {
                 if (err.name !== 'AbortError') setActiveStationKeystrokes([]);
             });
 
         return () => ac.abort();
-    }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode, showRulerKeystrokes]);
+    }, [targetKeystrokeStationsKey, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode, showRulerKeystrokes]);
 
 // Single station opens directly into Master Canvas Grid for WYSIWYG editing
 

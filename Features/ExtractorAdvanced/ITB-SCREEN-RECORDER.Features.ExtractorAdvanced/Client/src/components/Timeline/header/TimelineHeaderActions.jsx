@@ -62,7 +62,7 @@ export default function TimelineHeaderActions({
                     type="button"
                     className={`btn-vp-action ruler-keys-btn ${showRulerKeystrokes ? 'active' : 'inactive'}`}
                     onClick={onToggleRulerKeystrokes}
-                    title={showRulerKeystrokes ? "Hide Keystroke Ticks on Ruler" : "Show Keystroke Ticks on Ruler (Default: Off)"}
+                    title={showRulerKeystrokes ? "Hide Keystroke Ticks on Ruler" : "Show Keystroke Ticks on Ruler"}
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="12" r="3" fill={showRulerKeystrokes ? "currentColor" : "none"} />

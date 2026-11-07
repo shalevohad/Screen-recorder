@@ -3742,3 +3742,56 @@ To clearly communicate that the station display is under autonomous Auto-Directo
   2. Validates that node click handlers are guarded by `if (isAuto) return;`.
   3. Validates that `.is-read-only` strictly enforces `cursor: default !important;` with zero hand pointer.
   4. Validates that in `mode === 'MANUAL'`, `.is-interactive` restores `cursor: pointer`.
+
+
+---
+
+### 63.8 Multi-Station Master Keystroke Timeline & Clustered Forensics Tooltip
+
+#### Operational Background
+In high-density forensic operations, investigators monitor multiple concurrent workstations on the Studio master timeline. Keystroke telemetry provides vital evidence alongside video streams. Previously:
+1. `showRulerKeystrokes` defaulted to `false`, requiring operators to manually locate and toggle ruler ticks.
+2. In the Master Canvas Grid mode, `activeStationId` is `null` by design to present the synchronized multicam view. The query logic previously evaluated only `activeStation`, resulting in zero keystrokes fetched on the master timeline.
+3. Even when a station was selected, keystrokes were queried for that single station only, omitting typing activity occurring concurrently across other active workstations.
+
+#### Architectural Solution: Parallel Multi-Station Aggregator & Clustered Tooltip
+To provide comprehensive multicam keystroke visibility across the master timeline:
+
+1. **Default Out-of-the-Box Visibility**:
+   - `showRulerKeystrokes` state in `ExtractorAdvancedStudio.jsx` defaults to `true` (unless explicitly persisted as `false` in user cached preferences).
+   - Keystroke indicators on the timeline ruler are immediately visible upon opening the studio.
+
+2. **Parallel Workstation Query & Ingestion Pipeline**:
+   - Resolves all workstations selected on the master timeline (`enrichedTimelineStations` / `timelineStations`).
+   - Fetches keystrokes across all selected workstations in parallel via `/api/v1/extractor-advanced/keystrokes`.
+   - Tags each raw keystroke event with originating `stationId`, `stationName` (display name), and `stationHostname`.
+   - Aggregates and chronologically sorts all events into a unified stream (`activeStationKeystrokes`).
+   - Propagates workstation metadata through `TimelineBoard` -> `TimelineRuler` -> `TimelineKeystrokes`.
+
+3. **Sub-Pixel Clustering & Multicam Detection**:
+   - `TimelineKeystrokes.jsx` clusters events occurring within `MIN_PIXEL_DISTANCE = 8px` on the ruler.
+   - Detects simultaneous multi-station typing: when a cluster contains events from >= 2 distinct workstations, `cluster.isMultiStation` is set to `true`, and `cluster.stationCount` records the workstation count.
+   - **Visual Differentiation**:
+     - Single-station clusters render a cyan tick line with a diamond pip glyph.
+     - Multi-station clusters render a dual-tone purple/cyan gradient line (`#A855F7` to `#06B6D4`) with a glowing purple pip displaying `${cluster.stationCount}S` (e.g. `2S`).
+
+4. **Tactical Forensics Tooltip Breakdown**:
+   - **Header**:
+     - Multi-station: `MULTICAM KEYSTROKES ({cluster.stationCount} WORKSTATIONS • {count} EVT)` at `{timeLabel}`.
+     - Single-station burst: `KEYSTROKE BURST ({count})` at `{timeLabel}`.
+     - Single event: `KEYSTROKE` at `{timeLabel}`.
+   - **Per-Workstation Grouping**:
+     - Iterates through events grouped by station (`stationGroups`).
+     - Renders a tactical card for each station featuring:
+       - Station badge with workstation icon: `🖥️ {stationName} ({count})`.
+       - Key combination pills formatted via `cleanKeyName`, collapsing identical consecutive keystrokes: `{key} ×{count}` (e.g., `Ctrl+C`, `Enter ×2`, `Backspace ×3`).
+       - Overflow indicator (`+{N} more`) if combinations exceed 6 distinct keys.
+   - **Click-to-Seek**: Clicking any tick node repositions the master playhead directly to that event.
+
+#### Automated Verification Suite
+- Verified by `Features/ExtractorAdvanced/Client/src/tests/multiStationKeystrokes.test.js` (Tests 1–5):
+  1. Validates that `showRulerKeystrokes` defaults to `true`.
+  2. Validates parallel query tagging with `stationId`, `stationName`, and chronological sorting.
+  3. Validates clustering algorithm multi-station detection and workstation counting.
+  4. Validates tooltip grouping by workstation with key pill collapse.
+  5. Validates multi-station and single-station header badge formatting.

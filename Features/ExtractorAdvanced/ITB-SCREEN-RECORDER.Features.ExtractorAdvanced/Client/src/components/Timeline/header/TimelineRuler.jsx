@@ -31,6 +31,7 @@ export default function TimelineRuler({
     movieBoundaries = null,
     stationHostname = '',
     activeStationName = '',
+    stations = [],
     showKeystrokes = true,
     keystrokes = []
 }) {
@@ -317,6 +318,7 @@ export default function TimelineRuler({
                     <TimelineKeystrokes
                         stationHostname={stationHostname}
                         activeStationName={activeStationName}
+                        stations={stations}
                         baseEpochMs={baseEpochMs}
                         timeMode={timeMode}
                         viewportStartMs={viewportStartMs}

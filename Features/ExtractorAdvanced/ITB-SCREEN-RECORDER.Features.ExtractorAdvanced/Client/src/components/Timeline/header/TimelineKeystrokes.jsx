@@ -45,7 +45,7 @@ function TimelineKeystrokes({
 
     // Viewport-aware data fetching with parallel station queries & cancellation
     useEffect(() => {
-        if (propKeystrokes && Array.isArray(propKeystrokes) && propKeystrokes.length > 0) {
+        if (propKeystrokes !== null && propKeystrokes !== undefined) {
             return;
         }
 
@@ -91,7 +91,7 @@ function TimelineKeystrokes({
         return () => abortController.abort();
     }, [targetStations, baseEpochMs, viewportStartMs, viewportDurationMs, propKeystrokes]);
 
-    const activeKeystrokes = (propKeystrokes && Array.isArray(propKeystrokes) && propKeystrokes.length > 0)
+    const activeKeystrokes = (propKeystrokes !== null && propKeystrokes !== undefined)
         ? propKeystrokes
         : fetchedKeystrokes;
 
@@ -124,7 +124,7 @@ function TimelineKeystrokes({
                 currentCluster.events.push(evt);
                 currentCluster.endOffsetMs = offsetMs;
                 currentCluster.endEpochMs = calibratedEpochMs;
-                const uniqueStations = new Set(currentCluster.events.map(e => e.stationName || 'Workstation'));
+                const uniqueStations = new Set(currentCluster.events.map(e => e.stationName || e.stationHostname || activeStationName || 'Workstation'));
                 currentCluster.isMultiStation = uniqueStations.size > 1;
                 currentCluster.stationCount = uniqueStations.size;
                 lastPixel = currentPixel;
@@ -207,7 +207,7 @@ function TimelineKeystrokes({
                 // Group cluster events by station
                 const stationGroups = {};
                 cluster.events.forEach(evt => {
-                    const sName = evt.stationName || activeStationName || 'Workstation';
+                    const sName = evt.stationName || evt.stationHostname || activeStationName || 'Workstation';
                     if (!stationGroups[sName]) stationGroups[sName] = [];
                     stationGroups[sName].push(evt);
                 });

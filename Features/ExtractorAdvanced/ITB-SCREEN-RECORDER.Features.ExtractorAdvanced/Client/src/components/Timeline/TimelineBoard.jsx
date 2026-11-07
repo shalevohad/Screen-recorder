@@ -330,6 +330,7 @@ export default function TimelineBoard({
                             movieBoundaries={movieBoundaries}
                             stationHostname={activeStationObj?.hostname || activeStationObj?.id || activeStationObj?.name}
                             activeStationName={activeStationObj?.displayName || activeStationObj?.hostname || activeStationObj?.name}
+                            stations={stations}
                             showKeystrokes={Boolean(showRulerKeystrokes ?? showKeystrokes)}
                             keystrokes={keystrokes}
                         />
