@@ -2,7 +2,7 @@
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-11-07
-> **Current Version**: v1.0.63
+> **Current Version**: v1.0.50
 > **Governing Rules**: Consult [RULES.md](./RULES.md) for behavioral invariants and strict system constraints.
 
 ---
@@ -83,6 +83,7 @@
 61. [High-Density Canvas Video Streaming Optimization, Hardware Decoder Governance & Constrained VBR Architecture (2026-11-05)](#61-high-density-canvas-video-streaming-optimization-hardware-decoder-governance--constrained-vbr-architecture-2026-11-05)
 62. [Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults, Manual Custom Resolution & WYSIWYG Export Lock (2026-11-06)](#62-decoupled-canvas-resolution--aspect-ratio-architecture-2k169-operational-defaults-manual-custom-resolution--wysiwyg-export-lock-2026-11-06)
 63. [Master MP4 Real-Time Composition Telemetry, Auto-Director Multi-Station Focus Resolution & Canvas Mount Stabilization (2026-11-07)](#63-master-mp4-real-time-composition-telemetry-auto-director-multi-station-focus-resolution--canvas-mount-stabilization-2026-11-07)
+64. [Enterprise Release v1.0.50 & Unified Fleet Version Alignment (2026-11-07)](#64-enterprise-release-v1050--unified-fleet-version-alignment-2026-11-07)
 
 ---
 
@@ -3926,4 +3927,37 @@ In strict conformance with **Rule 15 (Pre-Flight Dependency Vetting via Socket.d
 - **ClientApp Test Suite**: 34 Passed, 0 Failed (Duration: 94ms).
 - **ExtractorAdvanced Test Suite**: 101 Passed, 0 Failed (Duration: 135ms).
 - **Total Tests**: **588 / 588 Passing (100% Green)**.
+
+---
+
+## 64. Enterprise Release v1.0.50 & Unified Fleet Version Alignment (2026-11-07)
+
+### 64.1 Overview & Version Milestone
+Release **v1.0.50** represents a milestone enterprise consolidation across the entire **ITB-SCREEN-RECORDER** ecosystem:
+1. **Real-Time Forensic Export Telemetry**: Dynamic sub-second composition reporting that smoothly climbs from 88% to 99% during final muxing and fast-start moov atom relocation.
+2. **Auto-Director Multi-Station Focus Resolution**: Seamless director cut generation across multi-monitor stations, dynamic focus resolution, and a read-only reflection minimap HUD indicating director-controlled lock states.
+3. **Canvas Mount Stabilization & Outside CAD Rulers**: Eradicated initialization flicker on canvas mount, isolated per-monitor recording health bars, and externalized sub-pixel CAD/NLE rulers with multi-level z-index menu elevation.
+4. **Mixed-Resolution Filtergraph Normalization**: Fixed scale/SAR parameter discrepancies in FFmpeg concat filter chains, eliminating ExitCode -22.
+5. **Supply Chain Hardening (Rule 15)**: 100% clean security baseline verified against Socket.dev and GitHub Advisory databases across all .NET and npm packages (0 vulnerable packages).
+6. **Unified Fleet Release Versioning**: Version 1.0.50 is synchronized deterministically across all solution projects, installer bundles, and client packages.
+
+### 64.2 Topology Version Distribution
+| Module / Target | Project File / Location | Synchronized Version |
+| :--- | :--- | :--- |
+| **Solution-Wide .NET Props** | `Directory.Build.props` | `1.0.50` |
+| **Agent Service (Session 0)** | `AgentSupervisorService.cs` | `1.0.50` |
+| **ClientApp Dashboard** | `ClientApp/package.json` & `package-lock.json` | `1.0.50` |
+| **Windows Agent MSI** | `ITB-SCREEN-RECORDER.Installer.wixproj` | `1.0.50` |
+| **Windows Server MSI** | `ITB-SCREEN-RECORDER.Server.Installer.wixproj` | `1.0.50` |
+| **Linux Agent .run** | `ITB-SCREEN-RECORDER.Agent.Linux.Installer.csproj` | `1.0.50` |
+| **Linux Server .run** | `ITB-SCREEN-RECORDER.Server.Linux.Installer.csproj` | `1.0.50` |
+| **System Diagnostics CLI** | `ITB-SCREEN-RECORDER.Diagnostics.csproj` | `1.0.50` |
+
+### 64.3 Regression & Quality Assurance Summary
+- **MSBuild Solution Build**: 0 Errors, deterministic binary output.
+- **Server & Core Test Harness**: 453 Passed (100% green).
+- **Dashboard C2 Test Harness**: 34 Passed (100% green).
+- **Studio NLE / Extractor Test Harness**: 101 Passed (100% green).
+- **Total Solution Quality Score**: **588 / 588 Tests Passing**.
+
 

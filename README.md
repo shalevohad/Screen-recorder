@@ -2,7 +2,7 @@
 
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-5.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Release: v1.0.50](https://img.shields.io/badge/Release-v1.0.50-06B6D4?logo=git&logoColor=white)](#)
 [![MediaMTX](https://img.shields.io/badge/MediaMTX-v1.15.4-FF6F00?logo=fastapi&logoColor=white)](https://github.com/bluenviron/mediamtx)
 [![License: Proprietary](https://img.shields.io/badge/License-Enterprise_Proprietary-red)](#)
 
@@ -127,6 +127,14 @@ The codebase is structured into clear architectural layers:
   - **VoiceActivityCrossDucker**: Automatically detects local operator speech on Channel 1 and ducks Channel 0 by -16dB on other listening stations to eliminate delayed acoustic intercom echo.
 - **Keystroke Intelligence & Subtitle Cues Indexer (KeystrokeAuditIndexer)**: Ingests embedded SRT subtitle tracks and session keystrokes, providing sub-millisecond keyword and hotkey search with instant one-click timeline seek.
 
+### 10. Real-Time Forensic Export Telemetry & Multi-Monitor Normalization
+- **Dynamic Progress Muxing**: Real-time telemetry calculations eliminate progress stalls at 88%, smoothly transitioning progress through 88% → 99% during final MP4 atom serialization and fast-start moov relocations.
+- **Mixed-Resolution Filtergraph Normalization**: Normalizes disparate display resolutions (e.g. 4K, 1440p, 1080p) to uniform target dimensions and 1:1 SAR, eliminating FFmpeg concat filter parameter mismatches (`ExitCode -22`).
+
+### 11. External CAD / NLE Rulers & Viewport Elevation Hierarchy
+- **External Outside Rulers**: Measurement rulers are positioned entirely outside the 16:9 canvas stage (`.canvas-master-frame-16-9`), eliminating 20px screen obscuration for elements at origin `(0, 0)`.
+- **Top-Oriented Card Inspector**: Inspector toolbar is pinned to the top of screen placements with `z-index: 4500`, guaranteeing it floats above canvas screen surfaces while remaining strictly beneath side wing popout toolbars (`z-index: 30000`).
+
 ---
 
 ## 📜 System Rules & Invariants
@@ -145,6 +153,7 @@ This platform is governed by strict operational rules documented in [RULES.md](f
 - **Rule 12 (NOC Stream Governance & Audio Solo)**: Default Canvas layout, viewport virtualization via Intersection Observer, and exclusive audio solo sink.
 - **Rule 13 (Multi-Monitor Export & DVR Dynamic Focus)**: 1-second pre-roll lead-in ($T - 1000\text{ms}$), anti-flicker hysteresis, persistent tactical Minimap HUD (never dips to black), and zero-time-drift Dip-to-Black transitions.
 - **Rule 14 (Air-Gapped & Isolated Environment Invariant)**: 100% self-contained offline architecture; zero public internet CDNs, web fonts, or remote APIs. Full support for enterprise operational intranet subnets (`128.x.x.x`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`), internal LAN DNS hostnames (`itb-server`, `*.local`, `*.internal`), and local multicast.
+- **Rule 15 (Pre-Flight Dependency Vetting via Socket.dev)**: Mandatory supply-chain security evaluation on [Socket.dev](https://socket.dev/) for all NuGet and npm dependencies prior to installation. Zero critical CVEs and strict MSBuild failure on unvetted packages.
 
 ---
 
