@@ -2,7 +2,7 @@
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-11-07
-> **Current Version**: v1.0.50
+> **Current Version**: v1.0.70
 > **Governing Rules**: Consult [RULES.md](./RULES.md) for behavioral invariants and strict system constraints.
 
 ---
@@ -84,6 +84,7 @@
 62. [Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults, Manual Custom Resolution & WYSIWYG Export Lock (2026-11-06)](#62-decoupled-canvas-resolution--aspect-ratio-architecture-2k169-operational-defaults-manual-custom-resolution--wysiwyg-export-lock-2026-11-06)
 63. [Master MP4 Real-Time Composition Telemetry, Auto-Director Multi-Station Focus Resolution & Canvas Mount Stabilization (2026-11-07)](#63-master-mp4-real-time-composition-telemetry-auto-director-multi-station-focus-resolution--canvas-mount-stabilization-2026-11-07)
 64. [Enterprise Release v1.0.50 & Unified Fleet Version Alignment (2026-11-07)](#64-enterprise-release-v1050--unified-fleet-version-alignment-2026-11-07)
+65. [Enterprise Release v1.0.70 & Forensic Gap Keystroke Elimination & CI/CD Security Hardening (2026-11-07)](#65-enterprise-release-v1070--forensic-gap-keystroke-elimination--cicd-security-hardening-2026-11-07)
 
 ---
 
@@ -3965,5 +3966,45 @@ Release **v1.0.50** represents a milestone enterprise consolidation across the e
 - **Dashboard C2 Test Harness**: 34 Passed (100% green).
 - **Studio NLE / Extractor Test Harness**: 101 Passed (100% green).
 - **Total Solution Quality Score**: **588 / 588 Tests Passing**.
+
+---
+
+## 65. Enterprise Release v1.0.70 & Forensic Gap Keystroke Elimination & CI/CD Security Hardening (2026-11-07)
+
+### 65.1 Overview & Version Milestone
+Release **v1.0.70** delivers key forensic recording invariants, CI/CD supply chain hardening, and unified fleet version promotion:
+1. **Strict Active-Recording Keystroke Ingestion & Gap Elimination**:
+   - Keystrokes are strictly correlated with active video recording chunks.
+   - Low-level keyboard hooks in [`WorkerEngine.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/WorkerEngine.cs) and supervisor telemetry in [`AgentSupervisorService.cs`](./ITB-SCREEN-RECORDER.AgentService/AgentSupervisorService.cs) immediately flush and discard keystrokes when the station is not actively recording (`!_isStreaming || !_isRecording`).
+   - Server ingestion in [`AgentController.cs`](./ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs) verifies `report.IsRecording` and `_telemetryState.IsStationRecording(hostname)` before performing database bulk inserts.
+   - Forensic API in [`ExtractorAdvancedController.cs`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs) correlates queries against [`IStorageScannerService`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/StorageScannerService.cs) chunks, completely stripping out any keystrokes occurring in recording gap periods.
+   - Client timeline components ([`TimelineBoard.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx), [`TimelineRuler.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.jsx), and [`TimelineKeystrokes.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx)) receive `recordingSegments` and enforce client-side defense-in-depth filtering.
+2. **Socket.dev CI/CD Workflow Hardening**:
+   - Corrected the GitHub Action in `.github/workflows/security-scan.yml` from the non-existent `socketsecurity/socket-action` to official `SocketDev/action@v1` with `mode: firewall-free` and repository token authentication.
+3. **Multi-Station Forensics Keystroke Ruler & Tooltip Aggregation**:
+   - Real-time multicam keystroke clustering across multiple workstations with distinct workstation pills and badges.
+   - Sub-second timestamp synchronization with video playback via `KEYSTROKE_CALIBRATION_OFFSET_MS` (+2500ms).
+4. **Unified Fleet Version Promotion (v1.0.70)**:
+   - Synchronized deterministically across all 8 build projects, installer bundles, and web packages.
+
+### 65.2 Topology Version Distribution
+| Module / Target | Project File / Location | Synchronized Version |
+| :--- | :--- | :--- |
+| **Solution-Wide .NET Props** | `Directory.Build.props` | `1.0.70` |
+| **Agent Service (Session 0)** | `AgentSupervisorService.cs` | `1.0.70` |
+| **ClientApp Dashboard** | `ClientApp/package.json` & `package-lock.json` | `1.0.70` |
+| **Windows Agent MSI** | `ITB-SCREEN-RECORDER.Installer.wixproj` | `1.0.70` |
+| **Windows Server MSI** | `ITB-SCREEN-RECORDER.Server.Installer.wixproj` | `1.0.70` |
+| **Linux Agent .run** | `ITB-SCREEN-RECORDER.Agent.Linux.Installer.csproj` | `1.0.70` |
+| **Linux Server .run** | `ITB-SCREEN-RECORDER.Server.Linux.Installer.csproj` | `1.0.70` |
+| **System Diagnostics CLI** | `ITB-SCREEN-RECORDER.Diagnostics.csproj` | `1.0.70` |
+
+### 65.3 Regression & Quality Assurance Summary
+- **MSBuild Solution Build**: 0 Errors, deterministic binary output.
+- **Server & Core Test Harness**: 453 Passed (100% green).
+- **Dashboard C2 Test Harness**: 34 Passed (100% green).
+- **Studio NLE / Extractor Test Harness**: 102 Passed (100% green, including new gap keystroke filter test).
+- **Total Solution Quality Score**: **589 / 589 Tests Passing**.
+
 
 
