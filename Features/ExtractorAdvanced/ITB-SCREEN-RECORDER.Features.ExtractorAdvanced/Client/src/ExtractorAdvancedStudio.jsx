@@ -173,12 +173,19 @@ export default function ExtractorAdvancedStudio() {
                 placements: []
             };
 
+            const prevKf = [...currentKfs].reverse().find(k => k.timestampEpochMs <= targetEpoch) || activeKf;
+            const targetClock = activeLayout?.utcClockPosition || prevKf?.utcClockPosition || prevKf?.layout?.utcClockPosition || 'top-right';
+
+            const clonedLayout = JSON.parse(JSON.stringify(activeLayout));
+            clonedLayout.utcClockPosition = targetClock;
+
             const newKf = {
                 id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
                 timestampEpochMs: Math.round(targetEpoch),
                 transitionDurationSec: 0.5,
                 transitionType: 'smooth',
-                layout: JSON.parse(JSON.stringify(activeLayout))
+                utcClockPosition: targetClock,
+                layout: clonedLayout
             };
 
             const nextKfs = [...currentKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
@@ -1382,6 +1389,12 @@ export default function ExtractorAdvancedStudio() {
                     stationDirectorSegments: stationDirectorSegsMap,
                     audioRoutingSegments: effectiveAudioPlan.segments || [],
                     utcClockPosition: (() => {
+                        if (canvasLayoutTimeline?.keyframes?.[0]?.utcClockPosition) {
+                            return canvasLayoutTimeline.keyframes[0].utcClockPosition;
+                        }
+                        if (currentCanvasLayout?.utcClockPosition) {
+                            return currentCanvasLayout.utcClockPosition;
+                        }
                         try {
                             return localStorage.getItem('itb_canvas_utc_clock_pos') || 'top-right';
                         } catch {

@@ -425,4 +425,145 @@ public class NleMasterExportQualityTests
             }
         }
     }
+
+    [Fact]
+    public void CanvasLayoutTimeline_KeyframeClockPosition_Serialization_PreservesPosition()
+    {
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Resolution = "1080P",
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = 1700000000000,
+                    UtcClockPosition = "top-left",
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        UtcClockPosition = "top-left",
+                        Width = 1920,
+                        Height = 1080
+                    }
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = 1700000010000,
+                    UtcClockPosition = "bottom-right",
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        UtcClockPosition = "bottom-right",
+                        Width = 1920,
+                        Height = 1080
+                    }
+                }
+            }
+        };
+
+        string json = System.Text.Json.JsonSerializer.Serialize(timeline);
+        var deserialized = System.Text.Json.JsonSerializer.Deserialize<CanvasLayoutTimelineDto>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(2, deserialized!.Keyframes.Count);
+        Assert.Equal("top-left", deserialized.Keyframes[0].UtcClockPosition);
+        Assert.Equal("top-left", deserialized.Keyframes[0].Layout.UtcClockPosition);
+        Assert.Equal("bottom-right", deserialized.Keyframes[1].UtcClockPosition);
+        Assert.Equal("bottom-right", deserialized.Keyframes[1].Layout.UtcClockPosition);
+    }
+
+    [Fact]
+    public void CanvasLayoutTimeline_DynamicKeyframeClockPositions_GeneratesChainedDrawtextFilters()
+    {
+        var startUtc = new DateTime(2026, 11, 8, 12, 0, 0, DateTimeKind.Utc);
+        long startEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+        var endUtc = startUtc.AddSeconds(30);
+
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = startEpochMs, // t = 0s
+                    UtcClockPosition = "top-right"
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = startEpochMs + 10000, // t = 10s
+                    UtcClockPosition = "bottom-left"
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = startEpochMs + 20000, // t = 20s
+                    UtcClockPosition = "top-left"
+                }
+            }
+        };
+
+        string result = AdvanceJobManager.BuildMultiKeyframeClockDrawtextFilters(
+            timeline,
+            startUtc,
+            endUtc,
+            startEpochMs,
+            defaultClockPosition: "top-right",
+            fontClause: "font='Arial':",
+            inStreamLabel: "[vbase]",
+            outStreamLabel: "[v_clock]");
+
+        Assert.NotNull(result);
+        // Interval 1: between(t, 0.000, 10.000)
+        Assert.Contains("enable='between(t,0.000,10.000)'", result);
+        // Interval 2: between(t, 10.000, 20.000)
+        Assert.Contains("enable='between(t,10.000,20.000)'", result);
+        // Interval 3: between(t, 20.000, 30.000)
+        Assert.Contains("enable='between(t,20.000,30.000)'", result);
+
+        // Chaining stream labels
+        Assert.Contains("[vbase]drawtext=", result);
+        Assert.Contains("[v_clk_0];", result);
+        Assert.Contains("[v_clk_0]drawtext=", result);
+        Assert.Contains("[v_clk_1];", result);
+        Assert.Contains("[v_clk_1]drawtext=", result);
+        Assert.Contains("[v_clock];", result);
+    }
+
+    [Fact]
+    public void CanvasLayoutTimeline_IdenticalKeyframeClockPositions_GeneratesSingleDrawtextFilter()
+    {
+        var startUtc = new DateTime(2026, 11, 8, 12, 0, 0, DateTimeKind.Utc);
+        long startEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+        var endUtc = startUtc.AddSeconds(30);
+
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = startEpochMs, // t = 0s
+                    UtcClockPosition = "top-right"
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = startEpochMs + 10000, // t = 10s
+                    UtcClockPosition = "top-right"
+                }
+            }
+        };
+
+        string result = AdvanceJobManager.BuildMultiKeyframeClockDrawtextFilters(
+            timeline,
+            startUtc,
+            endUtc,
+            startEpochMs,
+            defaultClockPosition: "top-right",
+            fontClause: "font='Arial':",
+            inStreamLabel: "[vbase]",
+            outStreamLabel: "[v_clock]");
+
+        Assert.NotNull(result);
+        // Single drawtext filter without enable condition chaining
+        Assert.DoesNotContain("enable='between", result);
+        Assert.Contains("[vbase]drawtext=", result);
+        Assert.Contains("[v_clock];", result);
+    }
 }

@@ -17,7 +17,9 @@ import {
     synthesizeAutoKeyframe,
     updateKeyframeTransition,
     deleteKeyframe,
-    insertExplicitKeyframe
+    insertExplicitKeyframe,
+    updateKeyframeClockPosition,
+    resolveActiveKeyframeClockPosition
 } from '../../utils/nleTimelineEngine.js';
 import {
     computeDecoderAllocations,
@@ -848,11 +850,13 @@ export default function MulticamViewport({
                     timestampEpochMs: baseEpochMs,
                     transitionDurationSec: 0.5,
                     transitionType: 'smooth',
+                    utcClockPosition: utcClockPosition,
                     layout: {
                         width: DEFAULT_VIRTUAL_CANVAS_W,
                         height: DEFAULT_VIRTUAL_CANVAS_H,
                         backgroundColor: '#070A10',
                         fps: 30.0,
+                        utcClockPosition: utcClockPosition,
                         placements: generateAutoPackPlacements(defaultStationFeeds, DEFAULT_VIRTUAL_CANVAS_W, DEFAULT_VIRTUAL_CANVAS_H)
                     }
                 }
@@ -907,6 +911,9 @@ export default function MulticamViewport({
     const currentPlacements = useMemo(() => {
         return currentKf?.layout?.placements || [];
     }, [currentKf]);
+    const activeClockPosition = useMemo(() => {
+        return currentKf?.utcClockPosition || currentKf?.layout?.utcClockPosition || utcClockPosition;
+    }, [currentKf, utcClockPosition]);
 
     // Keep HUD inspector title input synchronized with selected placement label
     useEffect(() => {
@@ -957,13 +964,15 @@ export default function MulticamViewport({
         const TOLERANCE_MS = 500;
         if (currentEpoch <= baseEpochMs + TOLERANCE_MS) return safeActiveIdx;
 
-        const activeLayout = currentKf?.layout || {
+        const activeLayout = currentKf?.layout ? JSON.parse(JSON.stringify(currentKf.layout)) : {
             width: virtualW,
             height: virtualH,
             backgroundColor: '#070A10',
             fps: 30.0,
+            utcClockPosition: activeClockPosition,
             placements: currentPlacements
         };
+        activeLayout.utcClockPosition = activeLayout.utcClockPosition || activeClockPosition;
 
         const { nextTimeline, newIndex, isNew } = insertExplicitKeyframe(internalTimeline, currentEpoch, activeLayout, TOLERANCE_MS);
         if (isNew) {
@@ -977,7 +986,7 @@ export default function MulticamViewport({
             );
         }
         return newIndex;
-    }, [playheadEpochMs, baseEpochMs, playheadMs, safeActiveIdx, currentKf, virtualW, virtualH, currentPlacements, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast]);
+    }, [playheadEpochMs, baseEpochMs, playheadMs, safeActiveIdx, currentKf, virtualW, virtualH, currentPlacements, activeClockPosition, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast]);
 
     // Helper to update current placements on active keyframe with Auto-Keyframe synthesis
     const updateActivePlacements = useCallback((newPlacements, actionLabel = null) => {
@@ -995,7 +1004,8 @@ export default function MulticamViewport({
                 toleranceMs: 500,
                 virtualW,
                 virtualH,
-                fps: 30.0
+                fps: 30.0,
+                utcClockPosition: activeClockPosition
             });
 
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
@@ -1011,7 +1021,7 @@ export default function MulticamViewport({
 
             return nextTimeline;
         });
-    }, [playheadEpochMs, baseEpochMs, playheadMs, virtualW, virtualH, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
+    }, [playheadEpochMs, baseEpochMs, playheadMs, virtualW, virtualH, activeClockPosition, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
 
     // Auto-populate AUTO-GRID by default when defaultStationFeeds become available and canvas is empty (1 central composite per station)
     useEffect(() => {
@@ -2261,16 +2271,20 @@ export default function MulticamViewport({
     // Explicit Keyframe & Transition Action Handlers
     const handleExplicitAddKeyframe = useCallback(() => {
         const currentEpoch = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
+        const explicitLayout = currentKf?.layout ? JSON.parse(JSON.stringify(currentKf.layout)) : {
+            width: virtualW,
+            height: virtualH,
+            backgroundColor: '#070A10',
+            fps: 30.0,
+            utcClockPosition: activeClockPosition,
+            placements: JSON.parse(JSON.stringify(currentPlacements))
+        };
+        explicitLayout.utcClockPosition = explicitLayout.utcClockPosition || activeClockPosition;
+
         const { nextTimeline, newIndex, isNew } = insertExplicitKeyframe(
             internalTimeline,
             currentEpoch,
-            currentKf?.layout || {
-                width: virtualW,
-                height: virtualH,
-                backgroundColor: '#070A10',
-                fps: 30.0,
-                placements: JSON.parse(JSON.stringify(currentPlacements))
-            }
+            explicitLayout
         );
 
         if (isNew) {
@@ -2283,7 +2297,7 @@ export default function MulticamViewport({
             if (setActiveKfIndex) setActiveKfIndex(newIndex);
             triggerToast(`Jumped to existing Keyframe #${newIndex + 1}`, 'info', '💎');
         }
-    }, [playheadEpochMs, baseEpochMs, playheadMs, currentKf, currentPlacements, virtualW, virtualH, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
+    }, [playheadEpochMs, baseEpochMs, playheadMs, currentKf, currentPlacements, virtualW, virtualH, activeClockPosition, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
 
     const handleDeleteActiveKeyframe = useCallback(() => {
         if (keyframes.length <= 1 || safeActiveIdx === 0) {
@@ -3952,12 +3966,19 @@ export default function MulticamViewport({
                         {/* Persistent Canvas UTC Wall Clock Overlay (Movable, Cannot Be Removed) */}
                         <CanvasUtcWallClock
                             currentEpochMs={currentEpochMs}
-                            position={utcClockPosition}
+                            position={activeClockPosition}
                             onPositionChange={(newPos) => {
                                 setUtcClockPosition(newPos);
                                 try {
                                     localStorage.setItem('itb_canvas_utc_clock_pos', newPos);
                                 } catch { }
+                                pushUndoSnapshot('Move Clock Position');
+                                setInternalTimeline(prev => {
+                                    const nextTimeline = updateKeyframeClockPosition(prev, safeActiveIdx, newPos);
+                                    if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+                                    return nextTimeline;
+                                });
+                                triggerToast(`Clock moved to ${newPos} (Keyframe #${safeActiveIdx + 1})`, 'info', '⏱️');
                             }}
                         />
                         {/* Live Audio Source Playback Overlay Indicator */}

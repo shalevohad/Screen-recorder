@@ -1347,13 +1347,21 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
 
             long startEpochSec = cutStartEpochMs / 1000;
-            string clockPos = (job.UtcClockPosition ?? "top-right").Trim().ToLowerInvariant();
-            var (clockX, clockY) = ResolveClockCoordinates(job.UtcClockPosition);
-
+            DateTime endUtc = startUtc.AddSeconds(exportedDurationSec);
             string? masterFontClause = ResolveSystemFontClause();
             if (!string.IsNullOrEmpty(masterFontClause))
             {
-                filterComplex += $" [vbase]drawtext={masterFontClause}text='%{{pts\\:gmtime\\:{startEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={clockX}:y={clockY}[v_clock]; [v_clock]fps=fps={targetFps}:round=near,format=yuv420p[outv]";
+                string clockFilters = BuildMultiKeyframeClockDrawtextFilters(
+                    job.CanvasLayoutTimeline,
+                    startUtc,
+                    endUtc,
+                    cutStartEpochMs,
+                    job.UtcClockPosition,
+                    masterFontClause,
+                    "[vbase]",
+                    "[v_clock]");
+
+                filterComplex += $" {clockFilters} [v_clock]fps=fps={targetFps}:round=near,format=yuv420p[outv]";
             }
             else
             {
@@ -1408,13 +1416,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (targetFps < 24) targetFps = 30;
 
             var (targetWidth, targetHeight, targetBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
+            DateTime endUtc = startUtc.AddSeconds(exportedDurationSec);
             var filterBuilder = new System.Text.StringBuilder();
             string? fontClause = ResolveSystemFontClause();
             bool isTimeline = job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 1;
 
             if (isTimeline)
             {
-                DateTime endUtc = startUtc.AddSeconds(exportedDurationSec);
                 var filterResult = BuildMultiKeyframeCanvasFiltergraph(
                     job.CanvasLayoutTimeline!,
                     tracks.Select(t => (t.StationId, t.DisplayId)).ToList(),
@@ -1677,13 +1685,20 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
 
             long canvasStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
-            long canvasStartEpochSec = canvasStartEpochMs / 1000;
-            string canvasClockPos = (job.UtcClockPosition ?? "top-right").Trim().ToLowerInvariant();
-            var (canvasClockX, canvasClockY) = ResolveClockCoordinates(job.UtcClockPosition);
 
             if (!string.IsNullOrEmpty(fontClause))
             {
-                filterBuilder.Append($" [vbase]drawtext={fontClause}text='%{{pts\\:gmtime\\:{canvasStartEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={canvasClockX}:y={canvasClockY}[v_clock]; [v_clock]fps=fps={targetFps}:round=near,format=yuv420p[outv]");
+                string clockFilters = BuildMultiKeyframeClockDrawtextFilters(
+                    job.CanvasLayoutTimeline,
+                    startUtc,
+                    endUtc,
+                    canvasStartEpochMs,
+                    job.UtcClockPosition,
+                    fontClause,
+                    "[vbase]",
+                    "[v_clock]");
+
+                filterBuilder.Append($" {clockFilters} [v_clock]fps=fps={targetFps}:round=near,format=yuv420p[outv]");
             }
             else
             {
@@ -2049,6 +2064,115 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (hex.StartsWith("#")) hex = "0x" + hex.Substring(1);
             if (!hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = "0x" + hex;
             return hex;
+        }
+
+        /// <summary>
+        /// Generates FFmpeg drawtext filter graph clauses for UTC wall clock burn-in across keyframe intervals.
+        /// When keyframes define different clock positions, chains drawtext filters with enable='between(t, start, end)'
+        /// so the burned-in clock transitions dynamically along the timeline.
+        /// </summary>
+        public static string BuildMultiKeyframeClockDrawtextFilters(
+            AdvancedModels.CanvasLayoutTimelineDto? timeline,
+            DateTime startUtc,
+            DateTime endUtc,
+            long cutStartEpochMs,
+            string? defaultClockPosition,
+            string fontClause,
+            string inStreamLabel = "[vbase]",
+            string outStreamLabel = "[v_clock]")
+        {
+            long startEpochSec = cutStartEpochMs / 1000;
+            long cutEndEpochMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+            double exportedDurationSec = Math.Max(0.1, (endUtc - startUtc).TotalSeconds);
+
+            var clockIntervals = new List<(double StartSec, double EndSec, string ClockPos)>();
+
+            if (timeline != null && timeline.Keyframes != null && timeline.Keyframes.Count > 0)
+            {
+                var sortedKfs = timeline.Keyframes.OrderBy(k => k.TimestampEpochMs).ToList();
+                int initKfIdx = 0;
+                for (int k = 0; k < sortedKfs.Count; k++)
+                {
+                    if (sortedKfs[k].TimestampEpochMs <= cutStartEpochMs)
+                    {
+                        initKfIdx = k;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                var relevantKeyframes = new List<AdvancedModels.CanvasLayoutKeyframeDto>();
+                if (sortedKfs.Count > 0)
+                {
+                    relevantKeyframes.Add(sortedKfs[initKfIdx]);
+                }
+                for (int k = initKfIdx + 1; k < sortedKfs.Count; k++)
+                {
+                    if (sortedKfs[k].TimestampEpochMs < cutEndEpochMs)
+                    {
+                        relevantKeyframes.Add(sortedKfs[k]);
+                    }
+                }
+
+                for (int k = 0; k < relevantKeyframes.Count; k++)
+                {
+                    var currentKf = relevantKeyframes[k];
+                    double kfStartSec = (k == 0) ? 0.0 : Math.Max(0.0, (currentKf.TimestampEpochMs - cutStartEpochMs) / 1000.0);
+                    double kfEndSec = (k < relevantKeyframes.Count - 1)
+                        ? Math.Max(0.0, (relevantKeyframes[k + 1].TimestampEpochMs - cutStartEpochMs) / 1000.0)
+                        : exportedDurationSec;
+
+                    kfStartSec = Math.Clamp(kfStartSec, 0.0, exportedDurationSec);
+                    kfEndSec = Math.Clamp(kfEndSec, 0.0, exportedDurationSec);
+
+                    if (kfEndSec - kfStartSec > 0.04)
+                    {
+                        string kfClockPos = currentKf.UtcClockPosition 
+                            ?? currentKf.Layout?.UtcClockPosition 
+                            ?? defaultClockPosition 
+                            ?? "top-right";
+
+                        if (clockIntervals.Count > 0 && string.Equals(clockIntervals[^1].ClockPos, kfClockPos, StringComparison.OrdinalIgnoreCase))
+                        {
+                            clockIntervals[^1] = (clockIntervals[^1].StartSec, kfEndSec, clockIntervals[^1].ClockPos);
+                        }
+                        else
+                        {
+                            clockIntervals.Add((kfStartSec, kfEndSec, kfClockPos));
+                        }
+                    }
+                }
+            }
+
+            if (clockIntervals.Count == 0)
+            {
+                string fallbackPos = (defaultClockPosition ?? "top-right").Trim().ToLowerInvariant();
+                clockIntervals.Add((0.0, exportedDurationSec, fallbackPos));
+            }
+
+            if (clockIntervals.Count == 1)
+            {
+                var (clockX, clockY) = ResolveClockCoordinates(clockIntervals[0].ClockPos);
+                return $"{inStreamLabel}drawtext={fontClause}text='%{{pts\\:gmtime\\:{startEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={clockX}:y={clockY}{outStreamLabel};";
+            }
+
+            var sb = new System.Text.StringBuilder();
+            string currentStream = inStreamLabel;
+            for (int i = 0; i < clockIntervals.Count; i++)
+            {
+                string nextStream = (i == clockIntervals.Count - 1) ? outStreamLabel : $"[v_clk_{i}]";
+                var (cX, cY) = ResolveClockCoordinates(clockIntervals[i].ClockPos);
+                string startStr = clockIntervals[i].StartSec.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+                string endStr = clockIntervals[i].EndSec.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+                string enableClause = $":enable='between(t,{startStr},{endStr})'";
+
+                sb.Append($"{currentStream}drawtext={fontClause}text='%{{pts\\:gmtime\\:{startEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={cX}:y={cY}{enableClause}{nextStream}; ");
+                currentStream = nextStream;
+            }
+
+            return sb.ToString().TrimEnd();
         }
 
         public static (string clockX, string clockY) ResolveClockCoordinates(string? rawPosition)

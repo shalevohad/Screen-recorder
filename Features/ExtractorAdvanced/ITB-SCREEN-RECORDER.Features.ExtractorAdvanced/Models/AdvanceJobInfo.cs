@@ -152,6 +152,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         [XmlAttribute("transitionType")]
         public string TransitionType { get; set; } = "smooth"; // "smooth", "cut", "dip"
 
+        [JsonPropertyName("utcClockPosition")]
+        [XmlAttribute("utcClockPosition")]
+        public string? UtcClockPosition { get; set; }
+
         [JsonPropertyName("layout")]
         [XmlElement("Layout")]
         public CustomCanvasLayoutDto Layout { get; set; } = new();
@@ -182,6 +186,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         [JsonPropertyName("fps")]
         [XmlElement("Fps")]
         public double Fps { get; set; } = 30.0;
+
+        [JsonPropertyName("utcClockPosition")]
+        [XmlElement("UtcClockPosition")]
+        public string? UtcClockPosition { get; set; }
 
         [JsonPropertyName("placements")]
         [XmlElement("Placement")]

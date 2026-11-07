@@ -86,6 +86,7 @@
 64. [Enterprise Release v1.0.50 & Unified Fleet Version Alignment (2026-11-07)](#64-enterprise-release-v1050--unified-fleet-version-alignment-2026-11-07)
 65. [Enterprise Release v1.0.70 & Forensic Gap Keystroke Elimination & CI/CD Security Hardening (2026-11-07)](#65-enterprise-release-v1070--forensic-gap-keystroke-elimination--cicd-security-hardening-2026-11-07)
 66. [Comprehensive Viewport Popover & Context Menu Stacking & Occlusion Immunity Architecture (2026-11-08)](#66-comprehensive-viewport-popover--context-menu-stacking--occlusion-immunity-architecture-2026-11-08)
+67. [Canvas Layout Keyframe UTC Clock Position Synchronization & Dynamic FFmpeg Drawtext Interval Chaining (2026-11-08)](#67-canvas-layout-keyframe-utc-clock-position-synchronization--dynamic-ffmpeg-drawtext-interval-chaining-2026-11-08)
 
 ---
 
@@ -4069,4 +4070,44 @@ To guarantee that menus, context menus, and toolbars across all views are never 
 - All 455 unit & integration tests in `ITB-SCREEN-RECORDER.Tests` passed (100% green).
 
 
+## 67. Canvas Layout Keyframe UTC Clock Position Synchronization & Dynamic FFmpeg Drawtext Interval Chaining (2026-11-08)
 
+### 67.1 Operational Need & Architectural Scope
+In multi-monitor and custom canvas forensic recordings, the operator frequently rearranges workstation feeds across keyframes to highlight specific displays or incidents over time. When workstations move, the burned-in Canvas UTC Wall Clock overlay must adapt dynamically:
+1. **Keyframe-Bound Clock Position**: The UTC clock position (`top-right`, `top-left`, `bottom-right`, `bottom-left`, or `custom:X,Y`) is bound to each individual layout keyframe.
+2. **Interactive Relocation & Active Keyframe Sync**: Moving or dragging the clock on the canvas dynamically commits the updated position into the active keyframe's data model, persisting to the timeline and enabling undo/redo.
+3. **Playback & Scrubbing Responsiveness**: During live scrubbing and playback across keyframes, the canvas clock dynamically moves to reflect each keyframe's defined position.
+4. **Export Dynamic Interval Chaining**: In the backend standalone MP4 export engine (`AdvanceJobManager.cs`), keyframe clock movements are compiled into chronological intervals. When positions change across keyframes, FFmpeg renders chained `drawtext` filters conditioned with `:enable='between(t, start, end)'`, relocating the clock dynamically in the exported MP4 video without frame drops or timestamp discontinuities.
+
+### 67.2 Data Model & Client Architecture
+1. **C# DTOs (`AdvanceJobInfo.cs`)**:
+   - `CanvasLayoutKeyframeDto`: Added `[JsonPropertyName("utcClockPosition")] [XmlAttribute("utcClockPosition")] public string? UtcClockPosition { get; set; }`.
+   - `CustomCanvasLayoutDto`: Added `[JsonPropertyName("utcClockPosition")] [XmlElement("UtcClockPosition")] public string? UtcClockPosition { get; set; }`.
+2. **NLE Timeline Engine (`nleTimelineEngine.js`)**:
+   - `synthesizeAutoKeyframe`: Accepts and propagates `utcClockPosition`. Automatically inherits the clock position from the preceding keyframe during mid-stream synthesis if not explicitly overridden.
+   - `updateKeyframeClockPosition(timeline, keyframeIndex, newClockPosition)`: Directly updates the clock position of a designated keyframe and its internal layout.
+   - `resolveActiveKeyframeClockPosition(keyframes, currentEpochMs, defaultPosition)`: Resolves the effective clock position at any given playhead epoch based on keyframe chronology.
+   - `insertExplicitKeyframe`: Ensures newly created keyframes capture the active clock position.
+3. **Multicam Viewport (`MulticamViewport.jsx`)**:
+   - Computes `activeClockPosition = useMemo(() => currentKf?.utcClockPosition || currentKf?.layout?.utcClockPosition || utcClockPosition, [currentKf, utcClockPosition])`.
+   - `CanvasUtcWallClock`: Renders with `position={activeClockPosition}` and updates `internalTimeline` via `updateKeyframeClockPosition(prev, safeActiveIdx, newPos)`.
+4. **Keyframe Track Visual Indicators (`CanvasKeyframeTrack.jsx` & `.scss`)**:
+   - Marker hover and drag tooltips display `⏱️ {formatClockPositionLabel(clockPos)}`.
+   - Popover inspector header renders a dedicated `.kf-clock-pos-badge` showing the clock configuration for that specific keyframe.
+
+### 67.3 Backend Dynamic Clock Rendering (`AdvanceJobManager.cs`)
+The export engine implements `BuildMultiKeyframeClockDrawtextFilters`:
+1. Partitions the cut time range into intervals based on keyframes.
+2. Contiguous intervals with identical clock positions are merged into a single uninterrupted interval.
+3. When all keyframes share the same position (or only one interval exists), outputs a single unconditioned `drawtext` filter for maximum efficiency:
+   `[vbase]drawtext=...:x=X:y=Y[v_clock];`
+4. When keyframes define different clock positions, generates chained stream operations with time windows:
+   `[vbase]drawtext=...:x=X0:y=Y0:enable='between(t,0,10)'[v_clk_0];`
+   `[v_clk_0]drawtext=...:x=X1:y=Y1:enable='between(t,10,30)'[v_clock];`
+
+### 67.4 Test Verification
+- Client tests: `Features/ExtractorAdvanced/Client/src/tests/nleTimelineEngine.test.js` (`▶ 6. Keyframe Clock Position Integration & Dynamic Resolution` - 4 tests, 100% green).
+- Backend tests: `ITB-SCREEN-RECORDER.Tests/ExtractorAdvanced/NleMasterExportQualityTests.cs`:
+  - `CanvasLayoutTimeline_KeyframeClockPosition_Serialization_PreservesPosition` (Passed)
+  - `CanvasLayoutTimeline_DynamicKeyframeClockPositions_GeneratesChainedDrawtextFilters` (Passed)
+  - `CanvasLayoutTimeline_IdenticalKeyframeClockPositions_GeneratesSingleDrawtextFilter` (Passed)

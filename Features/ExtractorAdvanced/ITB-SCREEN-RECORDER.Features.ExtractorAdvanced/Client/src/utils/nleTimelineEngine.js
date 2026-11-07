@@ -155,22 +155,26 @@ export function synthesizeAutoKeyframe({
     toleranceMs = 500,
     virtualW = 1920,
     virtualH = 1080,
-    fps = 30.0
+    fps = 30.0,
+    utcClockPosition = null
 }) {
     const nextKfs = [...(prevTimeline?.keyframes || [])];
 
     // CASE 0: Empty timeline -> Initialize Root Keyframe
     if (nextKfs.length === 0) {
+        const resolvedClock = utcClockPosition || 'top-right';
         const initialKf = {
             id: `kf_root_${Date.now()}`,
             timestampEpochMs: baseEpochMs,
             transitionDurationSec: 0.5,
             transitionType: 'smooth',
+            utcClockPosition: resolvedClock,
             layout: {
                 width: virtualW,
                 height: virtualH,
                 backgroundColor: '#070A10',
                 fps,
+                utcClockPosition: resolvedClock,
                 placements: newPlacements
             }
         };
@@ -186,12 +190,16 @@ export function synthesizeAutoKeyframe({
     // CASE 1: Near existing keyframe (within tolerance) -> Edit in place
     const closeIdx = nextKfs.findIndex(k => Math.abs(k.timestampEpochMs - currentEpochMs) <= toleranceMs);
     if (closeIdx >= 0) {
+        const existingClock = nextKfs[closeIdx].utcClockPosition || nextKfs[closeIdx].layout?.utcClockPosition;
+        const targetClock = utcClockPosition || existingClock || 'top-right';
         nextKfs[closeIdx] = {
             ...nextKfs[closeIdx],
+            utcClockPosition: targetClock,
             layout: {
                 ...nextKfs[closeIdx].layout,
                 width: virtualW,
                 height: virtualH,
+                utcClockPosition: targetClock,
                 placements: newPlacements
             }
         };
@@ -206,12 +214,16 @@ export function synthesizeAutoKeyframe({
 
     // CASE 2: Near origin (within tolerance of baseEpochMs) -> Edit root keyframe in place
     if (currentEpochMs <= baseEpochMs + toleranceMs) {
+        const existingClock = nextKfs[0].utcClockPosition || nextKfs[0].layout?.utcClockPosition;
+        const targetClock = utcClockPosition || existingClock || 'top-right';
         nextKfs[0] = {
             ...nextKfs[0],
+            utcClockPosition: targetClock,
             layout: {
                 ...nextKfs[0].layout,
                 width: virtualW,
                 height: virtualH,
+                utcClockPosition: targetClock,
                 placements: newPlacements
             }
         };
@@ -225,16 +237,20 @@ export function synthesizeAutoKeyframe({
     }
 
     // CASE 3: Mid-stream Auto-Keyframe Synthesis (NLE Premiere-Style)
+    const prevKf = [...nextKfs].reverse().find(k => k.timestampEpochMs <= currentEpochMs) || nextKfs[0];
+    const targetClock = utcClockPosition || prevKf?.utcClockPosition || prevKf?.layout?.utcClockPosition || 'top-right';
     const newKf = {
         id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         timestampEpochMs: Math.round(currentEpochMs),
         transitionDurationSec: 0.5,
         transitionType: 'smooth',
+        utcClockPosition: targetClock,
         layout: {
             width: virtualW,
             height: virtualH,
             backgroundColor: '#070A10',
             fps,
+            utcClockPosition: targetClock,
             placements: newPlacements
         }
     };
@@ -272,6 +288,52 @@ export function updateKeyframeTransition(timeline, keyframeIndex, { transitionTy
         ...timeline,
         keyframes: nextKfs
     };
+}
+
+/**
+ * Updates the clock position of a specified keyframe
+ */
+export function updateKeyframeClockPosition(timeline, keyframeIndex, newClockPosition) {
+    if (!timeline || !Array.isArray(timeline.keyframes) || keyframeIndex < 0 || keyframeIndex >= timeline.keyframes.length) {
+        return timeline;
+    }
+
+    const nextKfs = [...timeline.keyframes];
+    const targetKf = nextKfs[keyframeIndex];
+    const resolvedPos = newClockPosition || 'top-right';
+
+    nextKfs[keyframeIndex] = {
+        ...targetKf,
+        utcClockPosition: resolvedPos,
+        layout: {
+            ...(targetKf.layout || {}),
+            utcClockPosition: resolvedPos
+        }
+    };
+
+    return {
+        ...timeline,
+        keyframes: nextKfs
+    };
+}
+
+/**
+ * Resolves the effective UTC clock position at a given epoch based on keyframe chronology.
+ */
+export function resolveActiveKeyframeClockPosition(keyframes, currentEpochMs, defaultPosition = 'top-right') {
+    if (!Array.isArray(keyframes) || keyframes.length === 0) {
+        return defaultPosition;
+    }
+    const sorted = [...keyframes].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+    let activePos = sorted[0].utcClockPosition || sorted[0].layout?.utcClockPosition || defaultPosition;
+    for (const kf of sorted) {
+        if (kf.timestampEpochMs <= currentEpochMs) {
+            activePos = kf.utcClockPosition || kf.layout?.utcClockPosition || activePos;
+        } else {
+            break;
+        }
+    }
+    return activePos;
 }
 
 /**
@@ -313,12 +375,19 @@ export function insertExplicitKeyframe(timeline, currentEpochMs, activeLayout, t
         };
     }
 
+    const prevKf = [...keyframes].reverse().find(k => k.timestampEpochMs <= currentEpochMs) || keyframes[0];
+    const targetClock = activeLayout?.utcClockPosition || prevKf?.utcClockPosition || prevKf?.layout?.utcClockPosition || 'top-right';
+
+    const clonedLayout = activeLayout ? JSON.parse(JSON.stringify(activeLayout)) : {};
+    clonedLayout.utcClockPosition = targetClock;
+
     const newKf = {
         id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         timestampEpochMs: Math.round(currentEpochMs),
         transitionDurationSec: 0.5,
         transitionType: 'smooth',
-        layout: JSON.parse(JSON.stringify(activeLayout))
+        utcClockPosition: targetClock,
+        layout: clonedLayout
     };
 
     const nextKfs = [...keyframes, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);

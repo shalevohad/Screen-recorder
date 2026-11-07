@@ -4,6 +4,7 @@
 // ==========================================
 import React, { useMemo, useState } from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
+import { formatClockPositionLabel } from '../../../utils/clockPositionStore.js';
 import './CanvasKeyframeTrack.scss';
 
 export default function CanvasKeyframeTrack({
@@ -198,6 +199,9 @@ export default function CanvasKeyframeTrack({
                     const transLabel = `${kf.transitionType || 'smooth'} (${kf.transitionDurationSec ?? 0.5}s)`;
                     const offsetSec = Math.max(0, (epoch - baseEpochMs) / 1000).toFixed(1);
 
+                    const clockPos = kf.utcClockPosition || kf.layout?.utcClockPosition || 'top-right';
+                    const clockPosLabel = formatClockPositionLabel(clockPos);
+
                     return (
                         <div
                             key={`kf-${idx}`}
@@ -211,13 +215,14 @@ export default function CanvasKeyframeTrack({
                                     onDeleteKeyframe(idx);
                                 }
                             }}
-                            title={`Keyframe #${idx + 1} at ${clockStr} (+${offsetSec}s) • ${transLabel}\nDrag: Reposition timestamp • Click: Seek • Right-click: Delete`}
+                            title={`Keyframe #${idx + 1} at ${clockStr} (+${offsetSec}s) • ${transLabel} • Clock: ${clockPosLabel}\nDrag: Reposition timestamp • Click: Seek • Right-click: Delete`}
                         >
                             <div className="diamond-shape">❖</div>
                             {isThisDragging && (
                                 <div className="diamond-drag-tooltip">
                                     <span>{clockStr}</span>
                                     <span className="tooltip-sub">+{offsetSec}s</span>
+                                    <span className="tooltip-clock-pos">⏱️ {clockPosLabel}</span>
                                 </div>
                             )}
                             {isPopoverOpen && (
@@ -229,6 +234,7 @@ export default function CanvasKeyframeTrack({
                                     <div className="kf-popover-header">
                                         <span className="kf-badge">💎 KEYFRAME #{idx + 1}</span>
                                         <span className="kf-clock">{clockStr}</span>
+                                        <span className="kf-clock-pos-badge" title={`UTC Clock Position: ${clockPosLabel}`}>⏱️ {clockPosLabel}</span>
                                         <button
                                             type="button"
                                             className="btn-kf-popover-close"

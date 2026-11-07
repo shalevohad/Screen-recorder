@@ -223,6 +223,18 @@
                         margin-left: auto;
                     }
 
+                    .kf-clock-pos-badge {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 7.5px;
+                        font-weight: 700;
+                        color: #22D3EE;
+                        background: rgba(6, 182, 212, 0.12);
+                        padding: 1px 5px;
+                        border-radius: 2px;
+                        border: 1px solid rgba(6, 182, 212, 0.3);
+                        white-space: nowrap;
+                    }
+
                     .btn-kf-popover-close {
                         background: transparent;
                         border: none;
@@ -372,6 +384,15 @@
                 .tooltip-sub {
                     color: #94A3B8;
                     font-weight: 400;
+                }
+
+                .tooltip-clock-pos {
+                    font-size: 7.5px;
+                    color: #22D3EE;
+                    background: rgba(6, 182, 212, 0.15);
+                    padding: 1px 4px;
+                    border-radius: 2px;
+                    border: 1px solid rgba(6, 182, 212, 0.3);
                 }
             }
         }

@@ -13,7 +13,9 @@ import {
     synthesizeAutoKeyframe,
     updateKeyframeTransition,
     deleteKeyframe,
-    insertExplicitKeyframe
+    insertExplicitKeyframe,
+    updateKeyframeClockPosition,
+    resolveActiveKeyframeClockPosition
 } from '../utils/nleTimelineEngine.js';
 
 describe('NLE Timeline Engine - Critical Verification Test Suite', () => {
@@ -532,6 +534,96 @@ describe('NLE Timeline Engine - Critical Verification Test Suite', () => {
             assert.equal(a10.width, 1920);
             assert.equal(b10.width, 480);
             assert.equal(b10.x, 1400);
+        });
+    });
+
+    describe('6. Keyframe Clock Position Integration & Dynamic Resolution', () => {
+        it('synthesizeAutoKeyframe preserves and propagates keyframe clock positions', () => {
+            // Root keyframe initialization with explicit clock position
+            const rootRes = synthesizeAutoKeyframe({
+                prevTimeline: { keyframes: [] },
+                newPlacements: [sampleFeed1],
+                currentEpochMs: BASE_EPOCH,
+                baseEpochMs: BASE_EPOCH,
+                utcClockPosition: 'bottom-left'
+            });
+            assert.equal(rootRes.activeKeyframe.utcClockPosition, 'bottom-left');
+            assert.equal(rootRes.activeKeyframe.layout.utcClockPosition, 'bottom-left');
+
+            // Mid-stream synthesis inherits preceding keyframe clock position when none specified
+            const midRes = synthesizeAutoKeyframe({
+                prevTimeline: rootRes.nextTimeline,
+                newPlacements: [sampleFeed1, sampleFeed2],
+                currentEpochMs: BASE_EPOCH + 10000,
+                baseEpochMs: BASE_EPOCH
+            });
+            assert.equal(midRes.activeKeyframe.utcClockPosition, 'bottom-left');
+            assert.equal(midRes.activeKeyframe.layout.utcClockPosition, 'bottom-left');
+
+            // Mid-stream synthesis with a new clock position updates the synthesized keyframe
+            const midResNewClock = synthesizeAutoKeyframe({
+                prevTimeline: rootRes.nextTimeline,
+                newPlacements: [sampleFeed1, sampleFeed2],
+                currentEpochMs: BASE_EPOCH + 20000,
+                baseEpochMs: BASE_EPOCH,
+                utcClockPosition: 'top-left'
+            });
+            assert.equal(midResNewClock.activeKeyframe.utcClockPosition, 'top-left');
+            assert.equal(midResNewClock.activeKeyframe.layout.utcClockPosition, 'top-left');
+        });
+
+        it('updateKeyframeClockPosition updates keyframe clock position in keyframe and layout', () => {
+            const timeline = {
+                keyframes: [
+                    { id: 'kf0', timestampEpochMs: BASE_EPOCH, utcClockPosition: 'top-right', layout: { utcClockPosition: 'top-right' } },
+                    { id: 'kf1', timestampEpochMs: BASE_EPOCH + 5000, utcClockPosition: 'top-right', layout: { utcClockPosition: 'top-right' } }
+                ]
+            };
+
+            const updated = updateKeyframeClockPosition(timeline, 1, 'bottom-right');
+            assert.equal(updated.keyframes[1].utcClockPosition, 'bottom-right');
+            assert.equal(updated.keyframes[1].layout.utcClockPosition, 'bottom-right');
+            // Ensure keyframe 0 remains untouched
+            assert.equal(updated.keyframes[0].utcClockPosition, 'top-right');
+        });
+
+        it('resolveActiveKeyframeClockPosition dynamically resolves position at any playback epoch', () => {
+            const keyframes = [
+                { timestampEpochMs: BASE_EPOCH, utcClockPosition: 'top-right' },
+                { timestampEpochMs: BASE_EPOCH + 5000, utcClockPosition: 'bottom-left' },
+                { timestampEpochMs: BASE_EPOCH + 15000, utcClockPosition: 'top-left' }
+            ];
+
+            // Before or at t=0
+            assert.equal(resolveActiveKeyframeClockPosition(keyframes, BASE_EPOCH), 'top-right');
+            assert.equal(resolveActiveKeyframeClockPosition(keyframes, BASE_EPOCH + 2000), 'top-right');
+
+            // At and after t=5s
+            assert.equal(resolveActiveKeyframeClockPosition(keyframes, BASE_EPOCH + 5000), 'bottom-left');
+            assert.equal(resolveActiveKeyframeClockPosition(keyframes, BASE_EPOCH + 10000), 'bottom-left');
+
+            // At and after t=15s
+            assert.equal(resolveActiveKeyframeClockPosition(keyframes, BASE_EPOCH + 15000), 'top-left');
+            assert.equal(resolveActiveKeyframeClockPosition(keyframes, BASE_EPOCH + 25000), 'top-left');
+        });
+
+        it('insertExplicitKeyframe adopts clock position from active layout / preceding keyframe', () => {
+            const timeline = {
+                keyframes: [
+                    { id: 'kf0', timestampEpochMs: BASE_EPOCH, utcClockPosition: 'bottom-right', layout: { utcClockPosition: 'bottom-right' } }
+                ]
+            };
+
+            const res = insertExplicitKeyframe(
+                timeline,
+                BASE_EPOCH + 8000,
+                { width: 1920, height: 1080, utcClockPosition: 'bottom-right', placements: [] }
+            );
+
+            assert.equal(res.isNew, true);
+            assert.equal(res.nextTimeline.keyframes.length, 2);
+            assert.equal(res.nextTimeline.keyframes[1].utcClockPosition, 'bottom-right');
+            assert.equal(res.nextTimeline.keyframes[1].layout.utcClockPosition, 'bottom-right');
         });
     });
 });
