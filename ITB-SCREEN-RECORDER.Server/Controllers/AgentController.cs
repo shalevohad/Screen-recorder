@@ -202,7 +202,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             }
 
             // 1. Asynchronously queue DB bulk insertion in background ONLY if station is actively recording
-            bool isRecording = _telemetryState == null || _telemetryState.IsStationRecording(request.Hostname);
+            bool isRecording = _telemetryState != null && _telemetryState.IsStationRecording(request.Hostname);
             if (isRecording)
             {
                 _ = Task.Run(async () =>

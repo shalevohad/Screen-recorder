@@ -427,10 +427,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 break;
                             }
 
-                            // Check for Fast Path messages to forward immediate keystrokes (only if actively recording)
+                            // Check for Fast Path messages to forward immediate keystrokes to server
                             if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
                             {
-                                if (!_isWorkerRecording) continue;
                                 try
                                 {
                                     string keyJson = line.Substring(4).Trim();
@@ -449,7 +448,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                             if (line.StartsWith("Keys|", StringComparison.OrdinalIgnoreCase))
                             {
-                                if (!_isWorkerRecording) continue;
                                 try
                                 {
                                     string keysJson = line.Substring(5).Trim();
@@ -567,9 +565,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // Dequeue keystrokes to transmit in current telemetry report tick (only when actively recording)
+                // Dequeue keystrokes to transmit in current telemetry report tick (when streaming)
                 var keysBatch = new List<KeystrokeEventDto>();
-                if (isStreaming && _isWorkerRecording)
+                if (isStreaming)
                 {
                     while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
                     {

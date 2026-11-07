@@ -123,8 +123,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private void OnKeystrokeCaptured(KeystrokeEventDto k)
         {
-            // Keystroke telemetry recording is strictly permitted only while the station is actively streaming AND recording video
-            if (!_isStreaming || !_isRecording) return;
+            // Keystrokes are captured whenever the station is streaming (for real-time dashboard live viewing)
+            if (!_isStreaming) return;
 
             // In-worker end-to-end payload encryption prior to disk storage or network dispatch
             if (!string.IsNullOrEmpty(_activeKeyId) && _activeKeyBytes != null && !string.IsNullOrEmpty(k.KeyCombination))
@@ -247,7 +247,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 bool prev = _isRecording;
                 _isRecording = shouldRecord;
                 Logger.Info($"[WORKER:RECORDING] Recording state updated to {shouldRecord} (Stream live status: {_isStreaming})");
-                if (!shouldRecord)
+                if (!shouldRecord && !_isStreaming)
                 {
                     while (_onlineKeystrokes.TryDequeue(out _)) { }
                 }
