@@ -1,8 +1,8 @@
 # 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
-> **Last Updated**: 2026-11-05
-> **Current Version**: v1.0.62
+> **Last Updated**: 2026-11-07
+> **Current Version**: v1.0.63
 > **Governing Rules**: Consult [RULES.md](./RULES.md) for behavioral invariants and strict system constraints.
 
 ---
@@ -82,6 +82,7 @@
 60. [Canvas Placement Active-Edit Temporary Z-Index Elevation & Settle Invariant (2026-11-05)](#60-canvas-placement-active-edit-temporary-z-index-elevation--settle-invariant-2026-11-05)
 61. [High-Density Canvas Video Streaming Optimization, Hardware Decoder Governance & Constrained VBR Architecture (2026-11-05)](#61-high-density-canvas-video-streaming-optimization-hardware-decoder-governance--constrained-vbr-architecture-2026-11-05)
 62. [Decoupled Canvas Resolution & Aspect Ratio Architecture, 2K/16:9 Operational Defaults, Manual Custom Resolution & WYSIWYG Export Lock (2026-11-06)](#62-decoupled-canvas-resolution--aspect-ratio-architecture-2k169-operational-defaults-manual-custom-resolution--wysiwyg-export-lock-2026-11-06)
+63. [Master MP4 Real-Time Composition Telemetry, Auto-Director Multi-Station Focus Resolution & Canvas Mount Stabilization (2026-11-07)](#63-master-mp4-real-time-composition-telemetry-auto-director-multi-station-focus-resolution--canvas-mount-stabilization-2026-11-07)
 
 ---
 
@@ -3499,3 +3500,90 @@ To support specialized multi-monitor topologies, custom LED video walls, high-de
 5. **Backend Master MP4 Composition Support (`AdvanceJobManager.cs`)**:
    - `AdvanceJobManager.ParseQualityResolution` natively parses exact custom dimensions (`"WIDTHxHEIGHT"`, e.g., `"3440X1440"`) and `"CUSTOM"`.
    - When `"CUSTOM"` is specified, the master MP4 renderer extracts exact geometry from `request.CanvasLayout.Width` and `request.CanvasLayout.Height`, calculates an optimal bitrate matching pixel area, and renders a pixel-perfect standalone master video.
+
+---
+
+## 63. Master MP4 Real-Time Composition Telemetry, Auto-Director Multi-Station Focus Resolution & Canvas Mount Stabilization (2026-11-07)
+
+### 63.1 Real-Time Master MP4 Composition Progress Reporting (88% → 99%)
+
+#### Operational Background & Problem Statement
+During video export in `AdvanceJobManager.cs`, individual workstation tracks and display streams are sliced, gap-interpolated, and cut during the initial stages (0% to 88%). At 88%, the platform initiates final composition: either standard multi-track composition (`ComposeMasterMp4Async`) or WYSIWYG multi-layer canvas composition (`ComposeCustomCanvasMasterMp4Async`).
+
+Previously, this composition phase invoked FFmpeg synchronously via `RunProcessAsync` without tracking real-time encoding progress. On large forensic export jobs (e.g., 30–60 minutes across multiple 2K/4K displays), the export progress percentage remained frozen at exactly `88%` for several minutes with static status messages, giving operators the false impression of an engine deadlock before abruptly jumping to 100%.
+
+#### Architectural Implementation
+1. **Asynchronous FFmpeg Stream Progress Parser (`ExecuteCompositionFfmpegAsync`)**:
+   - Added `-progress pipe:1` to FFmpeg execution arguments.
+   - Stdout is asynchronously streamed and parsed key-by-key for standard FFmpeg progress telemetry:
+     - `out_time_us`: Cumulative microseconds encoded. Converted to processed seconds: $T_{\text{sec}} = \frac{\text{out\_time\_us}}{1\,000\,000}$.
+     - `fps`: Current encoding throughput in frames per second.
+     - `speed`: Real-time speed multiplier relative to playback rate (e.g. `2.4x`, `0.85x`).
+     - `progress`: Current encoding state (`continue` or `end`).
+2. **Linear Metric Scaling & Progress Interpolation**:
+   - Maps the composition window monotonically across the remaining percentage band (88% to 99%):
+     $$\text{CompositionRatio} = \min\left(1.0, \frac{T_{\text{sec}}}{\text{TotalDuration}_{\text{sec}}}\right)$$
+     $$\text{ProgressPercent} = 88 + \lfloor \text{CompositionRatio} \times 11.0 \rfloor$$
+3. **Database Write Throttling & Live HUD Telemetry**:
+   - To prevent SQLite write contention during fast encoding loops, database persistence is throttled to once every **800ms**.
+   - Operator HUD status message dynamically displays:
+     `Composing Master MP4: {SecondsProcessed:0.0}s / {TotalDuration:0.0}s ({ProgressPercent}%, {Fps:0} fps, {SpeedMultiplier}x) • {SizeMB:0.1} MB`
+   - Simultaneously calculates and populates `EstimatedSecondsRemaining` and `SpeedMBps`.
+
+---
+
+### 63.2 Auto-Director Multi-Station Focus Resolution Engine
+
+#### Operational Background & Problem Statement
+When operators enabled Auto-Director on multi-monitor workstations and exported forensic video, the rendered export output remained locked exclusively on the primary monitor (`mon-0`) and failed to perform cuts or transitions to secondary displays (`mon-1`, etc.).
+
+#### Root Cause Analysis
+1. **Empty Event Arrays Passed to Focus Analyzer**:
+   In `AdvanceJobManager.cs`, multi-station export loops previously invoked `ActivityFocusAnalyzer.AnalyzeFocus(...)` with `Array.Empty<ActivityEventDto>()` whenever explicit pre-computed segments were omitted from the API payload. With zero input events, the analyzer defaulted to a single continuous cut spanning the entire timeline assigned to `mon-0`.
+2. **Wall-Clock vs. Edited Timeline Epoch Mismatch**:
+   `SynchronizedTrackCutter.cs` evaluated director cut points using wall-clock epoch timestamps without accounting for global/local gap trimming. This caused transition timestamps to drift or fall outside active segment bounds.
+3. **Display Identifier Resolution**:
+   Secondary display naming differed between explicit layout keys (`mon-1`), compound keys (`station-mon-1`), and display index numbers (`TargetDisplayNumber > 1`).
+
+#### Architectural Resolution
+1. **Per-Station Director Segments Transfer (`StationDirectorSegments`)**:
+   - Added `Dictionary<string, List<DirectorCutSegmentDto>>? StationDirectorSegments` to `AdvanceJobInfo` and `AdvanceCutRequestDto`.
+   - Annotated with `[XmlIgnore]` and `[JsonPropertyName("stationDirectorSegments")]` to ensure full XML serialization compatibility for external forensic APIs while retaining JSON camelCase serialization.
+   - `ExtractorAdvancedStudio.jsx` iterates all active stations and binds their timeline director segments directly into the export payload:
+     ```javascript
+     const stationDirectorSegsMap = {};
+     for (const st of timelineStations) {
+       stationDirectorSegsMap[st.id] = buildDirectorSegmentsForStation(st.id);
+     }
+     ```
+2. **Dynamic Fallback & Keystroke Telemetry Correlation (`ResolveDirectorSegmentsForStationAsync`)**:
+   - Injected optional `IKeystrokeRepository` into `AdvanceJobManager`.
+   - If a workstation lacks pre-computed frontend director segments, the backend automatically queries `_keystrokeRepository.GetKeystrokesForWindowAsync` for that station's exact export window.
+   - Keystroke events are correlated with per-monitor chunk encoding bitrates to determine active display focus.
+   - In the absence of keystroke events, the engine performs heuristic bitrate difference analysis across time slices: displays receiving active UI interaction produce higher instantaneous video bitrates than idle displays.
+   - Passes synthesized activity events to `ActivityFocusAnalyzer.AnalyzeFocus(...)` with zero-drift transition points.
+3. **Accurate Concat Timeline Mapping (`MapEpochToOutputSeconds`)**:
+   - Implemented `MapEpochToOutputSeconds(epochMs, activeSegments, maxDuration)` in `SynchronizedTrackCutter.cs`.
+   - Translates absolute epoch timestamps into relative seconds within the concatenated edited stream, accounting for trimmed gaps.
+   - Hardened secondary display detection:
+     ```csharp
+     bool isSecondary = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) 
+         || (seg.TargetDisplayId != null && seg.TargetDisplayId.EndsWith("-1", StringComparison.OrdinalIgnoreCase)) 
+         || seg.TargetDisplayNumber > 1;
+     ```
+
+---
+
+### 63.3 Canvas Mount Stabilization & Circular Ping-Pong Elimination
+
+#### Operational Background & Problem Statement
+On initial studio load or workstation selection in `ExtractorAdvancedStudio`, screen placement cards inside `MulticamViewport.jsx` experienced rapid visual flickering and layout jitter for 1–2 seconds before settling into their assigned canvas coordinates.
+
+#### Root Causes & Architectural Resolution
+1. **Initial Mount CSS Transition Race**:
+   - Screen placement cards had CSS transitions applied (`left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out`).
+   - When cards mounted with default bounds before receiving calibrated layout data from the studio state, the CSS transition animated the snap from $(0, 0)$ to their target positions.
+   - **Fix**: Introduced `isInitialMountRef` in `MulticamViewport.jsx` with a 400ms stabilization window. Transitions are completely suppressed (`transition: 'none'`) during initial mount, drag, and resize operations.
+2. **Circular State Update Loop Elimination**:
+   - `useEffect` hooks synchronizing `canvasLayoutTimeline` between `MulticamViewport` and the parent studio caused circular ping-pong re-renders: the viewport notified the parent of layout adjustments, which passed back updated props, triggering another viewport re-render.
+   - **Fix**: Decoupled synchronization using `internalTimelineRef` and removed `internalTimeline` from the dependency array, performing deep comparison against the ref before propagating updates upward. This eliminated circular re-renders and guaranteed instantaneous, zero-flicker canvas mounting.

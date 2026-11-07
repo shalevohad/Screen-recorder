@@ -40,6 +40,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public bool IsPipSwapped { get; set; } = false;
         public bool IsAutoDirectorEnabled { get; set; } = true;
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+        [XmlIgnore]
+        [JsonPropertyName("stationDirectorSegments")]
+        public Dictionary<string, List<DirectorCutSegmentDto>>? StationDirectorSegments { get; set; }
         public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
         public string? AudioSourceStation { get; set; }
         public CustomCanvasLayoutDto? CanvasLayout { get; set; }
@@ -84,6 +87,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("directorSegments")]
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+        [XmlIgnore]
+        [JsonPropertyName("stationDirectorSegments")]
+        public Dictionary<string, List<DirectorCutSegmentDto>>? StationDirectorSegments { get; set; }
 
         [JsonPropertyName("audioRoutingSegments")]
         public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }

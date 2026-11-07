@@ -325,12 +325,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                             for (int i = 0; i < dirSegments.Count; i++)
                             {
                                 var seg = dirSegments[i];
-                                double segStartSec = Math.Max(0, (seg.StartEpochMs - cutStartEpochMs) / 1000.0);
-                                double segEndSec = Math.Min(maxDuration, (seg.EndEpochMs - cutStartEpochMs) / 1000.0);
+                                double segStartSec = MapEpochToOutputSeconds(seg.StartEpochMs, plan.ActiveSegments, maxDuration);
+                                double segEndSec = MapEpochToOutputSeconds(seg.EndEpochMs, plan.ActiveSegments, maxDuration);
                                 double segDur = segEndSec - segStartSec;
                                 if (segDur <= 0.05) continue;
 
-                                int inIdx = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                                bool isSecondary = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) ||
+                                                   (seg.TargetDisplayId != null && seg.TargetDisplayId.EndsWith("-1", StringComparison.OrdinalIgnoreCase)) ||
+                                                   seg.TargetDisplayNumber > 1;
+                                int inIdx = isSecondary ? 1 : 0;
                                 string segOutLabel = $"[v_seg_{i}]";
 
                                 string startStr = segStartSec.ToString("0.00", CultureInfo.InvariantCulture);
@@ -709,6 +712,33 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 try { ExtractorGarbageCollectorService.UntrackProcess(process.Id); } catch { }
             }
         }
+        private static double MapEpochToOutputSeconds(long epochMs, List<TimeInterval>? activeSegments, double maxDuration)
+        {
+            if (activeSegments == null || activeSegments.Count == 0) return 0.0;
+
+            double accumulatedSec = 0.0;
+            DateTime epochUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
+
+            foreach (var activeSeg in activeSegments)
+            {
+                if (epochUtc <= activeSeg.StartUtc)
+                {
+                    return accumulatedSec;
+                }
+                else if (epochUtc >= activeSeg.EndUtc)
+                {
+                    accumulatedSec += activeSeg.DurationSeconds;
+                }
+                else
+                {
+                    accumulatedSec += (epochUtc - activeSeg.StartUtc).TotalSeconds;
+                    return Math.Min(maxDuration, accumulatedSec);
+                }
+            }
+
+            return Math.Min(maxDuration, accumulatedSec);
+        }
+
         private static string ResolveFontClause()
         {
             if (OperatingSystem.IsWindows())

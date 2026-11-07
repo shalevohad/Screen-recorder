@@ -443,6 +443,15 @@ export default function MulticamViewport({
     const hasUserCustomizedRef = useRef(false);
     const [selectedPresetId, setSelectedPresetId] = useState('auto-grid');
 
+    // Suppress CSS transitions during initial mount (first 400ms) to prevent screen flicker / snapping jerk
+    const isInitialMountRef = useRef(true);
+    useEffect(() => {
+        const t = setTimeout(() => {
+            isInitialMountRef.current = false;
+        }, 400);
+        return () => clearTimeout(t);
+    }, []);
+
     // Undo / Redo History Stack (CTRL+Z / CTRL+Y) & Windows QuickSave (CTRL+S)
     const undoStackRef = useRef([]);
     const redoStackRef = useRef([]);
@@ -803,9 +812,22 @@ export default function MulticamViewport({
         };
     });
 
+    const lastSyncedExternalTimelineJsonRef = useRef('');
+    const internalTimelineRef = useRef(internalTimeline);
+    internalTimelineRef.current = internalTimeline;
+
     useEffect(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
-            const sanitized = JSON.parse(JSON.stringify(canvasLayoutTimeline));
+            const incomingJson = JSON.stringify(canvasLayoutTimeline);
+            // Ignore if this is identical to what we already processed or current internalTimeline
+            if (incomingJson === lastSyncedExternalTimelineJsonRef.current) return;
+            if (internalTimelineRef.current && incomingJson === JSON.stringify(internalTimelineRef.current)) {
+                lastSyncedExternalTimelineJsonRef.current = incomingJson;
+                return;
+            }
+
+            lastSyncedExternalTimelineJsonRef.current = incomingJson;
+            const sanitized = JSON.parse(incomingJson);
             if (timelineStations && timelineStations.length > 0) {
                 const selectedIds = new Set(timelineStations.map(s => s.id));
                 sanitized.keyframes.forEach(kf => {
@@ -946,12 +968,7 @@ export default function MulticamViewport({
     // Auto-populate AUTO-GRID by default when defaultStationFeeds become available and canvas is empty (1 central composite per station)
     useEffect(() => {
         if (defaultStationFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
-            let targetAspect = selectedAspectId;
-            if (defaultStationFeeds.length === 2 && selectedAspectId === '16:9') {
-                targetAspect = '32:9';
-                setSelectedAspectId('32:9');
-            }
-            const activePreset = ASPECT_PRESETS.find(p => p.id === targetAspect) || ASPECT_PRESETS[0];
+            const activePreset = ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
             const autoPacked = generateAutoPackPlacements(defaultStationFeeds, activePreset.w, activePreset.h);
             if (autoPacked.length > 0) {
                 updateActivePlacements(autoPacked);
@@ -976,12 +993,7 @@ export default function MulticamViewport({
             if (timelineStations && timelineStations.length > 0) {
                 const selectedIds = new Set(timelineStations.map(s => s.id));
                 if (selectedPresetId === 'auto-grid' || !hasUserCustomizedRef.current) {
-                    let targetAspect = selectedAspectId;
-                    if (defaultStationFeeds.length === 2 && selectedAspectId === '16:9') {
-                        targetAspect = '32:9';
-                        setSelectedAspectId('32:9');
-                    }
-                    const activePreset = ASPECT_PRESETS.find(p => p.id === targetAspect) || ASPECT_PRESETS[0];
+                    const activePreset = ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
                     const autoPacked = generateAutoPackPlacements(defaultStationFeeds, activePreset.w, activePreset.h);
                     if (autoPacked.length > 0) {
                         updateActivePlacements(autoPacked);
@@ -1015,10 +1027,7 @@ export default function MulticamViewport({
                 timeline: internalTimeline
             });
         }
-        if (onUpdateCanvasLayoutTimeline && internalTimeline) {
-            onUpdateCanvasLayoutTimeline(internalTimeline);
-        }
-    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, onUpdateCanvasLayoutTimeline, virtualW, virtualH, selectedResolutionId, selectedAspectId]);
+    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, virtualW, virtualH, selectedResolutionId, selectedAspectId]);
 
     // Switch Resolution handler (scales placements proportionally to match new pixel density)
     const handleSelectResolution = useCallback((newResId) => {
@@ -3413,7 +3422,7 @@ export default function MulticamViewport({
                                         opacity: p.opacity !== undefined ? p.opacity : 1,
                                         pointerEvents: (p.opacity !== undefined && p.opacity < 0.1) ? 'none' : 'auto',
                                         cursor: isThisDragging ? 'grabbing' : 'grab',
-                                        transition: (isThisDragging || isThisResizing) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out'
+                                        transition: (isThisDragging || isThisResizing || isInitialMountRef.current) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out'
                                     }}
                                     onMouseDown={(e) => handleMouseDownBox(e, origIdx)}
                                     onContextMenu={(e) => {

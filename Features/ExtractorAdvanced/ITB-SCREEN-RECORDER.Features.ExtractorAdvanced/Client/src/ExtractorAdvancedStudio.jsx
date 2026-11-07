@@ -1304,7 +1304,23 @@ export default function ExtractorAdvancedStudio() {
         let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
         const targetResolution = chosenResolution || 'NATIVE';
 
-        const directorSegs = ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1))
+        const stationDirectorSegsMap = {};
+        timelineStations.forEach(st => {
+            const plan = stationDirectorPlans[st.id] || st.directorPlan;
+            if (plan?.segments?.length > 0) {
+                stationDirectorSegsMap[st.id] = plan.segments.map(s => ({
+                    startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? 0,
+                    endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? 0,
+                    targetDisplayId: s.targetDisplayId ?? s.TargetDisplayId ?? 'mon-0',
+                    targetDisplayNumber: s.targetDisplayNumber ?? s.TargetDisplayNumber ?? 1,
+                    targetDisplayName: s.targetDisplayName ?? s.TargetDisplayName ?? 'Screen 1',
+                    isManualOverride: Boolean(s.isManualOverride ?? s.IsManualOverride)
+                }));
+            }
+        });
+
+        const directorSegs = stationDirectorSegsMap[enrichedActiveStation?.id] ||
+            ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1))
             ? (enrichedActiveStation?.directorPlan?.segments || [])
             : [];
 
@@ -1328,6 +1344,7 @@ export default function ExtractorAdvancedStudio() {
                     isPipSwapped: isPipSwapped,
                     isAutoDirectorEnabled: isAutoDirectorEnabled,
                     directorSegments: directorSegs,
+                    stationDirectorSegments: stationDirectorSegsMap,
                     audioRoutingSegments: effectiveAudioPlan.segments || [],
                     utcClockPosition: (() => {
                         try {

@@ -38,6 +38,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ILogger<AdvanceJobManager> _advLogger;
 
         private readonly ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? _stationRoleProvider;
+        private readonly ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.IKeystrokeRepository? _keystrokeRepository;
         private readonly IOptionsMonitor<SystemConfig>? _systemConfig;
 
         public AdvanceJobManager(
@@ -51,7 +52,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             ILogger<ExportJobManager> baseLogger,
             ILogger<AdvanceJobManager> advLogger,
             ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? stationRoleProvider = null,
-            IOptionsMonitor<SystemConfig>? systemConfig = null)
+            IOptionsMonitor<SystemConfig>? systemConfig = null,
+            ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.IKeystrokeRepository? keystrokeRepository = null)
             : base(extractorService, exportJobRepository, options, baseLogger)
         {
             _advancedExtractorService = advancedExtractorService;
@@ -61,6 +63,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _advLogger = advLogger;
             _stationRoleProvider = stationRoleProvider;
             _systemConfig = systemConfig;
+            _keystrokeRepository = keystrokeRepository;
 
             _ = LoadAndRecoverAdvanceJobsAsync();
         }
@@ -434,6 +437,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 IsPipSwapped = request.IsPipSwapped,
                 IsAutoDirectorEnabled = request.IsAutoDirectorEnabled,
                 DirectorSegments = request.DirectorSegments,
+                StationDirectorSegments = request.StationDirectorSegments,
                 AudioRoutingSegments = request.AudioRoutingSegments,
                 AudioSourceStation = request.AudioSourceStation,
                 CanvasLayout = request.CanvasLayout,
@@ -727,7 +731,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         .Distinct()
                         .Count();
 
-                    if (screenCountForStation <= 1 && availableDisps.Count > 1)
+                    if (screenCountForStation <= 1 && availableDisps.Count > 1 && job.IsAutoDirectorEnabled)
                     {
                         foreach (var p in allPlacements.Where(x => string.Equals(x.StationId, sId, StringComparison.OrdinalIgnoreCase)))
                         {
@@ -781,38 +785,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
                         bool isPrimary = string.Equals(targetDisp, "mon-0", StringComparison.OrdinalIgnoreCase) || isDirector;
 
-                        var dirSegments = plan.DirectorSegments;
-                        if (isDirector && (dirSegments == null || dirSegments.Count == 0) && availableDisps.Count > 1)
-                        {
-                            var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
-                            long sMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
-                            long eMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
-                            var topo = new StationDisplayTopologyDto
-                            {
-                                Hostname = sId,
-                                Displays = availableDisps.Select((d, idx) => new DisplayMetadataDto
-                                {
-                                    DisplayId = d,
-                                    IsPrimary = d == "mon-0",
-                                    X = idx * 1920,
-                                    Y = 0,
-                                    Width = 1920,
-                                    Height = 1080
-                                }).ToList()
-                            };
-                            long dirMinDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
-                            if (dirMinDwellMs <= 0) dirMinDwellMs = 10000;
-                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), minDwellMs: dirMinDwellMs, knownGaps: plan.RemovedGlobalGaps?.Select(g => (new DateTimeOffset(g.StartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(g.EndUtc).ToUnixTimeMilliseconds())).ToList());
-                            dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
-                            {
-                                StartEpochMs = s.StartEpochMs,
-                                EndEpochMs = s.EndEpochMs,
-                                TargetDisplayId = s.TargetDisplayId,
-                                TargetDisplayNumber = s.TargetDisplayNumber,
-                                TargetDisplayName = s.TargetDisplayName,
-                                IsManualOverride = s.IsManualOverride
-                            }).ToList();
-                        }
+                        var dirSegments = isDirector
+                            ? await ResolveDirectorSegmentsForStationAsync(
+                                sId, sChunks, availableDisps, startUtc, endUtc,
+                                plan.DirectorSegments, job.StationDirectorSegments,
+                                plan.RemovedGlobalGaps, job.StationIds.Count, CancellationToken.None)
+                            : null;
 
                         var feedPlan = new SynchronizationPlan
                         {
@@ -888,38 +866,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             var rep0 = displayGroups.First().FirstOrDefault();
                             int dirW = rep0?.Width > 0 ? rep0.Width : 1920;
                             int dirH = rep0?.Height > 0 ? rep0.Height : 1080;
-                            var dirSegments = plan.DirectorSegments;
-                            if ((dirSegments == null || dirSegments.Count == 0) && displayGroups.Count > 1)
-                            {
-                                var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
-                                long sMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
-                                long eMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
-                                var topo = new StationDisplayTopologyDto
-                                {
-                                    Hostname = sId,
-                                    Displays = displayGroups.Select((g, idx) => new DisplayMetadataDto
-                                    {
-                                        DisplayId = g.Key,
-                                        IsPrimary = g.Key == "mon-0",
-                                        X = idx * 1920,
-                                        Y = 0,
-                                        Width = 1920,
-                                        Height = 1080
-                                    }).ToList()
-                                };
-                                long dirMinDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
-                            if (dirMinDwellMs <= 0) dirMinDwellMs = 10000;
-                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), minDwellMs: dirMinDwellMs);
-                                dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
-                                {
-                                    StartEpochMs = s.StartEpochMs,
-                                    EndEpochMs = s.EndEpochMs,
-                                    TargetDisplayId = s.TargetDisplayId,
-                                    TargetDisplayNumber = s.TargetDisplayNumber,
-                                    TargetDisplayName = s.TargetDisplayName,
-                                    IsManualOverride = s.IsManualOverride
-                                }).ToList();
-                            }
+                            var dirSegments = await ResolveDirectorSegmentsForStationAsync(
+                                sId, sChunks, displayGroups.Select(g => g.Key).ToList(), startUtc, endUtc,
+                                plan.DirectorSegments, job.StationDirectorSegments,
+                                plan.RemovedGlobalGaps, job.StationIds.Count, CancellationToken.None);
 
                             var directorPlan = new SynchronizationPlan
                             {
@@ -1032,7 +982,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 job.StatusMessage = "Composing master MP4 video & routing audio...";
                 job.ProgressPercent = 88;
-                job.EstimatedSecondsRemaining = 2;
+                job.EstimatedSecondsRemaining = Math.Max(2, (int)Math.Round(exportedDurationSec / 2.0));
                 _ = _advanceRepository.UpsertJobAsync(job);
 
                 var trackDescriptors = new List<(string StationId, string DisplayId, string FilePath, bool HasAudio)>();
@@ -1046,7 +996,50 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     }
                 }
 
-                await ComposeMasterMp4Async(finalMp4Path, trackDescriptors, job, exportedDurationSec, startUtc, CancellationToken.None);
+                double composeBaseProgress = 88.0;
+                double composeSlice = 11.0;
+                var composeStopwatch = Stopwatch.StartNew();
+                DateTime lastComposePersistUtc = DateTime.UtcNow;
+
+                var composeProgress = new Progress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>(p =>
+                {
+                    double fraction = Math.Clamp(p.SecondsProcessed / Math.Max(0.1, exportedDurationSec), 0.0, 1.0);
+                    double totalProgress = composeBaseProgress + (fraction * composeSlice);
+                    job.ProgressPercent = (int)Math.Clamp(Math.Round(totalProgress, 0), 88, 99);
+
+                    double remainingSec = Math.Max(0, exportedDurationSec - p.SecondsProcessed);
+                    double etaSec = remainingSec / Math.Max(0.1, p.SpeedMultiplier);
+                    job.EstimatedSecondsRemaining = Math.Max(1, Math.Round(etaSec, 0));
+                    job.EtaSeconds = (int)job.EstimatedSecondsRemaining;
+
+                    long currentBuiltBytes = 0;
+                    try
+                    {
+                        if (File.Exists(finalMp4Path))
+                        {
+                            currentBuiltBytes = new FileInfo(finalMp4Path).Length;
+                        }
+                    }
+                    catch { }
+
+                    double builtMb = currentBuiltBytes / (1024.0 * 1024.0);
+                    double elapsed = composeStopwatch.Elapsed.TotalSeconds;
+                    if (elapsed > 0.8 && currentBuiltBytes > 0)
+                    {
+                        job.SpeedMBps = Math.Round(builtMb / elapsed, 1);
+                    }
+
+                    string speedTxt = p.SpeedMultiplier > 0.1 ? $"{p.SpeedMultiplier:0.1}x" : $"{job.SpeedMBps:0.1} MB/s";
+                    job.StatusMessage = $"Composing Master MP4: {p.SecondsProcessed:0.0}s / {exportedDurationSec:0.0}s ({job.ProgressPercent}%, {p.Fps:0} fps, {speedTxt}) • {builtMb:0.1} MB";
+
+                    if ((DateTime.UtcNow - lastComposePersistUtc).TotalSeconds >= 0.8)
+                    {
+                        lastComposePersistUtc = DateTime.UtcNow;
+                        _ = _advanceRepository.UpsertJobAsync(job);
+                    }
+                });
+
+                await ComposeMasterMp4Async(finalMp4Path, trackDescriptors, job, exportedDurationSec, startUtc, composeProgress, CancellationToken.None);
 
                 var fi = new FileInfo(finalMp4Path);
                 job.OutputFilePath = finalMp4Path;
@@ -1086,7 +1079,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             AdvancedModels.AdvanceJobInfo job,
             double exportedDurationSec,
             DateTime startUtc,
-            CancellationToken ct)
+            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
+            CancellationToken ct = default)
         {
             if (tracks.Count == 0)
             {
@@ -1096,7 +1090,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if ((job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0) ||
                 (job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 0))
             {
-                await ComposeCustomCanvasMasterMp4Async(finalMp4Path, tracks, job, exportedDurationSec, startUtc, ct);
+                await ComposeCustomCanvasMasterMp4Async(finalMp4Path, tracks, job, exportedDurationSec, startUtc, progress, ct);
                 return;
             }
 
@@ -1370,7 +1364,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: masterBitrateKbps);
             string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
-            string arguments = $"-nostdin -v error " +
+            string arguments = $"-nostdin -v error -progress pipe:1 " +
                                $"{inputArgsBuilder} " +
                                $"-filter_complex \"{filterComplex}\" " +
                                $"-map \"[outv]\" {audioMapOption} " +
@@ -1381,30 +1375,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                $"-y \"{finalMp4Path.Replace('\\', '/')}\"";
 
             _advLogger.LogInformation("[AdvanceJobManager] Running master MP4 composition: {Args}", arguments);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = arguments,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-            ExtractorGarbageCollectorService.TrackProcess(process.Id);
-
-            var stderrTask = process.StandardError.ReadToEndAsync(ct);
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-            await Task.WhenAll(stderrTask, stdoutTask, process.WaitForExitAsync(ct));
-
-            if (process.ExitCode != 0)
-            {
-                string stderr = await stderrTask;
-                throw new InvalidOperationException($"FFmpeg master composition failed with exit code {process.ExitCode}: {stderr}");
-            }
+            await ExecuteCompositionFfmpegAsync(ffmpegPath, arguments, "FFmpeg master composition failed", progress, ct);
         }
 
         private async Task ComposeCustomCanvasMasterMp4Async(
@@ -1413,7 +1384,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             AdvancedModels.AdvanceJobInfo job,
             double exportedDurationSec,
             DateTime startUtc,
-            CancellationToken ct)
+            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
+            CancellationToken ct = default)
         {
             string ffmpegPath = _binaryResolver.ResolveFfmpeg();
             var inputArgsBuilder = new System.Text.StringBuilder();
@@ -1905,7 +1877,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: targetBitrateKbps);
             string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
-            string arguments = $"-nostdin -v error " +
+            string arguments = $"-nostdin -v error -progress pipe:1 " +
                                $"{inputArgsBuilder} " +
                                $"-filter_complex \"{filterBuilder}\" " +
                                $"-map \"[outv]\" {audioMapOption} " +
@@ -1916,30 +1888,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                $"-y \"{finalMp4Path.Replace('\\', '/')}\"";
 
             _advLogger.LogInformation("[AdvanceJobManager] Running custom canvas MP4 composition: {Args}", arguments);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = arguments,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-            ExtractorGarbageCollectorService.TrackProcess(process.Id);
-
-            var stderrTask = process.StandardError.ReadToEndAsync(ct);
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-            await Task.WhenAll(stderrTask, stdoutTask, process.WaitForExitAsync(ct));
-
-            if (process.ExitCode != 0)
-            {
-                string stderr = await stderrTask;
-                throw new InvalidOperationException($"FFmpeg custom canvas composition failed with exit code {process.ExitCode}: {stderr}");
-            }
+            await ExecuteCompositionFfmpegAsync(ffmpegPath, arguments, "FFmpeg custom canvas composition failed", progress, ct);
         }
 
         private bool ProbeFileHasAudio(string filePath)
@@ -2122,5 +2071,267 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             return false;
         }
+        private static async Task ExecuteCompositionFfmpegAsync(
+            string ffmpegPath,
+            string arguments,
+            string failurePrefix,
+            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress,
+            CancellationToken ct)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = arguments,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+            ExtractorGarbageCollectorService.TrackProcess(process.Id);
+
+            try
+            {
+                var readProgressTask = Task.Run(async () =>
+                {
+                    using var reader = process.StandardOutput;
+                    string? line;
+                    double currentSeconds = 0;
+                    double currentFps = 0;
+                    double currentSpeed = 1.0;
+
+                    while ((line = await reader.ReadLineAsync(ct)) != null)
+                    {
+                        var parts = line.Split('=', 2);
+                        if (parts.Length != 2) continue;
+
+                        string key = parts[0].Trim();
+                        string val = parts[1].Trim();
+
+                        if (key == "out_time_us" && long.TryParse(val, out long us))
+                        {
+                            currentSeconds = Math.Max(currentSeconds, us / 1_000_000.0);
+                            progress?.Report((currentSeconds, currentFps, currentSpeed));
+                        }
+                        else if (key == "fps" && double.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out double f))
+                        {
+                            currentFps = f;
+                        }
+                        else if (key == "speed")
+                        {
+                            string sClean = val.TrimEnd('x', 'X').Trim();
+                            if (double.TryParse(sClean, NumberStyles.Any, CultureInfo.InvariantCulture, out double sp) && sp > 0)
+                            {
+                                currentSpeed = sp;
+                            }
+                        }
+                        else if (key == "progress")
+                        {
+                            progress?.Report((currentSeconds, currentFps, currentSpeed));
+                        }
+                    }
+                }, ct);
+
+                string stderr = await process.StandardError.ReadToEndAsync(ct);
+                await Task.WhenAll(process.WaitForExitAsync(ct), readProgressTask);
+
+                if (process.ExitCode != 0)
+                {
+                    throw new InvalidOperationException($"{failurePrefix} with exit code {process.ExitCode}: {stderr}");
+                }
+            }
+            finally
+            {
+                try { ExtractorGarbageCollectorService.UntrackProcess(process.Id); } catch { }
+            }
+        }
+
+        private async Task<List<DirectorCutSegmentDto>> ResolveDirectorSegmentsForStationAsync(
+            string sId,
+            List<RecordingChunkMetadata> sChunks,
+            List<string> availableDisps,
+            DateTime startUtc,
+            DateTime endUtc,
+            List<DirectorCutSegmentDto>? defaultSegments,
+            Dictionary<string, List<DirectorCutSegmentDto>>? stationSegmentsMap,
+            List<GlobalGapRecord>? removedGlobalGaps,
+            int totalStationsCount,
+            CancellationToken ct = default)
+        {
+            // 1. Check if segments were explicitly mapped for this station from frontend
+            if (stationSegmentsMap != null && stationSegmentsMap.TryGetValue(sId, out var mapped) && mapped != null && mapped.Count > 0)
+            {
+                return mapped;
+            }
+
+            // 2. If single-station job and defaultSegments were provided
+            if (totalStationsCount <= 1 && defaultSegments != null && defaultSegments.Count > 0)
+            {
+                return defaultSegments;
+            }
+
+            // If station doesn't have multiple displays, no director switching is possible
+            if (availableDisps.Count <= 1)
+            {
+                return new List<DirectorCutSegmentDto>();
+            }
+
+            // 3. Compute dynamic focus plan using keystroke events and chunk bitrate telemetry
+            long sMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+            long eMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+
+            var topoDisplays = availableDisps.Select((d, idx) => new DisplayMetadataDto
+            {
+                DisplayId = d,
+                IsPrimary = string.Equals(d, "mon-0", StringComparison.OrdinalIgnoreCase),
+                X = idx * 1920,
+                Y = 0,
+                Width = 1920,
+                Height = 1080
+            }).ToList();
+
+            var topo = new StationDisplayTopologyDto
+            {
+                Hostname = sId,
+                Displays = topoDisplays
+            };
+
+            long dirMinDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
+            if (dirMinDwellMs <= 0) dirMinDwellMs = 10000;
+
+            var activityEvents = new List<ActivityEventDto>();
+
+            var chunksByDisp = sChunks
+                .GroupBy(c => (string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId).ToLowerInvariant())
+                .ToDictionary(g => g.Key, g => g.OrderBy(c => c.StartUtc).ToList());
+
+            // A. Query recorded keystroke events if keystroke repository is available
+            if (_keystrokeRepository != null)
+            {
+                try
+                {
+                    var keystrokes = await _keystrokeRepository.GetKeystrokesForWindowAsync(sId, sMs, eMs);
+                    if (keystrokes != null)
+                    {
+                        foreach (var k in keystrokes)
+                        {
+                            string? assignedDisp = k.DisplayId;
+
+                            // Correlate with chunk encoding bitrate if coordinate telemetry is not populated
+                            if (string.IsNullOrEmpty(assignedDisp) && k.X == 0 && k.Y == 0)
+                            {
+                                var kUtc = DateTimeOffset.FromUnixTimeMilliseconds(k.EpochMs).UtcDateTime;
+                                double bestBitrate = 0;
+                                string? bestDisp = null;
+
+                                foreach (var kvp in chunksByDisp)
+                                {
+                                    var ch = kvp.Value.FirstOrDefault(c => c.StartUtc <= kUtc && kUtc <= c.EndUtc);
+                                    if (ch != null && ch.Duration.TotalMilliseconds > 0)
+                                    {
+                                        double br = (ch.FileSizeBytes * 8.0) / (ch.Duration.TotalMilliseconds / 1000.0);
+                                        if (br > bestBitrate)
+                                        {
+                                            bestBitrate = br;
+                                            bestDisp = kvp.Key;
+                                        }
+                                    }
+                                }
+
+                                if (bestDisp != null)
+                                {
+                                    assignedDisp = bestDisp;
+                                }
+                            }
+
+                            activityEvents.Add(new ActivityEventDto
+                            {
+                                TimestampEpochMs = k.EpochMs,
+                                Type = k.KeyCombination.StartsWith("[Click:", StringComparison.OrdinalIgnoreCase) || k.KeyCombination.EndsWith("Click]", StringComparison.OrdinalIgnoreCase)
+                                    ? ActivityEventType.MouseClick
+                                    : ActivityEventType.Keystroke,
+                                KeyName = k.KeyCombination,
+                                X = k.X,
+                                Y = k.Y,
+                                DisplayId = assignedDisp
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _advLogger.LogWarning(ex, "[AdvanceJobManager] Could not query keystrokes for station {StationId}", sId);
+                }
+            }
+
+            // B. If no keystroke events, infer activity transitions from chunk bitrate differences across displays
+            if (activityEvents.Count == 0 && chunksByDisp.Count > 1)
+            {
+                var primaryKey = topoDisplays.FirstOrDefault(d => d.IsPrimary)?.DisplayId ?? "mon-0";
+                var allChunks = sChunks.OrderBy(c => c.StartUtc).ToList();
+                var timeSlices = new SortedSet<long>();
+                foreach (var ch in allChunks)
+                {
+                    timeSlices.Add(new DateTimeOffset(ch.StartUtc).ToUnixTimeMilliseconds());
+                    timeSlices.Add(new DateTimeOffset(ch.EndUtc).ToUnixTimeMilliseconds());
+                }
+
+                var timeList = timeSlices.Where(t => t >= sMs && t <= eMs).ToList();
+                string lastActiveDisp = primaryKey;
+
+                for (int i = 0; i < timeList.Count - 1; i++)
+                {
+                    long t0 = timeList[i];
+                    long t1 = timeList[i + 1];
+                    if (t1 - t0 < dirMinDwellMs) continue;
+
+                    DateTime sliceMidUtc = DateTimeOffset.FromUnixTimeMilliseconds((t0 + t1) / 2).UtcDateTime;
+                    string? dominantDisp = null;
+                    double maxBr = 0;
+
+                    foreach (var kvp in chunksByDisp)
+                    {
+                        var ch = kvp.Value.FirstOrDefault(c => c.StartUtc <= sliceMidUtc && sliceMidUtc <= c.EndUtc);
+                        if (ch != null && ch.Duration.TotalMilliseconds > 0)
+                        {
+                            double br = (ch.FileSizeBytes * 8.0) / (ch.Duration.TotalMilliseconds / 1000.0);
+                            if (br > maxBr)
+                            {
+                                maxBr = br;
+                                dominantDisp = kvp.Key;
+                            }
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(dominantDisp) && !string.Equals(dominantDisp, lastActiveDisp, StringComparison.OrdinalIgnoreCase))
+                    {
+                        activityEvents.Add(new ActivityEventDto
+                        {
+                            TimestampEpochMs = t0 + 1000,
+                            Type = ActivityEventType.MouseClick,
+                            DisplayId = dominantDisp
+                        });
+                        lastActiveDisp = dominantDisp;
+                    }
+                }
+            }
+
+            var knownGaps = removedGlobalGaps?.Select(g => (new DateTimeOffset(g.StartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(g.EndUtc).ToUnixTimeMilliseconds())).ToList();
+            var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, activityEvents, minDwellMs: dirMinDwellMs, knownGaps: knownGaps);
+
+            return computedPlan.Segments.Select(s => new DirectorCutSegmentDto
+            {
+                StartEpochMs = s.StartEpochMs,
+                EndEpochMs = s.EndEpochMs,
+                TargetDisplayId = s.TargetDisplayId,
+                TargetDisplayNumber = s.TargetDisplayNumber,
+                TargetDisplayName = s.TargetDisplayName,
+                IsManualOverride = s.IsManualOverride
+            }).ToList();
+        }
+
     }
 }
