@@ -657,8 +657,10 @@ export default function MulticamViewport({
         const rect = el.getBoundingClientRect();
         // Provide breathing space and reserve room for flush side toolbars
         const docksReserve = 104;
-        const availableW = Math.max(320, Math.floor(rect.width || 960) - docksReserve - 16);
-        const availableH = Math.max(180, Math.floor(rect.height || 540) - 16);
+        const rulerOffsetW = showRulers ? 20 : 0;
+        const rulerOffsetH = showRulers ? 18 : 0;
+        const availableW = Math.max(320, Math.floor(rect.width || 960) - docksReserve - 16 - rulerOffsetW);
+        const availableH = Math.max(180, Math.floor(rect.height || 540) - 16 - rulerOffsetH);
 
         let finalW, finalH;
         if (isFullWidth) {
@@ -680,7 +682,7 @@ export default function MulticamViewport({
             if (prev.width === finalW && prev.height === finalH) return prev;
             return { width: finalW, height: finalH };
         });
-    }, [isFullWidth, currentAspect]);
+    }, [isFullWidth, currentAspect, showRulers]);
 
     useEffect(() => {
         const el = stageWrapperRef.current;
@@ -3181,6 +3183,124 @@ export default function MulticamViewport({
                     </button>
                 </aside>
 
+                        {/* Viewport Frame with Outside CAD / NLE Precision Rulers */}
+                    <div className={`canvas-viewport-with-rulers ${showRulers ? 'has-rulers' : ''}`}>
+                        {/* Top Ruler Row (Corner Box + X-Axis Ruler) - Sits Outside / Above the Canvas Screen Box */}
+                        {showRulers && (
+                            <div className="canvas-rulers-top-row">
+                                <div className="canvas-ruler-corner" title={`Virtual Canvas Bounds: ${virtualW}×${virtualH}px`}>
+                                    <span className="corner-coord-mini">
+                                        {mouseCanvasCoords.isInside ? `${mouseCanvasCoords.x},${mouseCanvasCoords.y}` : 'px'}
+                                    </span>
+                                </div>
+                                <div
+                                    className="canvas-ruler-top-bar"
+                                    style={{
+                                        width: canvasFrameDimensions.width > 180 ? `${canvasFrameDimensions.width}px` : '100%'
+                                    }}
+                                >
+                                    <svg
+                                        className="canvas-ruler-svg-x"
+                                        viewBox={`0 0 ${virtualW} 18`}
+                                        preserveAspectRatio="none"
+                                    >
+                                        {selectedPlacement && (
+                                            <rect
+                                                x={selectedPlacement.x}
+                                                y="0"
+                                                width={selectedPlacement.width}
+                                                height="18"
+                                                fill="rgba(6, 182, 212, 0.25)"
+                                                stroke="#06B6D4"
+                                                strokeWidth="1"
+                                            />
+                                        )}
+                                        {rulerTicksX.map(tick => {
+                                            if (tick.isMajor) {
+                                                return (
+                                                    <g key={`rx-${tick.val}`}>
+                                                        <line x1={tick.val} y1="0" x2={tick.val} y2="16" stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+                                                        <text x={tick.val + 2} y="11" fill="#94A3B8" fontSize="9" fontFamily="monospace">
+                                                            {tick.val}
+                                                        </text>
+                                                    </g>
+                                                );
+                                            }
+                                            if (tick.isMed) {
+                                                return <line key={`rx-${tick.val}`} x1={tick.val} y1="6" x2={tick.val} y2="16" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />;
+                                            }
+                                            return <line key={`rx-${tick.val}`} x1={tick.val} y1="11" x2={tick.val} y2="16" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
+                                        })}
+                                        {mouseCanvasCoords.isInside && (
+                                            <line
+                                                x1={mouseCanvasCoords.x}
+                                                y1="0"
+                                                x2={mouseCanvasCoords.x}
+                                                y2="18"
+                                                stroke="#06B6D4"
+                                                strokeWidth="2"
+                                            />
+                                        )}
+                                    </svg>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Main Row: (Y-Axis Ruler + Master Canvas Stage Frame) */}
+                        <div className="canvas-rulers-main-row">
+                            {showRulers && (
+                                <div
+                                    className="canvas-ruler-left-bar"
+                                    style={{
+                                        height: canvasFrameDimensions.height > 100 ? `${canvasFrameDimensions.height}px` : 'auto'
+                                    }}
+                                >
+                                    <svg
+                                        className="canvas-ruler-svg-y"
+                                        viewBox={`0 0 20 ${virtualH}`}
+                                        preserveAspectRatio="none"
+                                    >
+                                        {selectedPlacement && (
+                                            <rect
+                                                x="0"
+                                                y={selectedPlacement.y}
+                                                width="20"
+                                                height={selectedPlacement.height}
+                                                fill="rgba(6, 182, 212, 0.25)"
+                                                stroke="#06B6D4"
+                                                strokeWidth="1"
+                                            />
+                                        )}
+                                        {rulerTicksY.map(tick => {
+                                            if (tick.isMajor) {
+                                                return (
+                                                    <g key={`ry-${tick.val}`}>
+                                                        <line x1="0" y1={tick.val} x2="16" y2={tick.val} stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+                                                        <text x="2" y={tick.val + 7} fill="#94A3B8" fontSize="8" fontFamily="monospace">
+                                                            {tick.val}
+                                                        </text>
+                                                    </g>
+                                                );
+                                            }
+                                            if (tick.isMed) {
+                                                return <line key={`ry-${tick.val}`} x1="6" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />;
+                                            }
+                                            return <line key={`ry-${tick.val}`} x1="11" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
+                                        })}
+                                        {mouseCanvasCoords.isInside && (
+                                            <line
+                                                x1="0"
+                                                y1={mouseCanvasCoords.y}
+                                                x2="20"
+                                                y2={mouseCanvasCoords.y}
+                                                stroke="#06B6D4"
+                                                strokeWidth="2"
+                                            />
+                                        )}
+                                    </svg>
+                                </div>
+                            )}
+
                         {/* Master Canvas Stage Frame (WYSIWYG Export Parity) */}
                     <div
                         ref={(el) => {
@@ -3232,112 +3352,6 @@ export default function MulticamViewport({
                                 <div className="snap-ghost-badge">
                                     <span className="snap-icon">🧲</span>
                                     <span className="snap-label">{snapZonePreview.label}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Precision CAD / NLE Rulers Overlay */}
-                        {showRulers && (
-                            <div className="canvas-rulers-container">
-                                {/* Top-Left Corner Box with live coordinate indicator */}
-                                <div className="canvas-ruler-corner" title={`Virtual Canvas Bounds: ${virtualW}×${virtualH}px`}>
-                                    <span className="corner-coord-mini">
-                                        {mouseCanvasCoords.isInside ? `${mouseCanvasCoords.x},${mouseCanvasCoords.y}` : 'px'}
-                                    </span>
-                                </div>
-
-                                {/* Horizontal Top Ruler (X-Axis) */}
-                                <div className="canvas-ruler-top-bar">
-                                    <svg
-                                        className="canvas-ruler-svg-x"
-                                        viewBox={`0 0 ${virtualW} 20`}
-                                        preserveAspectRatio="none"
-                                    >
-                                        {selectedPlacement && (
-                                            <rect
-                                                x={selectedPlacement.x}
-                                                y="0"
-                                                width={selectedPlacement.width}
-                                                height="20"
-                                                fill="rgba(6, 182, 212, 0.25)"
-                                                stroke="#06B6D4"
-                                                strokeWidth="1"
-                                            />
-                                        )}
-                                        {rulerTicksX.map(tick => {
-                                            if (tick.isMajor) {
-                                                return (
-                                                    <g key={`rx-${tick.val}`}>
-                                                        <line x1={tick.val} y1="0" x2={tick.val} y2="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
-                                                        <text x={tick.val + 2} y="11" fill="#94A3B8" fontSize="9" fontFamily="monospace">
-                                                            {tick.val}
-                                                        </text>
-                                                    </g>
-                                                );
-                                            }
-                                            if (tick.isMed) {
-                                                return <line key={`rx-${tick.val}`} x1={tick.val} y1="8" x2={tick.val} y2="18" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />;
-                                            }
-                                            return <line key={`rx-${tick.val}`} x1={tick.val} y1="13" x2={tick.val} y2="18" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
-                                        })}
-                                        {mouseCanvasCoords.isInside && (
-                                            <line
-                                                x1={mouseCanvasCoords.x}
-                                                y1="0"
-                                                x2={mouseCanvasCoords.x}
-                                                y2="20"
-                                                stroke="#06B6D4"
-                                                strokeWidth="2"
-                                            />
-                                        )}
-                                    </svg>
-                                </div>
-
-                                {/* Vertical Left Ruler (Y-Axis) */}
-                                <div className="canvas-ruler-left-bar">
-                                    <svg
-                                        className="canvas-ruler-svg-y"
-                                        viewBox={`0 0 20 ${virtualH}`}
-                                        preserveAspectRatio="none"
-                                    >
-                                        {selectedPlacement && (
-                                            <rect
-                                                x="0"
-                                                y={selectedPlacement.y}
-                                                width="20"
-                                                height={selectedPlacement.height}
-                                                fill="rgba(6, 182, 212, 0.25)"
-                                                stroke="#06B6D4"
-                                                strokeWidth="1"
-                                            />
-                                        )}
-                                        {rulerTicksY.map(tick => {
-                                            if (tick.isMajor) {
-                                                return (
-                                                    <g key={`ry-${tick.val}`}>
-                                                        <line x1="0" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
-                                                        <text x="2" y={tick.val - 2} fill="#94A3B8" fontSize="8" fontFamily="monospace">
-                                                            {tick.val}
-                                                        </text>
-                                                    </g>
-                                                );
-                                            }
-                                            if (tick.isMed) {
-                                                return <line key={`ry-${tick.val}`} x1="8" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />;
-                                            }
-                                            return <line key={`ry-${tick.val}`} x1="13" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
-                                        })}
-                                        {mouseCanvasCoords.isInside && (
-                                            <line
-                                                x1="0"
-                                                y1={mouseCanvasCoords.y}
-                                                x2="20"
-                                                y2={mouseCanvasCoords.y}
-                                                stroke="#06B6D4"
-                                                strokeWidth="2"
-                                            />
-                                        )}
-                                    </svg>
                                 </div>
                             </div>
                         )}
@@ -3683,14 +3697,15 @@ export default function MulticamViewport({
                                 transformStyle = 'translateX(-100%)';
                             }
 
-                            // Strictly place inspector BELOW the bottom edge of the window
-                            const bottomEdgeVirtual = p.y + p.height + 8;
+                            // Position inspector at the TOP of the card ("מעל הכל"):
+                            // If card has headroom inside canvas (p.y >= 38), float directly above the card's top edge.
+                            // If card is near or flush with top of canvas (p.y < 38), dock inside top of card below title bar (26px).
                             let topStyle;
-                            if (bottomEdgeVirtual + 45 > virtualH) {
-                                // If window is flush with bottom of canvas, dock inside bottom of window
-                                topStyle = `${Math.max(20, ((p.y + p.height - 44) / virtualH) * 100)}%`;
+                            const isDockedInsideTop = p.y < 38;
+                            if (isDockedInsideTop) {
+                                topStyle = `${((p.y + 26) / virtualH) * 100}%`;
                             } else {
-                                topStyle = `${(bottomEdgeVirtual / virtualH) * 100}%`;
+                                topStyle = `calc(${((p.y) / virtualH) * 100}% - 34px)`;
                             }
 
                             const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
@@ -3707,7 +3722,7 @@ export default function MulticamViewport({
                                         left: leftStyle,
                                         top: topStyle,
                                         transform: transformStyle,
-                                        zIndex: 99999
+                                        zIndex: 4500
                                     }}
                                     onMouseDown={(e) => e.stopPropagation()}
                                     onClick={(e) => e.stopPropagation()}
@@ -3899,7 +3914,9 @@ export default function MulticamViewport({
                         />
                         {/* Live Audio Source Playback Overlay Indicator */}
                         <ActiveAudioSourceOverlay />
-                    </div>
+                    </div> {/* End canvas-master-frame-16-9 */}
+                        </div> {/* End canvas-rulers-main-row */}
+                    </div> {/* End canvas-viewport-with-rulers */}
 
                     <aside className={`canvas-right-wing-dock ${showPresetsMenu ? 'has-active-popout' : ''}`}>
                     <button

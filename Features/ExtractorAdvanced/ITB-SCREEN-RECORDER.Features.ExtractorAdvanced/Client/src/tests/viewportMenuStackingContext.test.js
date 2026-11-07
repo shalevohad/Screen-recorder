@@ -104,4 +104,52 @@ describe('Viewport Stacking Context & Popout Menu Elevation Invariants', () => {
             'Outside click handler must close layout presets popout'
         );
     });
+
+    it('8. Precision CAD / NLE Rulers are positioned outside the screen box (.canvas-master-frame-16-9)', () => {
+        // Must contain .canvas-viewport-with-rulers, .canvas-rulers-top-row and .canvas-rulers-main-row outside canvas-master-frame-16-9
+        assert.match(
+            jsxContent,
+            /canvas-viewport-with-rulers/,
+            'JSX must wrap canvas frame in .canvas-viewport-with-rulers'
+        );
+        assert.match(
+            jsxContent,
+            /canvas-rulers-top-row/,
+            'JSX must render .canvas-rulers-top-row outside and above canvas frame'
+        );
+        assert.match(
+            jsxContent,
+            /canvas-rulers-main-row/,
+            'JSX must render .canvas-rulers-main-row with left ruler outside canvas frame'
+        );
+        // canvas-rulers-container must NOT exist inside canvas-master-frame
+        assert.ok(
+            !jsxContent.includes('className="canvas-rulers-container"'),
+            'canvas-rulers-container must be replaced by outside rulers to prevent obscuring screens'
+        );
+    });
+
+    it('9. Screen inspector menu is positioned at the top of the card with z-index: 4500 (above canvas, beneath side menus)', () => {
+        // Check topStyle formulation positioning inspector at the top
+        assert.match(
+            jsxContent,
+            /isDockedInsideTop\s*=\s*p\.y\s*<\s*38/,
+            'Inspector must detect when card is near top of canvas'
+        );
+        assert.ok(
+            jsxContent.includes('topStyle = `calc(${((p.y) / virtualH) * 100}% - 34px)`'),
+            'Inspector must float directly above card top edge when space permits'
+        );
+        // Inspector zIndex must be 4500 (above canvas 1-2000, below wing docks 5000 and popouts 30000)
+        assert.match(
+            jsxContent,
+            /zIndex:\s*4500/,
+            'JSX must assign zIndex: 4500 to floating inspector'
+        );
+        assert.match(
+            scssContent,
+            /\.floating-feed-inspector\s*\{[^}]*z-index:\s*4500;/s,
+            'SCSS must declare z-index: 4500 for .floating-feed-inspector'
+        );
+    });
 });

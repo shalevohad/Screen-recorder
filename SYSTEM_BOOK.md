@@ -3842,3 +3842,47 @@ To guarantee deterministic concatenation across heterogeneous monitor topologies
 - Verified by `ITB-SCREEN-RECORDER.Tests/Extractor/MultiDisplayTrackCutterTests.cs`:
   1. `BuildDirectorFilterGraph_MixedDisplayResolutions_UltrawideAndFhd_NormalizesDimensionsAndSetsar`: Validates that paired 3440x1440 and 1920x1080 displays produce 3440x1440 canvas bounds with `setsar=1` on all segment links.
   2. `BuildDirectorFilterGraph_SingleSegment_OutputsNullVbase`: Validates single segment fallback to `null[vbase]`.
+
+
+---
+
+### 63.10 Viewport CAD / NLE External Rulers & Screen Inspector Elevation Architecture
+
+#### Operational & UX Context
+In mission-critical forensic playback, operators arrange heterogeneous workstation screens on a dynamic NLE canvas stage. Two critical UX challenges previously affected operator efficiency:
+1. **Screen Box Internal Ruler Intrusion**: Rulers were formerly rendered with `inset: 0` directly inside the canvas screen box (`.canvas-master-frame-16-9`), occupying 20px at the top and 22px at the left. Screens placed at origin `(0, 0)` had their top title bars and active controls partially concealed by ruler graphics.
+2. **Bottom Inspector Collision**: The placement inspector (`compact-hud-inspector`) was previously positioned beneath cards. When a card was flush with the canvas bottom, the inspector appeared underneath the screen frame, creating confusing visual collisions with the timeline and lower borders.
+
+#### Architectural Enhancements
+
+1. **Precision CAD / NLE Outside Ruler Frame (`.canvas-viewport-with-rulers`)**:
+   - Rulers are extracted completely outside the canvas screen box (`.canvas-master-frame-16-9`).
+   - The stage assembly structures a two-tiered CAD layout:
+     ```
+     +-------------------------------------------------------------+
+     |   [corner (20x18)] |       [Top Ruler X (width matches frame)]|
+     +--------------------+-----------------------------------------+
+     |   [Left Ruler Y]   |       .canvas-master-frame-16-9         |
+     |   (20px wide)      |       (Screens 100% visible, zero       |
+     |                    |        internal ruler encroachment)     |
+     +--------------------+-----------------------------------------+
+     ```
+   - **Zero Space Intrusion**: The canvas screen box maintains 100% unencumbered surface area for video feeds and keyframes.
+   - **Dynamic Reserve Measurement**: `updateDimensions` dynamically accounts for `rulerOffsetW` (20px) and `rulerOffsetH` (18px) when `showRulers` is enabled (`R` key or wing toolbar toggle), ensuring smooth scaling without scrollbars.
+   - **Sub-Pixel Coordinate Sync**: Mouse coordinates (`cx`, `cy`) calculated on `.canvas-master-frame-16-9` project onto the external SVG viewboxes (`0 0 virtualW 18` and `0 0 20 virtualH`) with mathematical alignment.
+
+2. **Screen Inspector Top Elevation & Stacking Hierarchy ("מעל הכל אבל מתחת לתפריטי הצד")**:
+   - **Top Positioning**: The inspector is repositioned to the TOP of the active card:
+     - Headroom available (`p.y >= 38`): Floats cleanly directly above the card's top edge (`calc(${((p.y) / virtualH) * 100}% - 34px)`).
+     - Headroom constrained (`p.y < 38`, top-docked / maximized): Docks inside the top of the card at `p.y + 26px`, immediately below the card title bar without clipping.
+   - **Tactical Z-Index Hierarchy**:
+     - Canvas Video Cards & Placements: `z-index: 1 – 2000`
+     - Screen Inspector (`.floating-feed-inspector`): `z-index: 4500` (strictly above all canvas screens and feeds)
+     - Tactical Wing Docks (`.canvas-left-wing-dock`, `.canvas-right-wing-dock`): `z-index: 5000 !important` (elevates to `20000 !important` on hover/active)
+     - Side Popout Menus & Presets Popover (`.wing-floating-popout`, `.saved-presets-menu-popover`): `z-index: 30000 !important` (strictly above screen inspector)
+     - Feeds & Layers Drawer (`.canvas-side-drawer`): `z-index: 25000 !important`
+
+#### Automated Verification Suite
+- Verified by `Features/ExtractorAdvanced/Client/src/tests/viewportMenuStackingContext.test.js`:
+  1. `8. Precision CAD / NLE Rulers are positioned outside the screen box (.canvas-master-frame-16-9)`: Validates that `.canvas-rulers-top-row` and `.canvas-rulers-main-row` wrap `.canvas-master-frame-16-9` and that internal `.canvas-rulers-container` is eradicated.
+  2. `9. Screen inspector menu is positioned at the top of the card with z-index: 4500 (above canvas, beneath side menus)`: Validates top-oriented positioning logic and exact `z-index: 4500` declaration.
