@@ -4111,3 +4111,51 @@ The export engine implements `BuildMultiKeyframeClockDrawtextFilters`:
   - `CanvasLayoutTimeline_KeyframeClockPosition_Serialization_PreservesPosition` (Passed)
   - `CanvasLayoutTimeline_DynamicKeyframeClockPositions_GeneratesChainedDrawtextFilters` (Passed)
   - `CanvasLayoutTimeline_IdenticalKeyframeClockPositions_GeneratesSingleDrawtextFilter` (Passed)
+
+
+## 68. Tactical Keyframe Management, Instant Timeline Skipping & Real-Time Inspector Suite (2026-11-08)
+
+### 68.1 Operational Need & UX Workflow Optimization
+When composing complex multi-screen forensic reconstructions, operators regularly place multiple keyframes across the timeline to smoothly re-arrange workstation windows, switch screen focuses, and adjust the UTC wall clock position. Previously, selecting a keyframe required manually locating tiny markers on the timeline ruler and clicking without a dedicated overview. Furthermore, inspecting and comparing keyframe properties required opening separate dialogs for each keyframe.
+
+To provide tactical, intuitive, zero-latency keyframe governance, the platform introduces a dual-zone navigation and inspection suite:
+1. **Timeline Track Header Keyframe Navigator (`CanvasKeyframeTrack.jsx`)**: Clustered navigation controls and a fast-jump dropdown menu embedded directly in the track header.
+2. **Stage Floating Keyframe HUD (`MulticamViewport.jsx`)**: An on-canvas floating HUD widget that lets operators cycle between keyframes, inspect transitions, and adjust compositions without taking their eyes off the canvas stage.
+3. **Synchronized Playhead & State Seeking**: Clicking or jumping to any keyframe immediately seeks the playhead needle to the exact timestamp of that keyframe, aligns the video decoders, renders the exact workstation positions on the canvas, and synchronizes the UTC clock position.
+
+### 68.2 Navigation & Skipping Mechanics
+- **Sequential Skipping**: Operators can skip forward and backward through all keyframes using dedicated previous and next buttons:
+  - Header cluster: `[ ◀ ] [ KF 1/3 ▾ ] [ ▶ ] [ + KF ]`
+  - Canvas stage HUD: `[ ◀ ] [ ❖ KF 1/3 • 14:02:15 ▾ ] [ ▶ ] [ + KF ] [ ⚙ ]`
+- **Global Keyboard Shortcuts**:
+  - `[` or `Alt+ArrowLeft`: Jump immediately to Previous Keyframe.
+  - `]` or `Alt+ArrowRight`: Jump immediately to Next Keyframe.
+  - `k` or `K`: Add layout keyframe at playhead position.
+- **Quick-Jump Dropdown Matrix (`.kf-quick-jump-dropdown` & `.hud-stage-dropdown`)**:
+  - Lists all project keyframes with index, clock time, relative offset (`+X.Xs`), incoming transition type (`⚡ Smooth (0.5s)`, `↗ Linear (1.0s)`, `✂ Cut`, or `Root`), UTC clock position badge (`⏱️ ↗ Top-Right`), and screen count (`🖥️ 3 screens`).
+  - Single-click on any row seeks the playhead directly to that keyframe and opens its settings.
+  - Elevated to `z-index: 100000 !important;` to eliminate any clipping by track rows or horizontal scroll containers.
+
+### 68.3 Keyframe Settings Inspector
+Both the timeline diamond popover (`.kf-inspector-popover`) and the canvas stage inspector (`.hud-stage-settings-popover`) provide a unified inspection and parameter editing panel:
+1. **Continuous Navigation Flipping**: Header cycling buttons (`◀` / `▶`) allow operators to step through all keyframe settings sequentially without closing and re-opening the popover.
+2. **Incoming Transition Governance**:
+   - Transition Choice: `⚡ Smooth` (Bezier easing), `↗ Linear` (constant velocity), `✂ Cut` (instant cut).
+   - Duration Choice: Interactive duration presets (`0.2s`, `0.5s`, `1.0s`, `1.5s`, `2.0s`).
+3. **UTC Wall Clock Position Selector**:
+   - Interactive 4-quadrant selection grid (`↖ Top-Left`, `↗ Top-Right`, `↙ Bottom-Left`, `↘ Bottom-Right`) available for all keyframes (including the root keyframe).
+   - Immediately updates the active canvas overlay and burns the position into the export metadata.
+4. **Active Composition Readout**:
+   - Displays canvas resolution (e.g. `1920×1080`), total screen count, and interactive tags for each placed workstation and monitor feed.
+5. **Timeline Integrity Protection**:
+   - Keyframe #1 is permanently designated as the **Root Keyframe** (`t = 0` origin) and cannot be deleted, ensuring the baseline composition is always preserved.
+   - Non-root keyframes can be deleted safely via `🗑️ Delete Keyframe`, which automatically recalculates surrounding keyframe transitions and safely re-indexes the timeline.
+
+### 68.4 Automated Verification Suite
+- **Client Test Suite**: `Features/ExtractorAdvanced/Client/src/tests/keyframeNavigationAndSettingsInspector.test.js`
+  - Clamping and index bounds verification (`resolveActiveKeyframeIndex`, previous/next limits).
+  - Keyframe settings inspection and parameter mutations.
+  - Root keyframe protection and mid-stream deletion integrity.
+  - CSS stacking invariants (`z-index: 100000 !important`, `.kf-nav-cluster`, `.canvas-keyframe-stage-hud`).
+- **Full Client Suite**: 124 tests across 18 suites passing 100%.
+- **Solution Verification**: 458 .NET tests passing 100% in `ITB-SCREEN-RECORDER.Tests`.

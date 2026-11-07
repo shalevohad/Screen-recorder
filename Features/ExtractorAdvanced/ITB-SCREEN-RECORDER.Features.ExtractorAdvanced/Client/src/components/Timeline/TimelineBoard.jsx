@@ -72,6 +72,7 @@ export default function TimelineBoard({
     onDeleteKeyframe,
     onUpdateKeyframeEpoch,
     onUpdateKeyframeTransition,
+    onUpdateKeyframeClockPosition,
     onToggleDisplayOnCanvas,
     onUpdateAudioPlan
 }) {
@@ -544,6 +545,7 @@ export default function TimelineBoard({
                             onDeleteKeyframe={onDeleteKeyframe}
                             onUpdateKeyframeEpoch={onUpdateKeyframeEpoch}
                             onUpdateKeyframeTransition={onUpdateKeyframeTransition}
+                            onUpdateKeyframeClockPosition={onUpdateKeyframeClockPosition}
                             viewportStartMs={viewportStartMs}
                             viewportDurationMs={viewportDurationMs}
                             baseEpochMs={baseEpochMs}

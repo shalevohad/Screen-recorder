@@ -19,7 +19,7 @@ import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
 import { useTimelineNavigation } from './hooks/useTimelineNavigation.js';
 import { useStudioHotkeys } from './hooks/useStudioHotkeys.js';
-import { updateKeyframeTransition } from './utils/nleTimelineEngine.js';
+import { updateKeyframeTransition, updateKeyframeClockPosition } from './utils/nleTimelineEngine.js';
 import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
 import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
 import { formatTimelineClock } from './utils/timeFormat.js';
@@ -216,6 +216,13 @@ export default function ExtractorAdvancedStudio() {
             const nextKfs = prev.keyframes.filter((_, i) => i !== idxToDelete);
             setActiveKfIndex(prevIdx => Math.max(0, prevIdx - 1));
             return { ...prev, keyframes: nextKfs };
+        });
+    }, []);
+
+    const handleUpdateKeyframeClockPosition = useCallback((idx, clockPos) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            return updateKeyframeClockPosition(prev, idx, clockPos);
         });
     }, []);
 
@@ -1757,6 +1764,7 @@ export default function ExtractorAdvancedStudio() {
                                     onDeleteKeyframe={handleDeleteKeyframe}
                                     onUpdateKeyframeEpoch={handleUpdateKeyframeEpoch}
                                     onUpdateKeyframeTransition={handleUpdateKeyframeTransition}
+                                     onUpdateKeyframeClockPosition={handleUpdateKeyframeClockPosition}
                                     onToggleDisplayOnCanvas={handleToggleDisplayOnCanvas}
                                     onUpdateAudioPlan={setAudioRoutingPlan}
                                 />

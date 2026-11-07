@@ -361,6 +361,10 @@ export default function MulticamViewport({
         return timelineStations[0]?.id || null;
     });
 
+    // Tactical Keyframe Stage HUD State
+    const [showStageKfSettings, setShowStageKfSettings] = useState(false);
+    const [showStageKfList, setShowStageKfList] = useState(false);
+
     // Side Panels: Unified Feeds & Layers Manager, Save/Load Presets
     const [showFeedsDrawer, setShowFeedsDrawer] = useState(false);
     const [draggedDrawerItem, setDraggedDrawerItem] = useState(null);
@@ -2334,6 +2338,48 @@ export default function MulticamViewport({
         });
     }, [safeActiveIdx, onUpdateCanvasLayoutTimeline, pushUndoSnapshot]);
 
+    const jumpToKeyframe = useCallback((targetIdx) => {
+        if (targetIdx < 0 || targetIdx >= keyframes.length) return;
+        const targetKf = keyframes[targetIdx];
+        if (!targetKf) return;
+
+        if (setPlayheadMs && baseEpochMs) {
+            const offsetMs = Math.max(0, targetKf.timestampEpochMs - baseEpochMs);
+            setPlayheadMs(offsetMs);
+        }
+        if (setActiveKfIndex) {
+            setActiveKfIndex(targetIdx);
+        }
+        const timeStr = formatTimelineClock(targetKf.timestampEpochMs, timeMode, { includeSeconds: true });
+        triggerToast(`Jumped to Keyframe #${targetIdx + 1} (${timeStr})`, 'info', '❖');
+    }, [keyframes, baseEpochMs, setPlayheadMs, setActiveKfIndex, timeMode, triggerToast]);
+
+    const handleJumpPrevKeyframe = useCallback(() => {
+        if (safeActiveIdx > 0) {
+            jumpToKeyframe(safeActiveIdx - 1);
+        }
+    }, [safeActiveIdx, jumpToKeyframe]);
+
+    const handleJumpNextKeyframe = useCallback(() => {
+        if (safeActiveIdx < keyframes.length - 1) {
+            jumpToKeyframe(safeActiveIdx + 1);
+        }
+    }, [safeActiveIdx, keyframes.length, jumpToKeyframe]);
+
+    const handleUpdateActiveKfClockPos = useCallback((newPos) => {
+        setUtcClockPosition(newPos);
+        try {
+            localStorage.setItem('itb_canvas_utc_clock_pos', newPos);
+        } catch { }
+        pushUndoSnapshot('Move Clock Position');
+        setInternalTimeline(prev => {
+            const nextTimeline = updateKeyframeClockPosition(prev, safeActiveIdx, newPos);
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            return nextTimeline;
+        });
+        triggerToast(`Clock moved to ${newPos} (Keyframe #${safeActiveIdx + 1})`, 'info', '⏱️');
+    }, [safeActiveIdx, setUtcClockPosition, pushUndoSnapshot, onUpdateCanvasLayoutTimeline, triggerToast]);
+
     // Keyboard shortcuts for tactical canvas editing
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -2360,6 +2406,18 @@ export default function MulticamViewport({
                 }
             }
 
+            // Keyframe navigation: [ or Alt+Left for Prev Keyframe; ] or Alt+Right for Next Keyframe
+            if (e.key === '[' || (e.altKey && e.key === 'ArrowLeft')) {
+                e.preventDefault();
+                handleJumpPrevKeyframe();
+                return;
+            }
+            if (e.key === ']' || (e.altKey && e.key === 'ArrowRight')) {
+                e.preventDefault();
+                handleJumpNextKeyframe();
+                return;
+            }
+
             // K key: Add Keyframe at playhead
             if (e.key === 'k' || e.key === 'K') {
                 if (!e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -2370,6 +2428,8 @@ export default function MulticamViewport({
             }
 
             if (e.key === 'Escape') {
+                setShowStageKfSettings(false);
+                setShowStageKfList(false);
                 setShowFeedsDrawer(false);
                 setShowPresetsMenu(false);
                 setShowShadowControl(false);
@@ -3983,6 +4043,230 @@ export default function MulticamViewport({
                         />
                         {/* Live Audio Source Playback Overlay Indicator */}
                         <ActiveAudioSourceOverlay />
+
+                        {/* Floating Keyframe Stage HUD */}
+                        <div className="canvas-keyframe-stage-hud" onClick={(e) => e.stopPropagation()}>
+                            <div className="hud-main-cluster">
+                                <button
+                                    type="button"
+                                    className="hud-btn hud-prev-kf"
+                                    disabled={safeActiveIdx <= 0}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleJumpPrevKeyframe();
+                                    }}
+                                    title="Jump to Previous Keyframe ([ or Alt+Left)"
+                                >
+                                    ◀
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className={`hud-pill-kf ${showStageKfList ? 'active' : ''}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowStageKfList(p => !p);
+                                        setShowStageKfSettings(false);
+                                    }}
+                                    title="Keyframe Navigator: Click to inspect and jump across keyframes"
+                                >
+                                    <span className="hud-diamond">❖</span>
+                                    <span className="hud-kf-num">KF {safeActiveIdx + 1}/{keyframes.length}</span>
+                                    <span className="hud-kf-time">{formatTimelineClock(currentKf?.timestampEpochMs || currentEpochMs, timeMode, { includeSeconds: true })}</span>
+                                    <span className="hud-caret">▾</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="hud-btn hud-next-kf"
+                                    disabled={safeActiveIdx >= keyframes.length - 1}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleJumpNextKeyframe();
+                                    }}
+                                    title="Jump to Next Keyframe (] or Alt+Right)"
+                                >
+                                    ▶
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="hud-btn hud-add-kf"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleExplicitAddKeyframe();
+                                    }}
+                                    title="Add Layout Keyframe at Playhead (K)"
+                                >
+                                    + KF
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className={`hud-btn hud-settings-kf ${showStageKfSettings ? 'active' : ''}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowStageKfSettings(p => !p);
+                                        setShowStageKfList(false);
+                                    }}
+                                    title="Keyframe Settings Inspector"
+                                >
+                                    ⚙
+                                </button>
+                            </div>
+
+                            {/* Dropdown List of All Keyframes */}
+                            {showStageKfList && (
+                                <div className="hud-stage-dropdown" onClick={(e) => e.stopPropagation()}>
+                                    <div className="hud-drop-header">
+                                        <span>KEYFRAME NAVIGATOR ({keyframes.length})</span>
+                                        <button type="button" className="hud-drop-close" onClick={() => setShowStageKfList(false)}>✕</button>
+                                    </div>
+                                    <div className="hud-drop-items">
+                                        {keyframes.map((k, kIdx) => {
+                                            const isCur = kIdx === safeActiveIdx;
+                                            const kTime = formatTimelineClock(k.timestampEpochMs, timeMode, { includeSeconds: true });
+                                            const kOff = Math.max(0, (k.timestampEpochMs - baseEpochMs) / 1000).toFixed(1);
+                                            const kClock = k.utcClockPosition || k.layout?.utcClockPosition || 'top-right';
+                                            const feeds = k.layout?.placements?.length || 0;
+                                            const trans = kIdx === 0 ? 'Root' : `${k.transitionType || 'smooth'} (${k.transitionDurationSec ?? 0.5}s)`;
+
+                                            return (
+                                                <div
+                                                    key={k.id || kIdx}
+                                                    className={`hud-drop-row ${isCur ? 'is-active' : ''}`}
+                                                    onClick={() => {
+                                                        jumpToKeyframe(kIdx);
+                                                        setShowStageKfList(false);
+                                                    }}
+                                                    title={`Seek to Keyframe #${kIdx + 1} at ${kTime}`}
+                                                >
+                                                    <span className="row-diamond">❖ #{kIdx + 1}</span>
+                                                    <span className="row-time">{kTime} (+{kOff}s)</span>
+                                                    <span className="row-meta">⏱️ {kClock} • 🖥️ {feeds} • {trans}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Keyframe Settings & Inspector Popover */}
+                            {showStageKfSettings && (
+                                <div className="hud-stage-settings-popover" onClick={(e) => e.stopPropagation()}>
+                                    <div className="settings-header">
+                                        <button
+                                            type="button"
+                                            className="btn-settings-nav"
+                                            disabled={safeActiveIdx <= 0}
+                                            onClick={() => jumpToKeyframe(safeActiveIdx - 1)}
+                                            title="Previous Keyframe ([ or Alt+Left)"
+                                        >
+                                            ◀
+                                        </button>
+                                        <span className="settings-title">💎 KEYFRAME #{safeActiveIdx + 1} of {keyframes.length}</span>
+                                        <button
+                                            type="button"
+                                            className="btn-settings-nav"
+                                            disabled={safeActiveIdx >= keyframes.length - 1}
+                                            onClick={() => jumpToKeyframe(safeActiveIdx + 1)}
+                                            title="Next Keyframe (] or Alt+Right)"
+                                        >
+                                            ▶
+                                        </button>
+                                        <button type="button" className="btn-settings-close" onClick={() => setShowStageKfSettings(false)}>✕</button>
+                                    </div>
+
+                                    <div className="settings-body">
+                                        {safeActiveIdx > 0 ? (
+                                            <>
+                                                <div className="settings-section">
+                                                    <span className="section-label">INCOMING TRANSITION</span>
+                                                    <div className="btn-group">
+                                                        {['smooth', 'linear', 'cut'].map(t => (
+                                                            <button
+                                                                key={t}
+                                                                type="button"
+                                                                className={`btn-choice ${(currentKf?.transitionType || 'smooth') === t ? 'is-active' : ''}`}
+                                                                onClick={() => handleUpdateTransitionType(t)}
+                                                            >
+                                                                {t === 'smooth' ? '⚡ Smooth' : t === 'linear' ? '↗ Linear' : '✂ Cut'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {currentKf?.transitionType !== 'cut' && (
+                                                    <div className="settings-section">
+                                                        <span className="section-label">DURATION</span>
+                                                        <div className="btn-group">
+                                                            {[0.2, 0.5, 1.0, 1.5, 2.0].map(s => (
+                                                                <button
+                                                                    key={s}
+                                                                    type="button"
+                                                                    className={`btn-choice ${(currentKf?.transitionDurationSec ?? 0.5) === s ? 'is-active' : ''}`}
+                                                                    onClick={() => handleUpdateTransitionDuration(s)}
+                                                                >
+                                                                    {s}s
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <div className="root-keyframe-badge">
+                                                <span>ROOT KEYFRAME (t = 0 origin)</span>
+                                            </div>
+                                        )}
+
+                                        <div className="settings-section">
+                                            <span className="section-label">UTC CLOCK POSITION</span>
+                                            <div className="clock-grid">
+                                                {[
+                                                    { id: 'top-left', label: '↖ Top-Left' },
+                                                    { id: 'top-right', label: '↗ Top-Right' },
+                                                    { id: 'bottom-left', label: '↙ Bottom-Left' },
+                                                    { id: 'bottom-right', label: '↘ Bottom-Right' }
+                                                ].map(pos => (
+                                                    <button
+                                                        key={pos.id}
+                                                        type="button"
+                                                        className={`btn-choice ${activeClockPosition === pos.id ? 'is-active' : ''}`}
+                                                        onClick={() => handleUpdateActiveKfClockPos(pos.id)}
+                                                    >
+                                                        {pos.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="settings-section">
+                                            <span className="section-label">ACTIVE COMPOSITION</span>
+                                            <div className="composition-summary">
+                                                <span>📺 {virtualW}×{virtualH}</span>
+                                                <span>🖥️ {currentPlacements.length} Screens Placed</span>
+                                            </div>
+                                        </div>
+
+                                        {safeActiveIdx > 0 && (
+                                            <div className="settings-footer">
+                                                <button
+                                                    type="button"
+                                                    className="btn-kf-stage-delete"
+                                                    onClick={() => {
+                                                        handleDeleteActiveKeyframe();
+                                                        setShowStageKfSettings(false);
+                                                    }}
+                                                >
+                                                    🗑️ Delete This Keyframe
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div> {/* End canvas-master-frame-16-9 */}
                         </div> {/* End canvas-rulers-main-row */}
                     </div> {/* End canvas-viewport-with-rulers */}
