@@ -1130,7 +1130,10 @@ export default function ExtractorAdvancedStudio() {
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, [isGridFullscreen]);
 
+    const [activeFocusZone, setActiveFocusZone] = useState('timeline');
+
     useStudioHotkeys({
+        activeFocusZone,
         activeStationId,
         spotlightStationId,
         timelineStations: enrichedTimelineStations,
@@ -1565,7 +1568,14 @@ export default function ExtractorAdvancedStudio() {
                         </div>
                     )}
                     {!isInitialSetup && (
-                        <div className="studio-left-content">
+                        <div 
+                            className="studio-left-content"
+                            onMouseDown={(e) => {
+                                if (e.target.closest('.studio-bottom-timeline, .transport-bar-root, .transport-bar, .timeline-board')) {
+                                    setActiveFocusZone('timeline');
+                                }
+                            }}
+                        >
                             <div className="studio-main-viewport-container">
                                 <MulticamViewport
                                     activeStation={enrichedActiveStation}
@@ -1614,9 +1624,13 @@ export default function ExtractorAdvancedStudio() {
                                     isModalOpen={isExportModalOpen || isRangeModalOpen || isBookmarksModalOpen || isSpotlightOpen || isHelpModalOpen}
                                     isGridFullscreen={isGridFullscreen}
                                     onToggleGridFullscreen={handleToggleGridFullscreen}
+                                    activeFocusZone={activeFocusZone}
+                                    onFocusZoneChange={setActiveFocusZone}
                                 />
                                 {!isGridFullscreen && (
                                     <TransportBar
+                                        activeFocusZone={activeFocusZone}
+                                        onFocusZoneChange={setActiveFocusZone}
                                         hasGridPlacements={hasGridPlacements}
                                         baseEpochMs={timelineBaseEpochMs}
                                         timeMode={timeMode}
@@ -1655,6 +1669,7 @@ export default function ExtractorAdvancedStudio() {
                             <div
                                 className={`studio-bottom-timeline ${isGridFullscreen ? 'cinema-timeline-island' : ''} ${isGridFullscreen && !isCinemaDockVisible ? 'dock-hidden' : ''} ${isGridFullscreen && isPlaying ? 'is-playing-dimmed' : ''}`}
                                 ref={timelineContainerRef}
+                                onMouseDown={() => setActiveFocusZone('timeline')}
                                 onMouseEnter={() => setIsHoveringCinemaDock(true)}
                                 onMouseLeave={() => {
                                     setIsHoveringCinemaDock(false);
@@ -1683,6 +1698,8 @@ export default function ExtractorAdvancedStudio() {
                                             </button>
                                         </div>
                                         <TransportBar
+                                            activeFocusZone={activeFocusZone}
+                                            onFocusZoneChange={setActiveFocusZone}
                                             hasGridPlacements={hasGridPlacements}
                                             baseEpochMs={timelineBaseEpochMs}
                                             timeMode={timeMode}

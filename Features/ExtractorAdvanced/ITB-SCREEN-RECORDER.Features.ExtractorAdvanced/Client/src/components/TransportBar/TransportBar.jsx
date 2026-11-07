@@ -36,7 +36,9 @@ export default function TransportBar({
     playbackSpeed = 1,
     onChangeSpeed,
     onSetInPoint,
-    onSetOutPoint
+    onSetOutPoint,
+    activeFocusZone = 'timeline',
+    onFocusZoneChange = null
 }) {
     const [audioState, setAudioState] = useState(() => getAudioSettings());
     const { volume, isMuted } = audioState;
@@ -213,7 +215,24 @@ export default function TransportBar({
         <div
             className={`transport-bar-root ${isEnabled ? 'is-expanded' : 'is-compact-disabled'}`}
             title={!isEnabled ? 'Playback ready' : ''}
+            onMouseDown={() => onFocusZoneChange?.('timeline')}
         >
+            {/* Tactical Focus Zone Indicator & Mode Switcher */}
+            <button
+                type="button"
+                className={`btn-ctrl-action btn-focus-indicator ${activeFocusZone === 'canvas' ? 'is-canvas' : 'is-timeline'}`}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onFocusZoneChange?.(activeFocusZone === 'canvas' ? 'timeline' : 'canvas');
+                }}
+                title={activeFocusZone === 'canvas' 
+                    ? "Focus: Canvas Screen (Arrow keys nudge screen position). Click or press Esc to return to Playhead scrubbing." 
+                    : "Focus: Timeline Playhead (Arrow keys step frames / seconds). Click to switch to Canvas screen nudging."}
+            >
+                <span className="focus-dot" />
+                <span className="focus-label">{activeFocusZone === 'canvas' ? '🖥️ CANVAS' : '⏱️ PLAYHEAD'}</span>
+            </button>
+
             <button
                 type="button"
                 className="btn-speed-badge"

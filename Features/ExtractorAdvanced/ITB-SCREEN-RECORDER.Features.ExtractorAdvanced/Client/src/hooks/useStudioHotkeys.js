@@ -26,7 +26,8 @@ export function useStudioHotkeys({
     hasGridPlacements = true,
     onToggleGridFullscreen,
     isGridFullscreen = false,
-    onExitGridFullscreen
+    onExitGridFullscreen,
+    activeFocusZone = 'timeline'
 }) {
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -235,6 +236,11 @@ export function useStudioHotkeys({
 
             // Frame Stepping
             if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                // If canvas is in active focus to nudge a screen (and user is not holding Ctrl/Alt/Meta), yield to Canvas!
+                if (activeFocusZone === 'canvas' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                    return;
+                }
+
                 e.preventDefault();
                 const isLeft = e.code === 'ArrowLeft';
 
@@ -257,6 +263,11 @@ export function useStudioHotkeys({
 
             // Station Switching (Up / Down)
             if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+                // If canvas is in active focus to nudge a screen, yield to Canvas!
+                if (activeFocusZone === 'canvas' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                    return;
+                }
+
                 if (!activeStationId || timelineStations.length <= 1) return;
                 e.preventDefault();
                 const currentIdx = timelineStations.findIndex(s => s.id === activeStationId);
@@ -302,6 +313,7 @@ export function useStudioHotkeys({
         hasGridPlacements,
         onToggleGridFullscreen,
         isGridFullscreen,
-        onExitGridFullscreen
+        onExitGridFullscreen,
+        activeFocusZone
     ]);
 }

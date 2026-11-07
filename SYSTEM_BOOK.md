@@ -4159,3 +4159,72 @@ Both the timeline diamond popover (`.kf-inspector-popover`) and the canvas stage
   - CSS stacking invariants (`z-index: 100000 !important`, `.kf-nav-cluster`, `.canvas-keyframe-stage-hud`).
 - **Full Client Suite**: 124 tests across 18 suites passing 100%.
 - **Solution Verification**: 458 .NET tests passing 100% in `ITB-SCREEN-RECORDER.Tests`.
+
+
+## 69. Focus-Aware Arrow Key Routing Architecture: Playhead Scrubbing vs. Canvas Screen Nudging (2026-11-08)
+
+### 69.1 Root Cause Analysis & Operational Conflict
+During forensic review, operators rely heavily on keyboard arrow keys to step through video recordings frame-by-frame (`Ctrl + ArrowLeft/Right`), second-by-second (`ArrowLeft/Right`), or by large 5-second intervals (`Shift + ArrowLeft/Right`). However, when canvas free-transform placement capabilities were introduced in `MulticamViewport.jsx`, the component registered a global keyboard listener that unconditionally intercepted arrow keys whenever a screen card had an index (`selectedFeedIndex >= 0`). Because applying presets or clicking cards assigned `selectedFeedIndex`, the platform remained in canvas nudge mode indefinitely. Consequently, pressing arrow keys to scrub the timeline erroneously nudged the workstation card across the canvas instead of advancing the video playhead.
+
+### 69.2 Focus Zone State Machine & Routing Invariants
+To permanently resolve this conflict, the studio implements a centralized focus zone state machine:
+```
+           +-------------------------------------------------------------+
+           |                                                             |
+           |                  DEFAULT: 'timeline'                        |
+           |  (Arrow keys step Playhead: 1 Frame, 1 Sec, or 5 Sec)       |
+           |                                                             |
+           +--------------------+-------------------+--------------------+
+                                |                   ^
+      Click Screen Card /       |                   | Click Timeline / Transport /
+      Drag Card / Inspector     |                   | Empty Canvas / Press Escape
+                                v                   |
+           +--------------------+-------------------+--------------------+
+           |                                                             |
+           |                   FOCUSED: 'canvas'                         |
+           |  (Arrow keys nudge selected screen: Normal 5px, Shift 20px) |
+           |  * Ctrl+Arrow STILL steps Playhead frames without deselect  |
+           |                                                             |
+           +-------------------------------------------------------------+
+```
+
+1. **Timeline & Playhead Focus (`activeFocusZone === 'timeline'`)**:
+   - Primary default operational mode.
+   - `useStudioHotkeys.js` captures `ArrowLeft` / `ArrowRight` exclusively:
+     - `Ctrl` / `Cmd` + `Arrow`: Stepping 1 frame ($\approx 33\text{ms}$).
+     - `Shift` + `Arrow`: Stepping 5 seconds ($5000\text{ms}$).
+     - Plain `Arrow`: Stepping 1 second (or zoom-based interval).
+     - `ArrowDown` / `ArrowUp`: Switches active station or audio channel.
+   - `MulticamViewport.jsx` completely yields: does not call `preventDefault` and does not nudge any screen card.
+2. **Canvas Placement Focus (`activeFocusZone === 'canvas'`)**:
+   - Activated only when the operator explicitly clicks on a screen card (`.canvas-feed-card-box`), drags a placement, or opens its styling inspector.
+   - Arrow keys nudge the selected screen position:
+     - Plain `Arrow`: Fine nudge ($5\text{px}$).
+     - `Shift` + `Arrow`: Fast nudge ($20\text{px}$).
+     - Position is clamped strictly to the canvas coordinate boundaries: $x \in [0, \text{virtualW} - w]$, $y \in [0, \text{virtualH} - h]$.
+3. **Emergency Modifier Override**:
+   - Even when a screen card is focused on the canvas, holding `Ctrl` or `Alt` with Arrow keys bypasses canvas nudging and steps the playhead frame-by-frame, enabling instant time scrubbing without having to deselect the card.
+4. **Seamless Focus Release**:
+   - Clicking anywhere in the bottom timeline, transport bar, or track list immediately restores focus to `'timeline'`.
+   - Clicking on the empty canvas background or pressing `Escape` clears screen selection and restores focus to `'timeline'`.
+   - Pressing `Spacebar` (playback toggle) automatically restores focus to `'timeline'`.
+
+### 69.3 Visual Focus Indicators & Mode Switcher
+1. **Transport Bar Focus Switcher (`.btn-focus-indicator`)**:
+   - Embedded directly in `TransportBar.jsx` with real-time status:
+     - Timeline mode: `[ ⏱️ PLAYHEAD ]` in emerald green.
+     - Canvas mode: `[ 🖥️ CANVAS ]` in glowing cyan.
+   - Clicking the indicator toggles between Playhead scrubbing and Screen nudging on demand.
+2. **Screen Card Nudge Badge (`.badge-focus-nudge`)**:
+   - Rendered on the title bar of the selected screen card:
+     - When focused: `[ 🎯 NUDGE [◀▲▼▶] ]` with active cyan glow, signaling that arrow keys will move this window.
+     - When idle: `[ ⏱️ PLAYHEAD ]`, indicating that arrow keys will scrub the timeline. Clicking the badge activates canvas nudge mode.
+
+### 69.4 Automated Verification Suite
+- **Client Test Suite**: `Features/ExtractorAdvanced/Client/src/tests/arrowKeyFocusCoordination.test.js` (10 tests, 100% green):
+  - Verified `activeFocusZone === 'timeline'` steps playhead and preserves canvas coordinates.
+  - Verified `activeFocusZone === 'canvas'` nudges screen position by 5px (normal) and 20px (Shift).
+  - Verified `Ctrl + Arrow` modifier steps playhead frames even when card is focused on canvas.
+  - Verified coordinate boundary clamping at (0, 0) and canvas edges.
+  - Verified component integration across Studio, Viewport, TransportBar, and Hotkeys.
+- **Full Regression**: 134 Client tests in 18 suites passing 100%; 458 .NET tests in `ITB-SCREEN-RECORDER.Tests` passing 100%.

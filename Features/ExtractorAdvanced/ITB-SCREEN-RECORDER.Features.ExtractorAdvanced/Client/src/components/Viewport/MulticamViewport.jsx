@@ -344,7 +344,9 @@ export default function MulticamViewport({
     setActiveKfIndex,
     isModalOpen = false,
     isGridFullscreen: propIsGridFullscreen = undefined,
-    onToggleGridFullscreen: propOnToggleGridFullscreen = null
+    onToggleGridFullscreen: propOnToggleGridFullscreen = null,
+    activeFocusZone = 'timeline',
+    onFocusZoneChange = null
 }) {
     const currentEpochMs = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
     const [utcClockPosition, setUtcClockPosition] = useState(() => {
@@ -1687,6 +1689,7 @@ export default function MulticamViewport({
         e.preventDefault();
 
         setSelectedFeedIndex(index);
+        onFocusZoneChange?.('canvas');
         hasUserCustomizedRef.current = true;
         setSelectedPresetId('custom');
 
@@ -2401,6 +2404,7 @@ export default function MulticamViewport({
             if (e.code === 'Space' || e.key === ' ') {
                 if (setIsPlaying) {
                     e.preventDefault();
+                    onFocusZoneChange?.('timeline');
                     setIsPlaying(p => !p);
                     return;
                 }
@@ -2438,16 +2442,24 @@ export default function MulticamViewport({
                 setShowSavePresetModal(false);
                 setIsInspectorOpen(false);
                 setSelectedFeedIndex(null);
+                onFocusZoneChange?.('timeline');
                 return;
             }
 
-            // Arrow keys: nudge selected box
+            // Arrow keys: nudge selected box ONLY when in canvas focus
             if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-                if (selectedFeedIndex >= 0 && currentPlacements[selectedFeedIndex]) {
+                // If user is holding Ctrl, Alt, or Meta, ALWAYS yield to timeline playhead scrubbing / keyframe navigation!
+                if (e.ctrlKey || e.altKey || e.metaKey) {
+                    return;
+                }
+
+                // Only nudge if focus is explicitly on the canvas AND a screen placement is selected
+                const isCanvasActive = (activeFocusZone === 'canvas') || (isInspectorOpen && selectedFeedIndex !== null);
+                if (isCanvasActive && selectedFeedIndex !== null && selectedFeedIndex >= 0 && currentPlacements[selectedFeedIndex]) {
                     e.preventDefault();
                     hasUserCustomizedRef.current = true;
                     setSelectedPresetId('custom');
-                    const step = e.shiftKey ? 1 : 10;
+                    const step = e.shiftKey ? 20 : 5; // Shift: 20px, Normal: 5px
                     let dx = 0;
                     let dy = 0;
                     if (e.key === 'ArrowLeft') dx = -step;
@@ -2465,8 +2477,11 @@ export default function MulticamViewport({
                         return p;
                     });
                     updateActivePlacements(next);
+                    return;
                 }
-                return;
+
+                // When in timeline focus or no feed selected: DO NOT preventDefault! DO NOT return!
+                // Let event bubble to useStudioHotkeys for playhead frame/seconds stepping!
             }
 
             // R key: Toggle Precision CAD / NLE Rulers
@@ -2815,6 +2830,7 @@ export default function MulticamViewport({
                         if (e.target === stageWrapperRef.current || e.target?.classList?.contains('canvas-stage-wrapper')) {
                             setSelectedFeedIndex(null);
                             setIsInspectorOpen(false);
+                            onFocusZoneChange?.('timeline');
                         }
                     }}
                 >
@@ -3427,6 +3443,7 @@ export default function MulticamViewport({
                                 e.target?.classList?.contains('canvas-work-surface')) {
                                 setSelectedFeedIndex(null);
                                 setIsInspectorOpen(false);
+                                onFocusZoneChange?.('timeline');
                             }
                         }}
                     >
@@ -3573,10 +3590,12 @@ export default function MulticamViewport({
                                         e.stopPropagation();
                                         setSelectedFeedIndex(origIdx);
                                         setIsInspectorOpen(true);
+                                        onFocusZoneChange?.('canvas');
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setSelectedFeedIndex(origIdx);
+                                        onFocusZoneChange?.('canvas');
                                     }}
                                 >
                                     {/* Top Draggable Bar & Coordinates */}
@@ -3655,6 +3674,20 @@ export default function MulticamViewport({
                                                 </>
                                             )}
                                         </div>
+                                        {isSelected && (
+                                            <span 
+                                                className={`badge-focus-nudge ${activeFocusZone === 'canvas' ? 'is-focused' : 'is-idle'}`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onFocusZoneChange?.(activeFocusZone === 'canvas' ? 'timeline' : 'canvas');
+                                                }}
+                                                title={activeFocusZone === 'canvas' 
+                                                    ? "Screen focused: Arrow keys nudge position (Shift: 20px, Normal: 5px). Click timeline or press Esc for Playhead scrubbing." 
+                                                    : "Playhead focused: Arrow keys scrub timeline. Click to enable Arrow key screen nudging."}
+                                            >
+                                                {activeFocusZone === 'canvas' ? '🎯 NUDGE [◀▲▼▶]' : '⏱️ PLAYHEAD'}
+                                            </span>
+                                        )}
                                         <div className="badge-coords">
                                             {Math.round(p.width)}×{Math.round(p.height)} ({getReadableAspectRatio(p.width, p.height)}) @ ({Math.round(p.x)},{Math.round(p.y)})
                                             {rot !== 0 && <span className="badge-rot">📐{rot}°</span>}
