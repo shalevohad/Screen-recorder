@@ -2,20 +2,20 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Player/KeystrokePlaybackOverlay.jsx
 // ==========================================
 import React, { useMemo } from 'react';
-import { cleanKeyCombination, parseKeyCombination, KEYSTROKE_CALIBRATION_OFFSET_MS } from '../../utils/virtualKeyMap.js';
+import { parseKeyCombination, KEYSTROKE_CALIBRATION_OFFSET_MS } from '../../utils/virtualKeyMap.js';
 import './KeystrokePlaybackOverlay.scss';
 
 const DISPLAY_DURATION_MS = 2200;
 const FADE_DURATION_MS = 400;
 
 /**
- * KeystrokePlaybackOverlay renders tactical keycaps or caption HUD overlay synchronized with playback time.
+ * KeystrokePlaybackOverlay renders tactical 3D keycaps HUD overlay synchronized with playback time.
  * Filters strictly to targetStationId and targetDisplayId when specified.
  * 
  * @param {Object} props
  * @param {number} [props.currentEpochMs=0] - Current playhead timestamp in Epoch milliseconds.
  * @param {Array} [props.keystrokes=[]] - Keystroke telemetry event array.
- * @param {'NONE'|'CAPTION'|'BURN_IN'|'OFF'} [props.keystrokeMode='BURN_IN'] - Display mode.
+ * @param {'NONE'|'BURN_IN'|'OFF'} [props.keystrokeMode='BURN_IN'] - Display mode.
  * @param {string|null} [props.targetStationId=null] - Specific station to filter for.
  * @param {string|null} [props.targetDisplayId=null] - Specific display to filter for (or 'auto' for director track).
  * @param {Array} [props.displays=[]] - Display topology metadata for coordinate bounding checks.
@@ -25,14 +25,14 @@ const FADE_DURATION_MS = 400;
 export default function KeystrokePlaybackOverlay({
     currentEpochMs = 0,
     keystrokes = [],
-    keystrokeMode = 'BURN_IN', // Options: 'NONE' | 'CAPTION' | 'BURN_IN' | 'OFF'
+    keystrokeMode = 'BURN_IN', // Options: 'NONE' | 'BURN_IN' | 'OFF'
     targetStationId = null,
     targetDisplayId = null,
     displays = [],
     directorPlan = null
 }) {
     const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-    const isVisibleMode = normalizedMode === 'BURN_IN' || normalizedMode === 'CAPTION';
+    const isVisibleMode = normalizedMode === 'BURN_IN';
 
     const activeEvent = useMemo(() => {
         if (!isVisibleMode || !keystrokes.length || !currentEpochMs) return null;
@@ -110,21 +110,7 @@ export default function KeystrokePlaybackOverlay({
 
     if (opacity <= 0.05) return null;
 
-    // Mode 1: Soft subtitle caption at bottom of player
-    if (normalizedMode === 'CAPTION') {
-        const cleanCombo = cleanKeyCombination(activeEvent.keyCombination);
-        if (!cleanCombo) return null;
-
-        return (
-            <div className="keystroke-overlay-root mode-caption" style={{ opacity }}>
-                <div className="caption-bar">
-                    <span className="caption-text">[ {cleanCombo} ]</span>
-                </div>
-            </div>
-        );
-    }
-
-    // Mode 2: Tactical Burn-In - Glowing 3D keycaps centered in viewport
+    // Tactical Burn-In - Glowing 3D keycaps centered in viewport
     const keys = parseKeyCombination(activeEvent.keyCombination);
     if (!keys.length) return null;
 

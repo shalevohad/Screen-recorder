@@ -26,8 +26,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public long OutEpochMs { get; set; }
 
         /// <summary>
-        /// Keystroke presentation export mode (Caption SRT, BurnIn, or None).
+        /// Keystroke presentation export mode (BurnIn or None).
         /// </summary>
-        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
     }
 }

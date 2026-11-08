@@ -662,7 +662,7 @@ export default function ExtractorAdvancedStudio() {
 
     useEffect(() => {
         const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        const shouldFetch = (normalizedMode !== 'NONE' && normalizedMode !== 'OFF') || showRulerKeystrokes;
+        const shouldFetch = (normalizedMode === 'BURN_IN') || showRulerKeystrokes;
 
         if (!targetKeystrokeStations.length || !timelineBaseEpochMs || !shouldFetch) {
             setActiveStationKeystrokes([]);

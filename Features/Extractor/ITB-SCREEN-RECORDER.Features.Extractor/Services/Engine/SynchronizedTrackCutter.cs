@@ -346,22 +346,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                             segments.Add((new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds()));
                         }
 
-                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
+                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn || plan.KeystrokeMode == KeystrokeExportMode.Caption)
                         {
                             subtitleTempPath = await _srtGenerator.CreateAssKeycapsFileForSegmentsAsync(stationId, segments, ct);
                             if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
                             {
                                 string escapedAss = subtitleTempPath.Replace("\\", "/").Replace(":", "\\:").Replace("'", "\\'");
                                 vfPost.Add($"subtitles='{escapedAss}'");
-                            }
-                        }
-                        else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
-                        {
-                            subtitleTempPath = await _srtGenerator.CreateSrtFileForSegmentsAsync(stationId, segments, ct);
-                            if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
-                            {
-                                subInputArgs = $"-i \"{subtitleTempPath.Replace('\\', '/')}\"";
-                                mapArgs += " -map 2:s -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
                             }
                         }
                     }
@@ -468,23 +459,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                             segments.Add((new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds()));
                         }
 
-                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
+                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn || plan.KeystrokeMode == KeystrokeExportMode.Caption)
                         {
                             subtitleTempPath = await _srtGenerator.CreateAssKeycapsFileForSegmentsAsync(stationId, segments, ct);
                             if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
                             {
                                 string escapedAss = subtitleTempPath.Replace("\\", "/").Replace(":", "\\:").Replace("'", "\\'");
                                 vfFilters.Add($"subtitles='{escapedAss}'");
-                            }
-                        }
-                        else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
-                        {
-                            subtitleTempPath = await _srtGenerator.CreateSrtFileForSegmentsAsync(stationId, segments, ct);
-                            if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
-                            {
-                                int subIndex = secondaryAudioManifest != null ? 2 : 1;
-                                subInputArgs = $"-i \"{subtitleTempPath.Replace('\\', '/')}\"";
-                                mapArgs = $"-map 0:v {(secondaryAudioManifest != null ? "-map 1:a?" : (trackHasAudio ? "-map 0:a?" : ""))} -map {subIndex}:s -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
                             }
                         }
                     }

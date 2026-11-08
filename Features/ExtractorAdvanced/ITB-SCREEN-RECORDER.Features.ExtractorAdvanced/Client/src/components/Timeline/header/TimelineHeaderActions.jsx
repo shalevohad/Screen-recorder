@@ -15,38 +15,33 @@ export default function TimelineHeaderActions({
     onResetZoom,
     baseEpochMs,
     timeMode,
-    keystrokeMode = 'BURN_IN', // 'NONE' | 'CAPTION' | 'BURN_IN'
+    keystrokeMode = 'BURN_IN', // 'NONE' | 'BURN_IN'
     onChangeKeystrokeMode,
     showRulerKeystrokes = false,
     onToggleRulerKeystrokes
 }) {
     const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
 
-    // Cycles between 3 keystroke display modes on button click (OFF -> BURN_IN -> CAPTION)
+    // Toggles keystroke display mode on button click (OFF <-> BURN_IN)
     const handleCycleKeystrokeMode = () => {
         if (!onChangeKeystrokeMode) return;
-        if (normalizedMode === 'NONE' || normalizedMode === 'OFF') onChangeKeystrokeMode('BURN_IN');
-        else if (normalizedMode === 'BURN_IN') onChangeKeystrokeMode('CAPTION');
-        else onChangeKeystrokeMode('NONE');
+        if (normalizedMode === 'BURN_IN') onChangeKeystrokeMode('NONE');
+        else onChangeKeystrokeMode('BURN_IN');
     };
 
     const getModeLabel = () => {
-        switch (normalizedMode) {
-            case 'BURN_IN': return 'KEYS: BURN-IN';
-            case 'CAPTION': return 'KEYS: CAPTION';
-            default: return 'KEYS: OFF';
-        }
+        return normalizedMode === 'BURN_IN' ? 'KEYS: BURN-IN' : 'KEYS: OFF';
     };
 
     return (
         <div className="timeline-viewport-actions-group">
-            {/* Tactical tri-state toggle for Keystroke Preview & Export Mode */}
+            {/* Tactical toggle for Keystroke Preview & Export Mode (Burn-in or Off) */}
             {onChangeKeystrokeMode && (
                 <button
                     type="button"
-                    className={`btn-vp-action keys-mode-btn mode-${normalizedMode.toLowerCase().replace('_', '-')}`}
+                    className={`btn-vp-action keys-mode-btn mode-${normalizedMode === 'BURN_IN' ? 'burn-in' : 'none'}`}
                     onClick={handleCycleKeystrokeMode}
-                    title="Toggle Keystroke Export & Preview Mode (Off / Burn-in / Soft Caption)"
+                    title="Toggle Keystroke Export & Preview Mode (Off / Burn-in)"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="2" y="4" width="20" height="16" rx="2" />

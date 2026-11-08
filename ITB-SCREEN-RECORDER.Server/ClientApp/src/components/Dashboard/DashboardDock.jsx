@@ -131,7 +131,7 @@ export default function DashboardDock({
 
             <div className="dock-divider" />
 
-            {/* Tactical tri-state control for keystroke overlay: BURN-IN -> CAPTION -> OFF */}
+            {/* Tactical control for keystroke overlay: BURN-IN <-> OFF */}
             <button
                 className={`dock-icon-btn tactical-btn-keystroke mode-${keystrokeMode} ${isFeatureActive ? 'disabled' : ''}`}
                 onClick={!isFeatureActive ? handleCycleKeystrokeMode : undefined}
@@ -139,7 +139,7 @@ export default function DashboardDock({
                 title={
                     isFeatureActive
                         ? "Keystroke overlay unavailable in Feature Mode"
-                        : `Keystroke Overlay: ${keystrokeMode === 'burn-in' ? 'HARD BURN-IN' : keystrokeMode === 'caption' ? 'SOFT CAPTION' : 'OFF'} (Click to cycle)`
+                        : `Keystroke Overlay: ${keystrokeMode === 'burn-in' ? 'HARD BURN-IN' : 'OFF'} (Click to toggle)`
                 }
             >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -147,7 +147,7 @@ export default function DashboardDock({
                     <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
                 </svg>
                 <span className={`dock-mode-indicator ${keystrokeMode}`}>
-                    {keystrokeMode === 'burn-in' ? 'BURN' : keystrokeMode === 'caption' ? 'CAPT' : 'OFF'}
+                    {keystrokeMode === 'burn-in' ? 'BURN' : 'OFF'}
                 </span>
             </button>
 

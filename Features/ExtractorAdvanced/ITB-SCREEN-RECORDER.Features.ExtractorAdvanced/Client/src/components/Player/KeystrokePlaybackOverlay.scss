@@ -58,41 +58,6 @@
             }
         }
     }
-    // CAPTION mode: Subtitle banner at bottom of player
-    &.mode-caption {
-        bottom: 35px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 50;
-
-        // Fullscreen adaptation (SoloSpotlightModal): Float above bottom island (~210px-240px)
-        .solo-spotlight-modal-overlay & {
-            bottom: 245px;
-            z-index: 75;
-        }
-
-        .caption-bar {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 5px 16px;
-            background: rgba(9, 14, 26, 0.94);
-            backdrop-filter: blur(12px);
-            border: 1.5px solid rgba(0, 240, 255, 0.45);
-            border-radius: 6px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 240, 255, 0.25);
-
-            .caption-text {
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 15px;
-                font-weight: 800;
-                color: #ffffff;
-                letter-spacing: 0.6px;
-                white-space: nowrap;
-                text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-            }
-        }
-    }
 
     // Master Canvas placement adaptation: Proportionally scale down keycaps inside canvas tiles
     .feed-content-viewport & {
@@ -115,16 +80,6 @@
 
                 .keycap-plus {
                     font-size: 14px;
-                }
-            }
-        }
-
-        &.mode-caption {
-            bottom: 8px;
-            .caption-bar {
-                padding: 3px 10px;
-                .caption-text {
-                    font-size: 11px;
                 }
             }
         }

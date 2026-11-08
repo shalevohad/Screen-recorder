@@ -11,7 +11,7 @@ export default function ExportOptionsModal({
     title = 'EXPORT CONFIRMATION',
     summaryText = ''
 }) {
-    const [mode, setMode] = useState('Caption');
+    const [mode, setMode] = useState('BurnIn');
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,21 +44,6 @@ export default function ExportOptionsModal({
                     <div className="options-title">SELECT KEYSTROKE PRESENTATION</div>
 
                     <div className="modes-grid">
-                        <label className={`mode-card ${mode === 'Caption' ? 'active' : ''}`}>
-                            <input
-                                type="radio"
-                                name="keystrokeMode"
-                                value="Caption"
-                                checked={mode === 'Caption'}
-                                onChange={() => setMode('Caption')}
-                            />
-                            <div className="mode-content">
-                                <div className="mode-name">SOFT CAPTIONS (RECOMMENDED)</div>
-                                <div className="mode-desc">
-                                    Embeds a soft subtitle track (mov_text). Toggable in VLC/Players, keeps video pristine and clean.
-                                </div>
-                            </div>
-                        </label>
 
                         <label className={`mode-card ${mode === 'BurnIn' ? 'active' : ''}`}>
                             <input
@@ -69,7 +54,7 @@ export default function ExportOptionsModal({
                                 onChange={() => setMode('BurnIn')}
                             />
                             <div className="mode-content">
-                                <div className="mode-name">HARD BURN-IN</div>
+                                <div className="mode-name">HARD BURN-IN (RECOMMENDED)</div>
                                 <div className="mode-desc">
                                     Permanently bakes keystrokes directly onto the video pixels for unalterable court evidence.
                                 </div>

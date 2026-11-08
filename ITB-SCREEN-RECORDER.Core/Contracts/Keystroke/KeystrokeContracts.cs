@@ -12,7 +12,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
     public enum KeystrokeExportMode
     {
         None = 0,     // Clean cut without subtitles or burn-in
-        Caption = 1,  // Soft subtitle track (mov_text)
+        [Obsolete("Soft captions have been deprecated in favor of hard BurnIn.")]
+        Caption = 1,  // Soft caption (deprecated)
         BurnIn = 2    // Hard burn-in onto video frames (subtitles filter)
     }
 
@@ -27,7 +28,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
 
                 str = str.Trim().ToUpperInvariant().Replace("-", "_");
                 if (str == "BURN_IN" || str == "BURNIN" || str == "HARD") return KeystrokeExportMode.BurnIn;
-                if (str == "CAPTION" || str == "SOFT" || str == "SUBTITLE") return KeystrokeExportMode.Caption;
+                if (str == "CAPTION" || str == "SOFT" || str == "SUBTITLE") return KeystrokeExportMode.BurnIn;
                 if (str == "NONE" || str == "OFF" || str == "CLEAN") return KeystrokeExportMode.None;
 
                 if (Enum.TryParse<KeystrokeExportMode>(str, true, out var parsed)) return parsed;
@@ -38,7 +39,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
                 return val switch
                 {
                     0 => KeystrokeExportMode.None,
-                    1 => KeystrokeExportMode.Caption,
+                    1 => KeystrokeExportMode.BurnIn,
                     2 => KeystrokeExportMode.BurnIn,
                     _ => KeystrokeExportMode.None
                 };
@@ -97,20 +98,10 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
     }
 
     /// <summary>
-    /// Subtitle generator interface decoupled from server infrastructure, consumed by export and synchronized track cutting engines.
+    /// Subtitle and tactical keycap generator interface decoupled from server infrastructure, consumed by export and synchronized track cutting engines.
     /// </summary>
     public interface IKeystrokeSrtGenerator
     {
-        /// <summary>
-        /// Generates a standard SubRip (SRT) subtitle file for a continuous soft caption track.
-        /// </summary>
-        /// <param name="stationId">Station identifier.</param>
-        /// <param name="inEpochMs">In-point timestamp in epoch milliseconds.</param>
-        /// <param name="outEpochMs">Out-point timestamp in epoch milliseconds.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Path to generated SRT file, or null if no keystrokes found.</returns>
-        Task<string?> CreateSrtFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default);
-
         /// <summary>
         /// Generates an Advanced SubStation Alpha (ASS) file with tactical keycap styling for hard burn-in.
         /// </summary>
@@ -120,15 +111,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
         /// <param name="ct">Cancellation token.</param>
         /// <returns>Path to generated ASS file, or null if no keystrokes found.</returns>
         Task<string?> CreateAssKeycapsFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default);
-
-        /// <summary>
-        /// Generates a time-compensated SRT subtitle file matching active timeline segments and accounting for removed global gaps.
-        /// </summary>
-        /// <param name="stationId">Station identifier.</param>
-        /// <param name="activeSegments">Active timeline segments list of (StartEpochMs, EndEpochMs).</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Path to time-aligned SRT file, or null if empty.</returns>
-        Task<string?> CreateSrtFileForSegmentsAsync(string stationId, IReadOnlyList<(long StartEpochMs, long EndEpochMs)> activeSegments, CancellationToken ct = default);
 
         /// <summary>
         /// Generates a time-compensated ASS keycap subtitle file matching active timeline segments and accounting for removed global gaps.

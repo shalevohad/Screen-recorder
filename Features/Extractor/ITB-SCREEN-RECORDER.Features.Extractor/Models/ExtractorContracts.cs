@@ -18,9 +18,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public bool ExportRawChunks { get; set; } = false;
 
         /// <summary>
-        /// Keystroke presentation mode for forensic export (e.g., BurnIn, Caption SRT, or None).
+        /// Keystroke presentation mode for forensic export (e.g., BurnIn or None).
         /// </summary>
-        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
 
         /// <summary>
         /// Multi-display layout mode: "director", "split", "pip", or specific display ID.

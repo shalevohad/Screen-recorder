@@ -11,14 +11,14 @@ const FADE_DURATION_MS = 450;
 /**
  * LiveKeystrokeOverlay Component.
  * Displays real-time keystroke overlays over active video streams.
- * Inputs: keystrokes array, isLive boolean, variant ('viewport' | 'fullscreen' | 'compact'), mode ('burn-in' | 'caption' | 'none').
+ * Inputs: keystrokes array, isLive boolean, variant ('viewport' | 'fullscreen' | 'compact'), mode ('burn-in' | 'none').
  * Outputs: Rendered HUD keystroke element or null.
  */
 export default function LiveKeystrokeOverlay({
     keystrokes = [],
     isLive = false,
     variant = 'viewport', // 'viewport' | 'fullscreen' | 'compact'
-    mode = 'burn-in',     // 'burn-in' | 'caption' | 'none'
+    mode = 'burn-in',     // 'burn-in' | 'none'
     targetDisplayId = null,
     displays = []
 }) {
@@ -109,21 +109,7 @@ export default function LiveKeystrokeOverlay({
 
     const isFullscreen = variant === 'fullscreen';
 
-    // Mode 1: Soft studio caption
-    if (normalizedMode === 'caption') {
-        return (
-            <div
-                className={`live-keystroke-overlay-root mode-caption ${isFullscreen ? 'mode-fullscreen' : 'mode-viewport'}`}
-                style={{ opacity }}
-            >
-                <div className="caption-bar">
-                    <span className="caption-text">[ {cleanCombo} ]</span>
-                </div>
-            </div>
-        );
-    }
-
-    // Mode 2: Tactical hard burn-in - glowing keycaps
+    // Tactical hard burn-in - glowing keycaps
     const keys = parseKeyCombination(rawCombo);
     if (!keys || keys.length === 0) {
         return null;

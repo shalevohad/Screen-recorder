@@ -165,16 +165,17 @@ export function useDashboardLogic({
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('itb_dashboard_view_mode') || 'grid');
     useEffect(() => localStorage.setItem('itb_dashboard_view_mode', viewMode), [viewMode]);
 
-    // Keystroke overlay presentation mode: 'burn-in' (hard HUD) | 'caption' (soft subtitle) | 'none' (disabled)
-    const [keystrokeMode, setKeystrokeMode] = useState(() => localStorage.getItem('itb_dashboard_keystroke_mode') || 'burn-in');
+    // Keystroke overlay presentation mode: 'burn-in' (hard HUD) | 'none' (disabled)
+    const [keystrokeMode, setKeystrokeMode] = useState(() => {
+        const saved = localStorage.getItem('itb_dashboard_keystroke_mode');
+        return (saved === 'burn-in' || saved === 'none') ? saved : 'burn-in';
+    });
     useEffect(() => localStorage.setItem('itb_dashboard_keystroke_mode', keystrokeMode), [keystrokeMode]);
 
     const handleCycleKeystrokeMode = () => {
         setKeystrokeMode(prev => {
             const norm = (prev || 'burn-in').toLowerCase().replace('_', '-');
-            if (norm === 'burn-in') return 'caption';
-            if (norm === 'caption') return 'none';
-            return 'burn-in';
+            return norm === 'burn-in' ? 'none' : 'burn-in';
         });
     };
 

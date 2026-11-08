@@ -90,6 +90,7 @@
 68. [Tactical Keyframe Management, Instant Timeline Skipping & Real-Time Inspector Suite (2026-11-08)](#68-tactical-keyframe-management-instant-timeline-skipping--real-time-inspector-suite-2026-11-08)
 69. [Focus-Aware Arrow Key Routing Architecture: Playhead Scrubbing vs. Canvas Screen Nudging (2026-11-08)](#69-focus-aware-arrow-key-routing-architecture-playhead-scrubbing-vs-canvas-screen-nudging-2026-11-08)
 70. [Tactical Fullscreen Theater Frosted Glass Blur & System Isolation Architecture (2026-11-08)](#70-tactical-fullscreen-theater-frosted-glass-blur--system-isolation-architecture-2026-11-08)
+71. [Keystroke Presentation Architecture Simplification: Permanent Migration to Hard Burn-In (ASS) & Deprecation of Soft SRT Captions (2026-11-08)](#71-keystroke-presentation-architecture-simplification-permanent-migration-to-hard-burn-in-ass--deprecation-of-soft-srt-captions-2026-11-08)
 
 ---
 
@@ -4584,3 +4585,36 @@ To ensure that all unrelated interface components are unrecognizable without cau
   - `ExtractorAdvanced/Client`: 140 passed across 19 test suites (`npm test`).
   - Production Vite Builds: `ExtractorAdvanced` (882 kB, 0 errors), `ClientApp` (590 kB, 0 errors).
   - Backend Regression: 458 passed across all .NET test assemblies (`dotnet test --no-build`).
+
+
+## 71. Keystroke Presentation Architecture Simplification: Permanent Migration to Hard Burn-In (ASS) & Deprecation of Soft SRT Captions (2026-11-08)
+
+### 71.1 Rationale & Operational Motivation
+In high-stakes forensic video triage and air-gapped debriefings, soft subtitle tracks (`mov_text` / `.srt`) introduced operational friction:
+1. Media players (VLC, Windows Media Player, QuickTime) frequently default to subtitles disabled, requiring operators to manually search and toggle subtitle streams.
+2. Standard SubRip (.SRT) captions lack per-coordinate spatial positioning and styling capabilities, rendering as generic bottom banners that obscure important application status bars and fail to identify which screen received the key event.
+3. Tactical ASS Keycap Burn-In (`subtitles='...ass'`), in contrast, permanently bakes glowing 3D keycaps directly into the video pixels at the exact coordinate surface of each workstation screen, creating unalterable court-admissible forensic evidence that cannot be detached, corrupted, or ignored by third-party players.
+4. Consequently, the platform completely deprecated and removed soft SRT captions. The keystroke presentation architecture is simplified to a strict binary choice: **Hard Burn-In** (`KeystrokeExportMode.BurnIn`) or **None** (`KeystrokeExportMode.None`).
+
+### 71.2 Architectural Changes & Pipeline Consolidation
+1. **Frontend UI & Ergonomics**:
+   - **Studio Timeline Header (`TimelineHeaderActions.jsx`)**: Converted from tri-state cycling (`OFF -> BURN-IN -> CAPTION`) to an intuitive bi-state toggle between `KEYS: BURN-IN` and `KEYS: OFF`.
+   - **Dashboard Vertical Dock (`DashboardDock.jsx` & `useDashboardLogic.js`)**: Simplified the dock keystroke button to toggle strictly between `BURN` and `OFF`, eliminating the obsolete `CAPT` indicator.
+   - **Playback & Live Overlays (`KeystrokePlaybackOverlay.jsx` & `LiveKeystrokeOverlay.jsx`)**: Eliminated the `.mode-caption` subtitle bar rendering code and CSS classes. Overlays render exclusively the tactical glowing 3D keycaps centered over the active workstation / canvas feed.
+   - **Export Modals (`ExtractorTile.jsx`, `ExportOptionsModal.jsx`, `SoloSpotlightModal.jsx`)**: Removed the "Soft Captions (SRT)" selection card. `HARD BURN-IN (RECOMMENDED)` is now the primary default option, alongside `NONE (CLEAN CUT)`.
+2. **Backend & Ffmpeg Pipeline Consolidation**:
+   - **Telemetry Protocol (`KeystrokeContracts.cs`)**: Marked `KeystrokeExportMode.Caption` as `[Obsolete]`. Updated `FlexibleKeystrokeExportModeConverter` so incoming requests specifying `"CAPTION"`, `"SOFT"`, or `"SUBTITLE"` seamlessly map to `KeystrokeExportMode.BurnIn` for backward compatibility.
+   - **Removal of SRT Generation (`KeystrokeSrtGenerator.cs` & `IKeystrokeSrtGenerator`)**: Deleted `CreateSrtFileAsync`, `CreateSrtFileForSegmentsAsync`, and `FormatSrtTimestamp`. The generator now focuses exclusively on millisecond-accurate ASS keycaps via `CreateAssKeycapsFileAsync` and `CreateAssKeycapsFileForSegmentsAsync`.
+   - **Track Cutting Engine (`SynchronizedTrackCutter.cs`)**: Removed all secondary SRT input flags (`subInputArgs = "-i ..."`), subtitle stream mapping (`-map 2:s -c:s mov_text`), and metadata injection. All active keystroke plans now generate ASS files burned directly into video filter graphs (`subtitles='...ass'`).
+
+### 71.3 Automated Verification Matrix
+- **Client Test Suite**: `Features/ExtractorAdvanced/Client/src/tests/keystrokeModeSimplification.test.js` (5 test specifications):
+  - Verified `TimelineHeaderActions` toggles strictly between `BURN_IN` and `NONE`.
+  - Verified `KeystrokePlaybackOverlay` renders exclusively Burn-In keycaps and eliminates `.mode-caption`.
+  - Verified `SoloSpotlightModal` resolves export mode strictly to `BurnIn` or `None`.
+  - Verified `ExtractorTile` & `ExportOptionsModal` default to `BurnIn` and contain no Caption card.
+  - Verified Server ClientApp `DashboardDock` toggles between `BURN` and `OFF`.
+- **Regression Matrix**:
+  - `ExtractorAdvanced/Client`: 145 passed across 20 test suites (`npm test`).
+  - `ITB-SCREEN-RECORDER.Tests`: 453 passed across all .NET test assemblies (`dotnet test --no-build`).
+  - Production Builds: Clean Vite builds for both Extractor widget (881 kB) and Server ClientApp (589 kB).
