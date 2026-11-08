@@ -267,6 +267,127 @@ function AudioClipRenderer({
  * Sub-component for individual aggregated audio clip displayed inside the collapsed Master Bus timeline.
  * Reflects real acoustic waveforms with dual-channel (SYS/MIC) coloring and instant visual fidelity.
  */
+function CollapsedMasterAggregatedWaveform({
+    masterActiveClips,
+    stations,
+    vpStartEpoch,
+    viewportDurationMs,
+    timeMode,
+    onExpand
+}) {
+    const [stationWaveforms, setStationWaveforms] = useState({});
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        const abortController = new AbortController();
+
+        const pendingStations = new Set();
+        masterActiveClips.forEach(c => {
+            if (c.sourceStationId && !waveformStore.get(c.sourceStationId, c.startEpochMs, c.endEpochMs, 200)) {
+                pendingStations.add(c);
+            }
+        });
+
+        if (pendingStations.size > 0) {
+            setIsLoading(true);
+            const promises = Array.from(pendingStations).map(c => 
+                waveformStore.fetchWaveform(c.sourceStationId, c.startEpochMs, c.endEpochMs, abortController.signal, 200)
+            );
+            Promise.allSettled(promises).then(() => {
+                if (isMounted) {
+                    setIsLoading(false);
+                    setStationWaveforms({});
+                }
+            });
+        }
+
+        return () => {
+            isMounted = false;
+            abortController.abort();
+        };
+    }, [masterActiveClips]);
+
+    const channelModes = new Set(masterActiveClips.map(c => c.effectiveChannelMode || 'both'));
+    const overallChannelMode = (channelModes.has('both') || (channelModes.has('sys') && channelModes.has('mic')))
+        ? 'both'
+        : (channelModes.has('sys') ? 'sys' : (channelModes.has('mic') ? 'mic' : 'both'));
+
+    const aggregatedPeaks = useMemo(() => {
+        const POINTS = 200;
+        const result = new Array(POINTS).fill(0);
+        let hasData = false;
+
+        masterActiveClips.forEach(clip => {
+            const cached = waveformStore.get(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs, 200);
+            if (!cached || !cached.length) return;
+            hasData = true;
+
+            const clipStart = clip.startEpochMs;
+            const clipDur = clip.endEpochMs - clipStart;
+            if (clipDur <= 0) return;
+
+            const gain = typeof clip.effectiveGain === 'number' ? clip.effectiveGain : 1.0;
+
+            for (let i = 0; i < POINTS; i++) {
+                const sampleTime = vpStartEpoch + (i / POINTS) * viewportDurationMs;
+                if (sampleTime >= clipStart && sampleTime <= clip.endEpochMs) {
+                    const relPos = (sampleTime - clipStart) / clipDur;
+                    const peakIdx = Math.min(cached.length - 1, Math.max(0, Math.floor(relPos * cached.length)));
+                    const val = (cached[peakIdx] || 0) * gain;
+                    if (val > result[i]) {
+                        result[i] = val;
+                    }
+                }
+            }
+        });
+
+        if (!hasData) {
+            return new Array(POINTS).fill(0.03);
+        }
+        return result;
+    }, [masterActiveClips, vpStartEpoch, viewportDurationMs, stationWaveforms]);
+
+    const activeStationNames = Array.from(new Set(masterActiveClips.map(c => {
+        const st = stations.find(x => x.id === c.sourceStationId);
+        return st ? (st.displayName || st.hostname || st.id) : c.sourceStationId;
+    }))).join(' + ');
+
+    return (
+        <div
+            className={`collapsed-master-clip aggregated-mode mode-${overallChannelMode}`}
+            style={{
+                left: '0%',
+                width: '100%',
+                borderLeftColor: '#06B6D4'
+            }}
+            onDoubleClick={onExpand}
+            title={`Audio Master Mix: ${activeStationNames} [${overallChannelMode.toUpperCase()}]\nDouble-click to expand multitrack audio lanes`}
+        >
+            <div className="clip-waveform-graphic">
+                <ClipWaveformRenderer
+                    peaks={aggregatedPeaks}
+                    channelMode={overallChannelMode}
+                    effectiveGain={1.0}
+                    isLoadingWaveform={isLoading}
+                    laneColor="#06B6D4"
+                />
+            </div>
+            <div className="collapsed-clip-info">
+                <span className="collapsed-clip-station">
+                    {activeStationNames || 'MASTER AUDIO BUS'}
+                </span>
+                <span className={`clip-channel-tag mode-${overallChannelMode}`}>
+                    {overallChannelMode.toUpperCase()}
+                </span>
+                <span className="collapsed-clip-gain">
+                    {masterActiveClips.length} {masterActiveClips.length === 1 ? 'TRACK' : 'TRACKS'} IN MIX
+                </span>
+            </div>
+        </div>
+    );
+}
+
 function CollapsedMasterClipRenderer({
     clip,
     vpStartEpoch,
@@ -1048,24 +1169,14 @@ export default function AudioRoutingTrack({
                             </span>
                         </>
                     ) : (
-                        masterActiveClips.map(clip => {
-                            const st = stations.find(x => x.id === clip.sourceStationId);
-                            const stationName = st ? (st.displayName || st.hostname || st.id) : clip.sourceStationId;
-
-                            if (clip.endEpochMs <= vpStartEpoch || clip.startEpochMs >= vpEndEpoch) return null;
-
-                            return (
-                                <CollapsedMasterClipRenderer
-                                    key={`master_${clip.id}`}
-                                    clip={clip}
-                                    vpStartEpoch={vpStartEpoch}
-                                    viewportDurationMs={viewportDurationMs}
-                                    timeMode={timeMode}
-                                    stationName={stationName}
-                                    onExpand={toggleBusExpanded}
-                                />
-                            );
-                        })
+                        <CollapsedMasterAggregatedWaveform
+                            masterActiveClips={masterActiveClips}
+                            stations={stations}
+                            vpStartEpoch={vpStartEpoch}
+                            viewportDurationMs={viewportDurationMs}
+                            timeMode={timeMode}
+                            onExpand={toggleBusExpanded}
+                        />
                     )}
                 </div>
             </div>

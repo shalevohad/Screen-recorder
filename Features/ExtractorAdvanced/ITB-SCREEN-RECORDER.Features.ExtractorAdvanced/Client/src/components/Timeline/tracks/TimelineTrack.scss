@@ -95,8 +95,8 @@
     }
 
     .track-sidebar {
-        width: 200px;
-        min-width: 200px;
+        width: 230px;
+        min-width: 230px;
         flex-shrink: 0;
         display: flex;
         align-items: center;
@@ -464,9 +464,9 @@
     }
 
     .track-sidebar.station-collapsed-sidebar {
-        width: 200px;
-        min-width: 200px;
-        max-width: 200px;
+        width: 230px;
+        min-width: 230px;
+        max-width: 230px;
         height: 52px !important;
         position: relative;
         flex-shrink: 0;
@@ -533,7 +533,7 @@
 
         .station-single-label {
             flex: 1;
-            min-width: 0;
+            min-width: 65px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -788,9 +788,9 @@
         overflow: hidden;
 
         .accordion-header-left {
-            width: 200px;
-            min-width: 200px;
-            max-width: 200px;
+            width: 230px;
+            min-width: 230px;
+            max-width: 230px;
             flex-shrink: 0;
             display: flex;
             align-items: center;
@@ -982,9 +982,9 @@
             }
 
             .child-display-sidebar {
-                width: 200px;
-                min-width: 200px;
-                max-width: 200px;
+                width: 230px;
+                min-width: 230px;
+                max-width: 230px;
                 padding: 0 8px 0 16px !important;
                 gap: 6px !important;
                 display: flex;

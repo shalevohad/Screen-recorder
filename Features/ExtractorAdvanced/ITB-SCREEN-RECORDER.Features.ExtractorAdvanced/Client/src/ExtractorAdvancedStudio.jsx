@@ -571,17 +571,25 @@ export default function ExtractorAdvancedStudio() {
         });
     }, [timelineBaseEpochMs, inPointMs, outPointMs, totalTimelineDurationMs, currentCanvasLayout]);
 
-    // Pre-fetch real acoustic waveforms for timeline stations across active cut interval for zero-time instant display
+    // Pre-fetch real acoustic waveforms for timeline stations across active visible session (debounced & cancellable)
     useEffect(() => {
         if (!timelineStations || timelineStations.length === 0 || !timelineBaseEpochMs || isNaN(timelineBaseEpochMs)) return;
-        const inEpoch = timelineBaseEpochMs + (inPointMs || 0);
-        const outEpoch = timelineBaseEpochMs + (outPointMs || totalTimelineDurationMs || 3600000);
-        if (outEpoch <= inEpoch) return;
+        const startEpoch = timelineBaseEpochMs;
+        const endEpoch = timelineBaseEpochMs + (totalTimelineDurationMs || 3600000);
+        if (endEpoch <= startEpoch) return;
 
-        timelineStations.forEach(st => {
-            waveformStore.fetchWaveform(st.id, inEpoch, outEpoch, null, 250);
-        });
-    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, totalTimelineDurationMs]);
+        const abortCtrl = new AbortController();
+        const debounceTimer = setTimeout(() => {
+            timelineStations.forEach(st => {
+                waveformStore.fetchWaveform(st.id, startEpoch, endEpoch, abortCtrl.signal, 250);
+            });
+        }, 300);
+
+        return () => {
+            clearTimeout(debounceTimer);
+            abortCtrl.abort();
+        };
+    }, [timelineStations, timelineBaseEpochMs, totalTimelineDurationMs]);
 
     const spotlightStation = useMemo(() => {
         return allStations.find(s => s.id === spotlightStationId) || null;

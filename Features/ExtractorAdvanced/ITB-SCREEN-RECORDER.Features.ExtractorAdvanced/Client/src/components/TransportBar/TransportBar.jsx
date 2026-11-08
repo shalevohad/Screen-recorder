@@ -43,8 +43,8 @@ export default function TransportBar({
     const [audioState, setAudioState] = useState(() => getAudioSettings());
     const { volume, isMuted } = audioState;
 
-    // Invariant (2026-11-05): Transport player is enabled whenever any screen is placed on the grid (or when a station is active), regardless of tracklist selection.
-    const isEnabled = Boolean(hasGridPlacements && totalDurationMs > 0);
+    // Invariant: Transport player is immediately active & usable upon entering Canvas for synchronized playback
+    const isEnabled = Boolean(totalDurationMs > 0 || hasGridPlacements || activeStationId);
 
     useEffect(() => {
         const handleAudioSync = (e) => {

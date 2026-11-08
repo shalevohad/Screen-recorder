@@ -4664,3 +4664,44 @@ In `MasterTimeRangeModal.jsx` and `MasterTimeRangeModal.scss`:
   - .NET Integration Suite: `ITB-SCREEN-RECORDER.Tests/Extractor/StorageScannerRecordingDatesTests.cs` verifies SQLite date extraction, month/year filtering, and station filtering.
   - Strict Route & Swagger Contract: `ApiRouteAndSwaggerIntegrityTests.cs` confirms zero route collisions across controllers.
 - **Offline / Air-Gapped Compliance (Rule 14)**: 100% self-contained within local SQLite metadata and client-side styling; zero external dependencies or cloud calls.
+
+---
+
+## 73. High-Density Waveform Concurrency Guard, Master Bus Aggregation & Autonomous C2 Link Recovery (2026-11-08)
+
+### 73.1 Architectural Problem & Root Cause Analysis
+During multi-station forensic NLE editing (e.g. 4+ workstations with multi-monitor feeds), client-side in/out marker scrubbing triggered unthrottled requests to `/api/v1/extractor-advanced/audio-waveform`. Under heavy editing, Kestrel concurrently spawned over 120+ unthrottled `ffmpeg.exe` PCM decoders, causing CPU saturation, thread pool exhaustion, and connection starvation. This caused the C2 SignalR connection to drop, locking the user interface behind the `SYSTEM HEALTH ALERT: C2 SERVER LINK LOST` modal with no autonomous recovery mechanism once the connection transitioned to `Disconnected`.
+
+### 73.2 Tri-Tier Waveform Concurrency & Performance Defense
+To eliminate process storms and guarantee sub-20ms cached response times across multi-station editing:
+1. **Server Concurrency Semaphore (`SemaphoreSlim(2, 2)`)**:
+   - `AdvancedExtractorService.cs` bounds simultaneous FFmpeg audio decoding across all API requests to a maximum of 2 concurrent processes.
+   - Any excess waveform requests wait asynchronously on the semaphore with zero thread blocking.
+2. **Representative Chunk Downsampling & Duration Capping**:
+   - Instead of decoding entire 24-hour recording catalogs sequentially, the algorithm caps processing to at most 6 evenly-distributed representative chunks across the requested epoch range.
+   - Each chunk decodes at most 15.0 seconds of audio (`-t 15`), terminating early via `CancellationTokenSource` with a 3-second hard timeout.
+3. **10-Second Epoch Quantization & Sliding Memory Cache**:
+   - Cache keys and API requests round `startEpoch` and `endEpoch` to 10-second boundaries (`qStartSec = (startEpochMs / 10000) * 10`).
+   - Results are retained in `IMemoryCache` for 30 minutes, ensuring scrubbing within a time scope hits RAM with 0% CPU overhead.
+4. **Client-Side Request Throttling**:
+   - `ExtractorAdvancedStudio.jsx` and `waveformStore.js` decouple In/Out point marker dragging from waveform prefetching, applying `AbortController` cancellation and a 300ms debounce to prevent burst requests.
+
+### 73.3 Collapsed Audio Master Bus Waveform Aggregation & Dual-Color Mode
+In `AudioRoutingTrack.jsx`:
+- **Collapsed Viewport Aggregation**: When the Master Audio Bus is collapsed, `CollapsedMasterAggregatedWaveform` dynamically aggregates peaks across all stations and active channels assigned to the mix.
+- **Single Channel Mode**: Renders the selected channel waveform in high-contrast cyan (`sys`: `#8B5CF6`, `mic`: `#F59E0B`).
+- **Dual 'Both' Channel Mode**: Splices the waveform vertically into a dual-color display (upper half System Audio in violet `#8B5CF6`, lower half Microphone in amber `#F59E0B`, separated by a glowing tactical centerline).
+
+### 73.4 Autonomous SignalR Reconnect & Self-Healing Modal
+In `App.jsx`:
+- **Continuous Background Heartbeat**: Replaces one-off reconnect attempts on SignalR `onclose` with a persistent recursive retry loop (`scheduleReconnect` every 3000ms).
+- **Grace Period Expansion**: Increased `DISCONNECT_GRACE_PERIOD_MS` to 15,000ms to tolerate temporary Kestrel garbage collection or heavy transcoding cycles without triggering false-alarm modals.
+- **Self-Healing Modal Polling**: When `isServerOfflineModal` is active, an autonomous background timer polls `/api/v1/dashboard/stations` every 2,500ms and automatically dismisses the modal and refreshes cluster state the instant the backend resumes HTTP responses.
+
+### 73.5 230px Expanded Sidebar Alignment & Label Truncation Elimination
+- Standardized track headers (`TimelineTrack.scss`, `AudioRoutingTrack.scss`, `CanvasKeyframeTrack.scss`, `DirectorTrack.scss`, `TimelineBoard.scss`) to 230px.
+- Workstation name labels (`.station-single-label`) enforce `min-width: 65px`, eliminating ellipsis truncation for identifiers (e.g. `PCQ401`, `PCQ406`, `PCQ410`). Playhead zero-axis is offset to `230px`.
+
+---
+
+*End of System Book — ITB-SCREEN-RECORDER Architecture Team*

@@ -34,6 +34,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly IMemoryCache? _memoryCache;
         private readonly IFfmpegBinaryResolver _binaryResolver;
         private static readonly SemaphoreSlim _visualThrottle = new(4, 4);
+        private static readonly SemaphoreSlim _waveformThrottle = new(2, 2);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -387,7 +388,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (points < 10) points = 10;
             if (points > 1000) points = 1000;
 
-            string cacheKey = $"waveform_{stationId}_{startUtc:yyyyMMdd_HHmmssfff}_{endUtc:yyyyMMdd_HHmmssfff}_{points}";
+            // Quantize cache key to 10-second boundaries to maximize cache hit rate during scrubbing/editing
+            long qStartSec = (long)(Math.Floor((startUtc - DateTime.UnixEpoch).TotalSeconds / 10.0) * 10);
+            long qEndSec = (long)(Math.Ceiling((endUtc - DateTime.UnixEpoch).TotalSeconds / 10.0) * 10);
+            string cacheKey = $"waveform_{stationId}_{qStartSec}_{qEndSec}_{points}";
             if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out float[]? cached) && cached != null)
             {
                 return cached;
@@ -399,107 +403,152 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return new float[points];
             }
 
-            var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
-            var audioChunks = chunks
-                .Where(c => c.HasAudio != false && c.Duration.TotalSeconds > 0.1)
-                .OrderBy(c => c.StartUtc)
-                .ToList();
-
-            float[] peaks = new float[points];
-            if (audioChunks.Count == 0)
+            // Throttle waveform concurrency across the entire server to prevent FFmpeg process storms
+            bool acquired = await _waveformThrottle.WaitAsync(TimeSpan.FromSeconds(1.5), ct);
+            if (!acquired)
             {
-                Array.Fill(peaks, 0.02f);
+                // Return gentle fallback baseline peaks rather than queuing or freezing server
+                var fallback = new float[points];
+                Array.Fill(fallback, 0.04f);
+                return fallback;
+            }
+
+            try
+            {
+                // Double check cache after acquiring lock
+                if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out float[]? cachedAfterLock) && cachedAfterLock != null)
+                {
+                    return cachedAfterLock;
+                }
+
+                var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
+                var audioChunks = chunks
+                    .Where(c => c.HasAudio != false && c.Duration.TotalSeconds > 0.1)
+                    .OrderBy(c => c.StartUtc)
+                    .ToList();
+
+                float[] peaks = new float[points];
+                if (audioChunks.Count == 0)
+                {
+                    Array.Fill(peaks, 0.02f);
+                    _memoryCache?.Set(cacheKey, peaks, TimeSpan.FromMinutes(30));
+                    return peaks;
+                }
+
+                string ffmpegPath = ResolveFfmpegBinary();
+
+                // Cap target chunks to at most 6 evenly distributed chunks to prevent spawning dozens of FFmpeg processes
+                List<RecordingChunkMetadata> targetChunks;
+                if (audioChunks.Count <= 6)
+                {
+                    targetChunks = audioChunks;
+                }
+                else
+                {
+                    targetChunks = new List<RecordingChunkMetadata>();
+                    double step = (double)(audioChunks.Count - 1) / 5.0;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        int idx = (int)Math.Round(i * step);
+                        targetChunks.Add(audioChunks[Math.Clamp(idx, 0, audioChunks.Count - 1)]);
+                    }
+                }
+
+                foreach (var chunk in targetChunks)
+                {
+                    if (ct.IsCancellationRequested) break;
+
+                    var oStart = chunk.StartUtc > startUtc ? chunk.StartUtc : startUtc;
+                    var oEnd = chunk.EndUtc < endUtc ? chunk.EndUtc : endUtc;
+                    double dur = (oEnd - oStart).TotalSeconds;
+                    if (dur <= 0.05) continue;
+
+                    // Limit sample duration to at most 15 seconds per chunk for millisecond-fast peak analysis
+                    double sampleDur = Math.Min(dur, 15.0);
+                    double seekOffset = Math.Max(0, (oStart - chunk.StartUtc).TotalSeconds);
+
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = ffmpegPath,
+                        Arguments = $"-nostdin -loglevel error -fflags +nobuffer+fastseek -probesize 262144 -analyzeduration 262144 " +
+                                    $"-ss {seekOffset.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                    $"-t {sampleDur.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                    $"-i \"{chunk.FullPath.Replace('\\', '/')}\" " +
+                                    $"-vn -sn -dn -ac 1 -ar 1000 -f s16le pipe:1",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = false,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    linkedCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+                    try
+                    {
+                        using var process = new Process { StartInfo = startInfo };
+                        process.Start();
+                        using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+
+                        byte[] buffer = new byte[2000];
+                        int bytesRead;
+                        long totalSamplesRead = 0;
+                        double chunkBaseRelSec = (oStart - startUtc).TotalSeconds;
+
+                        while ((bytesRead = await process.StandardOutput.BaseStream.ReadAsync(buffer.AsMemory(0, buffer.Length), linkedCts.Token)) > 0)
+                        {
+                            int sampleCount = bytesRead / 2;
+                            for (int i = 0; i < sampleCount; i++)
+                            {
+                                short sampleVal = BitConverter.ToInt16(buffer, i * 2);
+                                double sampleRelSec = chunkBaseRelSec + ((totalSamplesRead + i) / 1000.0);
+                                int pIdx = (int)Math.Clamp(Math.Floor((sampleRelSec / totalSeconds) * points), 0, points - 1);
+                                float amp = Math.Abs(sampleVal) / 32768.0f;
+                                if (amp > peaks[pIdx])
+                                {
+                                    peaks[pIdx] = amp;
+                                }
+                            }
+                            totalSamplesRead += sampleCount;
+                        }
+
+                        await process.WaitForExitAsync(linkedCts.Token);
+                    }
+                    catch
+                    {
+                        // Proceed across surviving audio chunks
+                    }
+                }
+
+                float maxPeak = 0;
+                for (int i = 0; i < points; i++)
+                {
+                    if (peaks[i] > maxPeak) maxPeak = peaks[i];
+                }
+
+                if (maxPeak > 0.01f)
+                {
+                    float normFactor = Math.Min(3.0f, 0.95f / maxPeak);
+                    for (int i = 0; i < points; i++)
+                    {
+                        peaks[i] = Math.Clamp(peaks[i] * normFactor, 0.03f, 1.0f);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < points; i++)
+                    {
+                        peaks[i] = 0.02f;
+                    }
+                }
+
+                _memoryCache?.Set(cacheKey, peaks, TimeSpan.FromMinutes(30));
                 return peaks;
             }
-
-            string ffmpegPath = ResolveFfmpegBinary();
-
-            foreach (var chunk in audioChunks)
+            finally
             {
-                var oStart = chunk.StartUtc > startUtc ? chunk.StartUtc : startUtc;
-                var oEnd = chunk.EndUtc < endUtc ? chunk.EndUtc : endUtc;
-                double dur = (oEnd - oStart).TotalSeconds;
-                if (dur <= 0.05) continue;
-
-                double seekOffset = Math.Max(0, (oStart - chunk.StartUtc).TotalSeconds);
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -fflags +nobuffer+fastseek -probesize 1000000 -analyzeduration 1000000 " +
-                                $"-ss {seekOffset.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-t {dur.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-i \"{chunk.FullPath.Replace('\\', '/')}\" " +
-                                $"-vn -sn -dn -ac 1 -ar 1000 -f s16le pipe:1",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = false,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
-
-                try
-                {
-                    using var process = new Process { StartInfo = startInfo };
-                    process.Start();
-                    using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
-
-                    byte[] buffer = new byte[2000];
-                    int bytesRead;
-                    long totalSamplesRead = 0;
-                    double chunkBaseRelSec = (oStart - startUtc).TotalSeconds;
-
-                    while ((bytesRead = await process.StandardOutput.BaseStream.ReadAsync(buffer.AsMemory(0, buffer.Length), linkedCts.Token)) > 0)
-                    {
-                        int sampleCount = bytesRead / 2;
-                        for (int i = 0; i < sampleCount; i++)
-                        {
-                            short sampleVal = BitConverter.ToInt16(buffer, i * 2);
-                            double sampleRelSec = chunkBaseRelSec + ((totalSamplesRead + i) / 1000.0);
-                            int pIdx = (int)Math.Clamp(Math.Floor((sampleRelSec / totalSeconds) * points), 0, points - 1);
-                            float amp = Math.Abs(sampleVal) / 32768.0f;
-                            if (amp > peaks[pIdx])
-                            {
-                                peaks[pIdx] = amp;
-                            }
-                        }
-                        totalSamplesRead += sampleCount;
-                    }
-
-                    await process.WaitForExitAsync(linkedCts.Token);
-                }
-                catch
-                {
-                    // Proceed across surviving audio chunks
-                }
+                _waveformThrottle.Release();
             }
-
-            float maxPeak = 0;
-            for (int i = 0; i < points; i++)
-            {
-                if (peaks[i] > maxPeak) maxPeak = peaks[i];
-            }
-
-            if (maxPeak > 0.01f)
-            {
-                float normFactor = Math.Min(3.0f, 0.95f / maxPeak);
-                for (int i = 0; i < points; i++)
-                {
-                    peaks[i] = Math.Clamp(peaks[i] * normFactor, 0.03f, 1.0f);
-                }
-            }
-            else
-            {
-                for (int i = 0; i < points; i++)
-                {
-                    peaks[i] = 0.02f;
-                }
-            }
-
-            _memoryCache?.Set(cacheKey, peaks, TimeSpan.FromMinutes(30));
-            return peaks;
         }
     }
 }

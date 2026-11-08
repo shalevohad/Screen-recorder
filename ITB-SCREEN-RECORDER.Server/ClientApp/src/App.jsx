@@ -28,7 +28,7 @@ const resolveTimeOfDay = () => {
     return 'night';
 };
 
-const DISCONNECT_GRACE_PERIOD_MS = 8000;
+const DISCONNECT_GRACE_PERIOD_MS = 15000;
 
 export default function App() {
     return (
@@ -71,6 +71,7 @@ function CommandCenterApp() {
     const [isServerOfflineModal, setIsServerOfflineModal] = useState(false);
     const [lastServerContact, setLastServerContact] = useState(() => new Date());
     const [isRetryingConnection, setIsRetryingConnection] = useState(false);
+    const connectionRef = useRef(null);
 
     const [clusterConfig, setClusterConfig] = useState(() => {
         try {
@@ -215,6 +216,20 @@ function CommandCenterApp() {
 
         return () => clearInterval(checkConnectionTicker);
     }, [isAuthenticated]);
+
+    // Autonomous self-healing recovery loop: when disconnected, actively probe server to self-heal
+    useEffect(() => {
+        if (!isServerOfflineModal) return;
+
+        const probeRecoveryTicker = setInterval(() => {
+            if (connectionRef.current && connectionRef.current.state === signalR.HubConnectionState.Disconnected) {
+                connectionRef.current.start().then(registerServerHeartbeat).catch(() => {});
+            }
+            fetchStations();
+        }, 2500);
+
+        return () => clearInterval(probeRecoveryTicker);
+    }, [isServerOfflineModal, fetchStations, registerServerHeartbeat]);
 
     const fetchStations = useCallback(async () => {
         try {
@@ -421,7 +436,32 @@ function CommandCenterApp() {
             })
             .build();
 
+        connectionRef.current = connection;
+        let reconnectLoopTimer = null;
+
+        const scheduleReconnect = () => {
+            if (reconnectLoopTimer) return;
+            reconnectLoopTimer = setTimeout(async () => {
+                reconnectLoopTimer = null;
+                if (connection.state === signalR.HubConnectionState.Disconnected) {
+                    try {
+                        await connection.start();
+                        registerServerHeartbeat();
+                        fetchStations();
+                        fetchSystemConfig();
+                        fetchClusterConfig();
+                    } catch {
+                        scheduleReconnect();
+                    }
+                }
+            }, 3000);
+        };
+
         connection.onreconnected(() => {
+            if (reconnectLoopTimer) {
+                clearTimeout(reconnectLoopTimer);
+                reconnectLoopTimer = null;
+            }
             registerServerHeartbeat();
             fetchStations();
             fetchSystemConfig();
@@ -429,9 +469,7 @@ function CommandCenterApp() {
         });
 
         connection.onclose(() => {
-            setTimeout(() => {
-                connection.start().then(registerServerHeartbeat).catch(() => { });
-            }, 5000);
+            scheduleReconnect();
         });
 
         connection.on('ReceiveServerTelemetry', (telemetry) => {
@@ -550,9 +588,16 @@ function CommandCenterApp() {
 
     const handleManualRetry = async () => {
         setIsRetryingConnection(true);
+        if (connectionRef.current && connectionRef.current.state === signalR.HubConnectionState.Disconnected) {
+            try {
+                await connectionRef.current.start();
+                registerServerHeartbeat();
+            } catch { }
+        }
         await Promise.allSettled([
             fetchStations(),
-            fetchSystemConfig()
+            fetchSystemConfig(),
+            fetchClusterConfig()
         ]);
         setIsRetryingConnection(false);
     };

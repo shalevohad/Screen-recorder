@@ -8,11 +8,14 @@ const _waveformCache = new Map();
 const _inFlightRequests = new Map();
 
 /**
- * Normalizes stationId and epoch timestamps into cache key
+ * Normalizes stationId and epoch timestamps into cache key.
+ * Quantizes timestamps to 10-second blocks to ensure ultra-high cache hit rate during scrubbing/editing.
  */
 function makeWaveformKey(stationId, startEpoch, endEpoch, points = 250) {
     const cleanId = (stationId || '').replace(/^live\//i, '').toLowerCase().trim();
-    return `${cleanId}_${Math.round(startEpoch)}_${Math.round(endEpoch)}_${points}`;
+    const qStart = Math.floor(startEpoch / 10000) * 10000;
+    const qEnd = Math.ceil(endEpoch / 10000) * 10000;
+    return `${cleanId}_${qStart}_${qEnd}_${points}`;
 }
 
 export const waveformStore = {
@@ -31,7 +34,9 @@ export const waveformStore = {
     async fetchWaveform(stationId, startEpoch, endEpoch, signal = null, points = 250) {
         if (!stationId || endEpoch <= startEpoch) return null;
         const cleanId = (stationId || '').replace(/^live\//i, '').trim();
-        const key = makeWaveformKey(stationId, startEpoch, endEpoch, points);
+        const qStart = Math.floor(startEpoch / 10000) * 10000;
+        const qEnd = Math.ceil(endEpoch / 10000) * 10000;
+        const key = `${cleanId.toLowerCase()}_${qStart}_${qEnd}_${points}`;
 
         if (_waveformCache.has(key)) {
             return _waveformCache.get(key);
@@ -43,7 +48,7 @@ export const waveformStore = {
 
         const fetchPromise = (async () => {
             try {
-                const url = `/api/v1/extractor-advanced/audio-waveform?stationId=${encodeURIComponent(cleanId)}&startEpoch=${Math.round(startEpoch)}&endEpoch=${Math.round(endEpoch)}&points=${points}`;
+                const url = `/api/v1/extractor-advanced/audio-waveform?stationId=${encodeURIComponent(cleanId)}&startEpoch=${qStart}&endEpoch=${qEnd}&points=${points}`;
                 const res = await fetch(url, { signal });
                 if (!res.ok) {
                     if (res.status === 204) return null;
