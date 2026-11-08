@@ -20,7 +20,10 @@
     transition: height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
     &.is-compact-track {
-        height: 26px;
+        height: 28px;
+        max-height: 28px;
+        overflow: hidden;
+        box-sizing: border-box;
     }
 
     &.is-expanded-track {
@@ -609,7 +612,10 @@
 // ==========================================
 
 .audio-routing-track-container.is-compact-track {
-    height: 26px;
+    height: 28px;
+    max-height: 28px;
+    overflow: hidden;
+    box-sizing: border-box;
     cursor: pointer;
 
     &:hover {
@@ -617,8 +623,17 @@
     }
 
     .collapsed-bus-sidebar {
-        display: flex;
-        align-items: center;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        flex-wrap: nowrap !important;
+        height: 100% !important;
+        max-height: 28px !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        padding: 0 8px !important;
+        margin: 0 !important;
         gap: 6px;
 
         .btn-expand-bus {
@@ -629,30 +644,68 @@
             width: 16px;
             height: 16px;
             min-width: 16px;
+            max-height: 16px;
             border-radius: 3px;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .audio-icon {
+            font-size: 11px;
+            line-height: 1;
+            color: #10B981;
+            margin: 0;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            height: 16px;
+        }
+
+        .audio-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-weight: 800;
+            color: #10B981;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+            line-height: 1;
+            margin: 0;
+            padding: 0;
+            flex-shrink: 0;
         }
 
         .badge-bus-status {
-            font-size: 8px;
+            font-size: 7.5px;
             font-weight: 800;
             color: #94A3B8;
             background: rgba(15, 23, 42, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 1px 5px;
+            padding: 1px 4px;
             border-radius: 3px;
             font-family: 'JetBrains Mono', monospace;
             white-space: nowrap;
+            line-height: 1;
+            margin: 0;
+            flex-shrink: 0;
         }
 
         .mini-vu-dot {
-            width: 5px;
-            height: 5px;
+            width: 6px;
+            height: 6px;
+            min-width: 6px;
+            min-height: 6px;
             border-radius: 50%;
             margin-left: auto;
+            flex-shrink: 0;
+            box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
         }
     }
 

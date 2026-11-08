@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.jsx
 // ==========================================
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
