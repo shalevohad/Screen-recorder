@@ -200,37 +200,6 @@ function CommandCenterApp() {
         setIsRetryingConnection(false);
     }, []);
 
-    useEffect(() => {
-        if (!isAuthenticated) return;
-
-        const checkConnectionTicker = setInterval(() => {
-            if (!lastContactTimestampRef.current) return;
-
-            const elapsedSinceLastContact = Date.now() - lastContactTimestampRef.current;
-            if (elapsedSinceLastContact >= DISCONNECT_GRACE_PERIOD_MS) {
-                setIsServerOfflineModal(true);
-            } else {
-                setIsServerOfflineModal(false);
-            }
-        }, 1000);
-
-        return () => clearInterval(checkConnectionTicker);
-    }, [isAuthenticated]);
-
-    // Autonomous self-healing recovery loop: when disconnected, actively probe server to self-heal
-    useEffect(() => {
-        if (!isServerOfflineModal) return;
-
-        const probeRecoveryTicker = setInterval(() => {
-            if (connectionRef.current && connectionRef.current.state === signalR.HubConnectionState.Disconnected) {
-                connectionRef.current.start().then(registerServerHeartbeat).catch(() => {});
-            }
-            fetchStations();
-        }, 2500);
-
-        return () => clearInterval(probeRecoveryTicker);
-    }, [isServerOfflineModal, fetchStations, registerServerHeartbeat]);
-
     const fetchStations = useCallback(async () => {
         try {
             const controller = new AbortController();
@@ -278,6 +247,37 @@ function CommandCenterApp() {
             console.warn('[App] fetchStations timeout or error:', err.message);
         }
     }, [apiBaseUrl, registerServerHeartbeat]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const checkConnectionTicker = setInterval(() => {
+            if (!lastContactTimestampRef.current) return;
+
+            const elapsedSinceLastContact = Date.now() - lastContactTimestampRef.current;
+            if (elapsedSinceLastContact >= DISCONNECT_GRACE_PERIOD_MS) {
+                setIsServerOfflineModal(true);
+            } else {
+                setIsServerOfflineModal(false);
+            }
+        }, 1000);
+
+        return () => clearInterval(checkConnectionTicker);
+    }, [isAuthenticated]);
+
+    // Autonomous self-healing recovery loop: when disconnected, actively probe server to self-heal
+    useEffect(() => {
+        if (!isServerOfflineModal) return;
+
+        const probeRecoveryTicker = setInterval(() => {
+            if (connectionRef.current && connectionRef.current.state === signalR.HubConnectionState.Disconnected) {
+                connectionRef.current.start().then(registerServerHeartbeat).catch(() => {});
+            }
+            fetchStations();
+        }, 2500);
+
+        return () => clearInterval(probeRecoveryTicker);
+    }, [isServerOfflineModal, fetchStations, registerServerHeartbeat]);
 
     const fetchSystemConfig = useCallback(async () => {
         try {
