@@ -127,9 +127,16 @@ export default function MasterTimeRangeModal({
 
         if (!startEpoch || isNaN(startEpoch)) {
             if (currentRange?.start) {
-                const sClean = String(currentRange.start).replace(' ', 'T');
-                const parsed = new Date(sClean).getTime();
-                startEpoch = isNaN(parsed) ? (Date.now() - 24 * 3600 * 1000) : parsed;
+                const sClean = String(currentRange.start).trim();
+                if (sClean.includes('T')) {
+                    const [sd, st] = sClean.split('T');
+                    startEpoch = dateTimeToEpochMs(sd, st.substring(0, 8), timeMode);
+                } else if (sClean.includes(' ')) {
+                    const [sd, st] = sClean.split(' ');
+                    startEpoch = dateTimeToEpochMs(sd, st.substring(0, 8), timeMode);
+                } else {
+                    startEpoch = Date.now() - 24 * 3600 * 1000;
+                }
             } else {
                 endEpoch = Date.now();
                 startEpoch = endEpoch - (24 * 3600 * 1000);
@@ -138,11 +145,18 @@ export default function MasterTimeRangeModal({
 
         if (!endEpoch || isNaN(endEpoch)) {
             if (currentRange?.end) {
-                const eClean = String(currentRange.end).replace(' ', 'T');
-                const parsed = new Date(eClean).getTime();
-                endEpoch = isNaN(parsed) ? Date.now() : parsed;
+                const eClean = String(currentRange.end).trim();
+                if (eClean.includes('T')) {
+                    const [ed, et] = eClean.split('T');
+                    endEpoch = dateTimeToEpochMs(ed, et.substring(0, 8), timeMode);
+                } else if (eClean.includes(' ')) {
+                    const [ed, et] = eClean.split(' ');
+                    endEpoch = dateTimeToEpochMs(ed, et.substring(0, 8), timeMode);
+                } else {
+                    endEpoch = (startEpoch || Date.now()) + 24 * 3600 * 1000;
+                }
             } else {
-                endEpoch = startEpoch + (24 * 3600 * 1000);
+                endEpoch = (startEpoch || Date.now()) + (24 * 3600 * 1000);
             }
         }
 

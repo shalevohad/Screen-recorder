@@ -207,5 +207,24 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         /// </summary>
         [Range(1, 120, ErrorMessage = "MinDwellSeconds must be between 1 and 120 seconds.")]
         public int MinDwellSeconds { get; set; } = 10;
+
+        /// <summary>
+        /// Maximum concurrent live video decoders / playback streams permitted simultaneously in the Replay & Editing Studio.
+        /// Hard capped at 6 to guarantee zero browser/server decode exhaustion. Range: 1 to 6. Default is 6.
+        /// </summary>
+        [Range(1, 6, ErrorMessage = "MaxConcurrentScreens must be between 1 and 6.")]
+        public int MaxConcurrentScreens { get; set; } = 6;
+
+        /// <summary>
+        /// Preload buffer duration in seconds before starting synchronized playback across multiple screens.
+        /// Default is 2.0 seconds. Range: 0.5 to 5.0 seconds.
+        /// </summary>
+        [Range(0.5, 5.0, ErrorMessage = "BufferPreloadSeconds must be between 0.5 and 5.0 seconds.")]
+        public double BufferPreloadSeconds { get; set; } = 2.0;
+
+        /// <summary>
+        /// Master toggle for Auto-Director automated camera cuts in Replay Studio.
+        /// </summary>
+        public bool EnableAutoDirector { get; set; } = true;
     }
 }

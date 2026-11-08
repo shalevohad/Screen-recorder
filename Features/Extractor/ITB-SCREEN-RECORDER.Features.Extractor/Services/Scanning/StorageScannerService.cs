@@ -1260,9 +1260,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 int minute = int.Parse(match.Groups["minute"].Value);
                 int second = int.Parse(match.Groups["sec"].Value);
 
-                DateTime startUtc = match.Groups["utc"].Success
-                    ? new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc)
-                    : TimeZoneInfo.ConvertTimeToUtc(new DateTime(year, month, day, hour, minute, second), GetCurrentTimezone());
+                DateTime startUtc = TimeZoneInfo.ConvertTimeToUtc(
+                    new DateTime(year, month, day, hour, minute, second), 
+                    GetCurrentTimezone());
 
                 return new RecordingChunkMetadata
                 {

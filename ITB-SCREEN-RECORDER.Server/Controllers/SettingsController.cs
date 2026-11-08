@@ -213,6 +213,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         config.AutoDirector ??= new AutoDirectorSettings();
                         if (updatedConfig.AutoDirector.MinDwellSeconds > 0)
                             config.AutoDirector.MinDwellSeconds = updatedConfig.AutoDirector.MinDwellSeconds;
+                        if (updatedConfig.AutoDirector.MaxConcurrentScreens > 0)
+                            config.AutoDirector.MaxConcurrentScreens = Math.Clamp(updatedConfig.AutoDirector.MaxConcurrentScreens, 1, 6);
+                        if (updatedConfig.AutoDirector.BufferPreloadSeconds > 0)
+                            config.AutoDirector.BufferPreloadSeconds = Math.Clamp(updatedConfig.AutoDirector.BufferPreloadSeconds, 0.5, 5.0);
+                        config.AutoDirector.EnableAutoDirector = updatedConfig.AutoDirector.EnableAutoDirector;
                     }
                 });
 

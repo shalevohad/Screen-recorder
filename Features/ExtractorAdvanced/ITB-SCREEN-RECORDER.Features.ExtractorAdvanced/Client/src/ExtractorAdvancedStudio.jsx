@@ -49,6 +49,12 @@ export const parseSafeEpoch = (dateStr, timeStr = null, mode = 'LOCAL') => {
     const str = String(dateStr).trim();
     if (/^\d+$/.test(str)) return Number(str);
     
+    // Explicit ISO strings with UTC 'Z' or timezone offset (+03:00 / -05:00) should be parsed directly as UTC ms
+    if (str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str)) {
+        const ms = Date.parse(str);
+        if (!isNaN(ms)) return ms;
+    }
+
     let d = str;
     let t = timeStr;
     if (!t) {
@@ -64,7 +70,7 @@ export const parseSafeEpoch = (dateStr, timeStr = null, mode = 'LOCAL') => {
     }
 
     if (d && t) {
-        const cleanT = t.substring(0, 8);
+        const cleanT = t.replace(/[Zz].*$/, '').replace(/[+-]\d{2}:?\d{2}$/, '').substring(0, 8);
         const epoch = dateTimeToEpochMs(d, cleanT, mode);
         if (epoch !== null && !isNaN(epoch)) return epoch;
     }
@@ -96,8 +102,8 @@ export default function ExtractorAdvancedStudio() {
 
     const baseEpochMs = useMemo(() => {
         if (timeRange.startEpochMs) return timeRange.startEpochMs;
-        return parseSafeEpoch(timeRange.start);
-    }, [timeRange.start, timeRange.startEpochMs]);
+        return parseSafeEpoch(timeRange.start, null, timeMode);
+    }, [timeRange.start, timeRange.startEpochMs, timeMode]);
 
     const bufferMs = useMemo(() => Math.max(60000, Math.round(timeRange.durationMs * 0.05)), [timeRange.durationMs]);
     const timelineBaseEpochMs = useMemo(() => baseEpochMs - bufferMs, [baseEpochMs, bufferMs]);

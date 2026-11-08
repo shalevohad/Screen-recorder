@@ -2,14 +2,37 @@
 // File: Client/src/components/Settings/tabs/SystemNetworkTab.jsx
 // ==========================================
 import React from 'react';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField, updateAutoDirectorField }) {
+    const { isSystemRoot, hasPermission } = useAuth();
+
     if (!form) return null;
+
+    const isStealthAuthorized = isSystemRoot || Boolean(hasPermission?.('system.stealth') || hasPermission?.('settings.stealth'));
 
     const dashboard = form.dashboard || {};
     const mediaMtx = form.mediaMtx || {};
     const discovery = form.discovery || {};
     const autoDirector = form.autoDirector || {};
+
+    const studioScreenTicks = [
+        { val: 1, label: '1' },
+        { val: 2, label: '2' },
+        { val: 3, label: '3' },
+        { val: 4, label: '4' },
+        { val: 5, label: '5' },
+        { val: 6, label: '6' }
+    ];
+
+    const preloadTicks = [
+        { val: 0.5, label: '0.5s' },
+        { val: 1.0, label: '1.0s' },
+        { val: 1.5, label: '1.5s' },
+        { val: 2.0, label: '2.0s' },
+        { val: 3.0, label: '3.0s' },
+        { val: 5.0, label: '5.0s' }
+    ];
 
     const dwellTicks = [
         { val: 3, label: '3s' },
@@ -321,64 +344,185 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                     </label>
                 </div>
             </div>
-            <div className="security-subpanel">
-                <div className="subpanel-header">
-                    <h4>AUTO-DIRECTOR & REPLAY STUDIO ENGINE</h4>
-                    <span className="subpanel-desc">Configure automated multi-monitor focus tracking, camera dwell hysteresis, and transition pacing for forensic replay and video export.</span>
-                </div>
-
-                <div className="settings-fields-row">
-                    <div className="settings-field" style={{ flex: '1 1 100%' }}>
-                        <span>Auto-Director Minimum Screen Dwell Time (Seconds)</span>
-                        <div className="range-with-input">
-                            <div className="slider-input-inline-row">
-                                <input
-                                    type="range"
-                                    min={1}
-                                    max={60}
-                                    step={1}
-                                    value={Math.max(1, Math.min(60, Number(autoDirector.minDwellSeconds) || 10))}
-                                    onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
-                                    className="tactical-range-slider"
-                                />
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={120}
-                                    step={1}
-                                    value={autoDirector.minDwellSeconds || 10}
-                                    onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
-                                    required
-                                />
-                            </div>
-
-                            <div className="slider-ticks-track">
-                                {dwellTicks.map((tick) => {
-                                    const THUMB_RADIUS = 12;
-                                    const pct = ((tick.val - 1) / (60 - 1)) * 100;
-                                    const isCurrent = Number(autoDirector.minDwellSeconds || 10) === tick.val;
-                                    return (
-                                        <button
-                                            key={tick.val}
-                                            type="button"
-                                            className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
-                                            style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
-                                            onClick={() => updateAutoDirectorField?.('minDwellSeconds', tick.val)}
-                                            title={`Set ${tick.label}`}
-                                        >
-                                            <span className="tick-pip"></span>
-                                            <span className="tick-text">{tick.label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+            {/* STEALTH REPLAY STUDIO & AUTO-DIRECTOR ENGINE CONFIGURATION */}
+            {isStealthAuthorized && (
+                <div className="security-subpanel stealth-studio-subpanel" style={{ borderColor: 'rgba(6, 182, 212, 0.35)', background: 'rgba(6, 182, 212, 0.03)' }}>
+                    <div className="subpanel-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 800 }}>STEALTH OPS</span>
+                            <h4 style={{ margin: 0 }}>AUTO-DIRECTOR & REPLAY STUDIO ENGINE</h4>
                         </div>
-                        <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
-                            זמן שהייה מינימלי במסך לפני מעבר לבמאי האוטומטי (ברירת מחדל: 10 שניות). מונע מעברים מהירים ותכופים שמעייפים את העין בסרטוני שחזור וייצוא.
-                        </span>
+                        <span className="subpanel-desc">Configure forensic NLE playback limits, hardware decoder budget, buffer preload hysteresis, and multi-monitor focus tracking.</span>
+                    </div>
+
+                    <div className="settings-fields-row" style={{ marginTop: '16px' }}>
+                        {/* Max Concurrent Studio Feeds (Hard Capped at 6) */}
+                        <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                            <span>Max Concurrent Studio Playback Streams (Hard Cap: 6)</span>
+                            <div className="range-with-input">
+                                <div className="slider-input-inline-row">
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={6}
+                                        step={1}
+                                        value={Math.max(1, Math.min(6, Number(autoDirector.maxConcurrentScreens) || 6))}
+                                        onChange={e => updateAutoDirectorField?.('maxConcurrentScreens', Number(e.target.value))}
+                                        className="tactical-range-slider"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={6}
+                                        step={1}
+                                        value={Math.max(1, Math.min(6, Number(autoDirector.maxConcurrentScreens) || 6))}
+                                        onChange={e => updateAutoDirectorField?.('maxConcurrentScreens', Math.max(1, Math.min(6, Number(e.target.value))))}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="slider-ticks-track">
+                                    {studioScreenTicks.map((tick) => {
+                                        const THUMB_RADIUS = 12;
+                                        const pct = ((tick.val - 1) / (6 - 1)) * 100;
+                                        const isCurrent = (Number(autoDirector.maxConcurrentScreens) || 6) === tick.val;
+                                        return (
+                                            <button
+                                                key={tick.val}
+                                                type="button"
+                                                className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                                style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                                onClick={() => updateAutoDirectorField?.('maxConcurrentScreens', tick.val)}
+                                                title={`Cap at ${tick.label} Screens`}
+                                            >
+                                                <span className="tick-pip"></span>
+                                                <span className="tick-text">{tick.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                                הגבלת כמות מסכי וידאו מקבילים בהרצה סימולטנית במערכת העריכה (מקסימום 6). מבטיח ביצועים חלקים ללא קריסת Decoders.
+                            </span>
+                        </div>
+
+                        {/* Buffer Preload Lead-In Duration */}
+                        <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                            <span>Buffer Preload Lead-In (Seconds)</span>
+                            <div className="range-with-input">
+                                <div className="slider-input-inline-row">
+                                    <input
+                                        type="range"
+                                        min={0.5}
+                                        max={5.0}
+                                        step={0.5}
+                                        value={Math.max(0.5, Math.min(5.0, Number(autoDirector.bufferPreloadSeconds) || 2.0))}
+                                        onChange={e => updateAutoDirectorField?.('bufferPreloadSeconds', Number(e.target.value))}
+                                        className="tactical-range-slider"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={0.5}
+                                        max={5.0}
+                                        step={0.5}
+                                        value={Number(autoDirector.bufferPreloadSeconds) || 2.0}
+                                        onChange={e => updateAutoDirectorField?.('bufferPreloadSeconds', Math.max(0.5, Math.min(5.0, Number(e.target.value))))}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="slider-ticks-track">
+                                    {preloadTicks.map((tick) => {
+                                        const THUMB_RADIUS = 12;
+                                        const pct = ((tick.val - 0.5) / (5.0 - 0.5)) * 100;
+                                        const isCurrent = Math.abs((Number(autoDirector.bufferPreloadSeconds) || 2.0) - tick.val) < 0.1;
+                                        return (
+                                            <button
+                                                key={tick.val}
+                                                type="button"
+                                                className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                                style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                                onClick={() => updateAutoDirectorField?.('bufferPreloadSeconds', tick.val)}
+                                                title={`Set ${tick.label}`}
+                                            >
+                                                <span className="tick-pip"></span>
+                                                <span className="tick-text">{tick.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                                זמן טעינה מוקדם ל-Buffer לפני תחילת השמעה מקבילית. מונע כניסה ל-Buffering לסירוגין ("אורגן Buffer") בהרצה של מספר מסכים.
+                            </span>
+                        </div>
+
+                        {/* Auto-Director Minimum Screen Dwell Time */}
+                        <div className="settings-field" style={{ flex: '1 1 100%', marginTop: '12px' }}>
+                            <span>Auto-Director Minimum Screen Dwell Time (Seconds)</span>
+                            <div className="range-with-input">
+                                <div className="slider-input-inline-row">
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={60}
+                                        step={1}
+                                        value={Math.max(1, Math.min(60, Number(autoDirector.minDwellSeconds) || 10))}
+                                        onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
+                                        className="tactical-range-slider"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={120}
+                                        step={1}
+                                        value={autoDirector.minDwellSeconds || 10}
+                                        onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="slider-ticks-track">
+                                    {dwellTicks.map((tick) => {
+                                        const THUMB_RADIUS = 12;
+                                        const pct = ((tick.val - 1) / (60 - 1)) * 100;
+                                        const isCurrent = Number(autoDirector.minDwellSeconds || 10) === tick.val;
+                                        return (
+                                            <button
+                                                key={tick.val}
+                                                type="button"
+                                                className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                                style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                                onClick={() => updateAutoDirectorField?.('minDwellSeconds', tick.val)}
+                                                title={`Set ${tick.label}`}
+                                            >
+                                                <span className="tick-pip"></span>
+                                                <span className="tick-text">{tick.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                                זמן שהייה מינימלי במסך לפני מעבר לבמאי האוטומטי (ברירת מחדל: 10 שניות). מונע מעברים מהירים ותכופים שמעייפים את העין בסרטוני שחזור וייצוא.
+                            </span>
+                        </div>
+
+                        {/* Master Auto-Director Toggle */}
+                        <div style={{ marginTop: '12px', width: '100%' }}>
+                            <label className="tactical-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={autoDirector.enableAutoDirector !== false}
+                                    onChange={e => updateAutoDirectorField?.('enableAutoDirector', e.target.checked)}
+                                />
+                                <span>Enable Automated Multi-Monitor Camera Tracking in Replay Studio (Auto-Director)</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
         </fieldset>
     );
 }

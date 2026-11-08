@@ -1226,6 +1226,10 @@ export default function MulticamViewport({
     // FEEDS PALETTE ACTIONS: ADD / REMOVE / CLEAR
     // -------------------------------------------------------------
     const handleAddFeedToCanvas = useCallback((f) => {
+        if (currentPlacements.length >= 6) {
+            alert('Maximum concurrent studio playback screens reached (Hard cap: 6 screens). Please remove or replace a screen.');
+            return;
+        }
         const maxZ = currentPlacements.length > 0 ? Math.max(...currentPlacements.map(p => p.zIndex || 0)) + 1 : 0;
         const color = SLOT_BORDER_COLORS[currentPlacements.length % SLOT_BORDER_COLORS.length];
 
@@ -2740,6 +2744,10 @@ export default function MulticamViewport({
             const canvasY = clamp(Math.round((dropClientY / rect.height) * virtualH), 0, virtualH - 180);
 
             if (data.type === 'unplaced') {
+                if (currentPlacements.length >= 6) {
+                    alert('Maximum concurrent studio playback screens reached (Hard cap: 6 screens). Please remove or replace a screen.');
+                    return;
+                }
                 const feed = availableFeeds.find(f => f.stationId === data.stationId && f.displayId === data.displayId);
                 if (feed) {
                     const aspect = feed.nativeAspectRatio || (feed.sourceWidth && feed.sourceHeight ? feed.sourceWidth / feed.sourceHeight : 16 / 9);

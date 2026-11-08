@@ -4,11 +4,10 @@
 // ==========================================
 
 /**
- * Maximum concurrent active hardware video decoders permitted simultaneously in the browser.
- * Chromium and Direct3D 11 / Media Foundation / NVDEC / QSV typically bound hardware decoding
- * contexts to 4-6 instances before falling back to high-CPU software decoding (FFmpegVideoDecoder).
+ * Maximum concurrent active hardware video decoders permitted simultaneously in the browser / Replay Studio.
+ * Capped strictly at 6 to guarantee zero browser/server decode exhaustion and silky smooth 60fps parallel playback.
  */
-export const MAX_CONCURRENT_CANVAS_DECODERS = 4;
+export const MAX_CONCURRENT_CANVAS_DECODERS = 6;
 
 /**
  * Resolves the optimal streaming height profile based on actual on-screen rendered pixel dimensions.
@@ -64,8 +63,9 @@ export function computeDecoderAllocations(placements, {
         return [];
     }
 
+    const effectiveMax = Math.min(6, Math.max(1, Number(maxConcurrentDecoders) || 6));
     const count = placements.length;
-    if (count <= maxConcurrentDecoders) {
+    if (count <= effectiveMax) {
         return placements.map(() => true);
     }
 
@@ -99,6 +99,6 @@ export function computeDecoderAllocations(placements, {
     // Sort descending by priority score
     scored.sort((a, b) => b.score - a.score);
 
-    const allowedSet = new Set(scored.slice(0, maxConcurrentDecoders).map(s => s.idx));
+    const allowedSet = new Set(scored.slice(0, effectiveMax).map(s => s.idx));
     return placements.map((_, idx) => allowedSet.has(idx));
 }

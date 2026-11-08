@@ -399,9 +399,10 @@ public class StorageScannerService : IStorageScannerService
 
         var match2 = Regex.Match(nameOnly, @"(\d{8}_\d{6})");
         if (match2.Success && DateTime.TryParseExact(match2.Groups[1].Value, "yyyyMMdd_HHmmss",
-            CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime dt2))
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt2))
         {
-            return new DateTimeOffset(dt2, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            DateTime utc = TimeZoneInfo.ConvertTimeToUtc(dt2, tz);
+            return new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeMilliseconds();
         }
 
         return new DateTimeOffset(fallbackCreationTimeUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();

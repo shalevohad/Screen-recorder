@@ -45,11 +45,13 @@ export default function CameraCardFeed({
 
     const [streamSrc, setStreamSrc] = useState('');
     const [isVideoReady, setIsVideoReady] = useState(false);
+    const [isBufferingOverlayVisible, setIsBufferingOverlayVisible] = useState(false);
     const [hasError, setHasError] = useState(false);
     const [_isLoadingFrame, setIsLoadingFrame] = useState(false);
 
     const prevIsPlayingRef = useRef(isPlaying);
     const videoRef = useRef(null);
+    const waitingDebounceTimerRef = useRef(null);
     const streamStartOffsetMsRef = useRef(0);
     const currentRelativeMsRef = useRef(currentEpochMs - baseEpochMs);
     const lastEmittedMsRef = useRef(currentEpochMs - baseEpochMs);
@@ -220,9 +222,11 @@ export default function CameraCardFeed({
         if (!stationName || !shouldStream) {
             if (!isPlaying || !isDecoderAllowed) {
                 if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+                if (waitingDebounceTimerRef.current) clearTimeout(waitingDebounceTimerRef.current);
                 isSeekingRef.current = false;
                 setStreamSrc('');
                 setIsVideoReady(false);
+                setIsBufferingOverlayVisible(false);
                 if (videoRef.current) {
                     videoRef.current.pause();
                     videoRef.current.removeAttribute('src');
@@ -309,7 +313,9 @@ export default function CameraCardFeed({
         };
     }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId, isDecoderAllowed, maxHeight]);
 
-    // Anti-drift synchronization for Grid mode: gently aligns video.currentTime with master playhead epoch
+    // Non-destructive smooth anti-drift synchronization for Grid / Multicam mode:
+    // Gently adjusts video.playbackRate instead of aggressively seeking video.currentTime,
+    // completely eliminating buffer stalls, MSE pipeline flushes, and "buffer organ" oscillations.
     useEffect(() => {
         if (isSolo || !isPlaying || !videoRef.current || !isVideoReady || isSeekingRef.current) return;
 
@@ -317,14 +323,28 @@ export default function CameraCardFeed({
         if (expectedVideoSec >= 0) {
             const video = videoRef.current;
             const currentSec = video.currentTime;
-            const drift = Math.abs(currentSec - expectedVideoSec);
-            if (drift > 0.35 && drift < 3.0) {
+            const drift = currentSec - expectedVideoSec; // positive: ahead, negative: behind
+            const baseRate = playbackSpeed || 1;
+
+            if (Math.abs(drift) > 3.0) {
+                // Severe desynchronization (>3s): perform discrete seek
                 try {
                     video.currentTime = expectedVideoSec;
                 } catch { }
+            } else if (drift < -0.15) {
+                // Lagging behind master clock: gently speed up by 4% to catch up seamlessly
+                video.playbackRate = baseRate * 1.04;
+            } else if (drift > 0.15) {
+                // Leading ahead of master clock: gently slow down by 4% to let master clock catch up
+                video.playbackRate = baseRate * 0.96;
+            } else {
+                // Aligned within ±150ms: keep target playback rate
+                if (video.playbackRate !== baseRate) {
+                    video.playbackRate = baseRate;
+                }
             }
         }
-    }, [isSolo, isPlaying, currentEpochMs, isVideoReady]);
+    }, [isSolo, isPlaying, currentEpochMs, isVideoReady, playbackSpeed]);
 
     // Monotonic 60 FPS requestAnimationFrame tick loop when playing card feed in Solo mode
     useEffect(() => {
@@ -479,6 +499,11 @@ export default function CameraCardFeed({
                         }
                     }}
                     onCanPlay={() => {
+                        if (waitingDebounceTimerRef.current) {
+                            clearTimeout(waitingDebounceTimerRef.current);
+                            waitingDebounceTimerRef.current = null;
+                        }
+                        setIsBufferingOverlayVisible(false);
                         applyAudioToVideo();
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
@@ -487,6 +512,11 @@ export default function CameraCardFeed({
                         if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onPlaying={() => {
+                        if (waitingDebounceTimerRef.current) {
+                            clearTimeout(waitingDebounceTimerRef.current);
+                            waitingDebounceTimerRef.current = null;
+                        }
+                        setIsBufferingOverlayVisible(false);
                         isSeekingRef.current = false;
                         setIsVideoReady(true);
                         applyAudioToVideo();
@@ -496,9 +526,18 @@ export default function CameraCardFeed({
                         }
                     }}
                     onWaiting={() => {
-                        setIsVideoReady(false);
+                        // Debounce buffering HUD by 450ms to prevent visual jitter during minor network fluctuations
+                        if (waitingDebounceTimerRef.current) clearTimeout(waitingDebounceTimerRef.current);
+                        waitingDebounceTimerRef.current = setTimeout(() => {
+                            setIsBufferingOverlayVisible(true);
+                        }, 450);
                     }}
                     onTimeUpdate={() => {
+                        if (waitingDebounceTimerRef.current) {
+                            clearTimeout(waitingDebounceTimerRef.current);
+                            waitingDebounceTimerRef.current = null;
+                        }
+                        setIsBufferingOverlayVisible(false);
                         if (!isVideoReady && videoRef.current?.currentTime > 0) {
                             isSeekingRef.current = false;
                             setIsVideoReady(true);
@@ -533,7 +572,7 @@ export default function CameraCardFeed({
                 ) : null}
             </div>
 
-            {(isSolo || isPlaying) && isPlaying && isInRecordingSegment && !isVideoReady && !isSpotlightActive && (
+            {(isSolo || isPlaying) && isPlaying && isInRecordingSegment && (!isVideoReady || isBufferingOverlayVisible) && !isSpotlightActive && (
                 <div className="tactical-feed-buffering-overlay">
                     <div className="buffering-glass-hud">
                         <div className="radar-dual-ring">

@@ -13,8 +13,22 @@ import {
 
 describe('Canvas Stream & Decoder Governor Invariants', () => {
 
-    it('1. MAX_CONCURRENT_CANVAS_DECODERS is safely capped at 4 for browser hardware decoder immunity', () => {
-        assert.equal(MAX_CONCURRENT_CANVAS_DECODERS, 4);
+    it('1. MAX_CONCURRENT_CANVAS_DECODERS is safely capped at 6 for multi-screen parallel playback without decoder exhaustion', () => {
+        assert.equal(MAX_CONCURRENT_CANVAS_DECODERS, 6);
+    });
+
+    it('1b. Supports up to 6 concurrent workstation feeds simultaneously without dropping decoders', () => {
+        const placements6 = [
+            { stationId: 'PCQ401', width: 640, height: 360 },
+            { stationId: 'PCQ402', width: 640, height: 360 },
+            { stationId: 'PCQ403', width: 640, height: 360 },
+            { stationId: 'PCQ404', width: 640, height: 360 },
+            { stationId: 'PCQ405', width: 640, height: 360 },
+            { stationId: 'PCQ410', width: 640, height: 360 }
+        ];
+
+        const allocations = computeDecoderAllocations(placements6, { maxConcurrentDecoders: 6 });
+        assert.deepEqual(allocations, [true, true, true, true, true, true]);
     });
 
     it('2. resolveStreamQuality dynamically calculates lightweight proxy profiles based on rendered pixels', () => {

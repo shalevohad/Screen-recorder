@@ -123,6 +123,9 @@ public class SystemConfigTests
     {
         var settings = new AutoDirectorSettings();
         Assert.Equal(10, settings.MinDwellSeconds);
+        Assert.Equal(6, settings.MaxConcurrentScreens);
+        Assert.Equal(2.0, settings.BufferPreloadSeconds);
+        Assert.True(settings.EnableAutoDirector);
 
         var errors = ValidateModel(settings);
         Assert.Empty(errors);
@@ -136,6 +139,27 @@ public class SystemConfigTests
         var settings = new AutoDirectorSettings { MinDwellSeconds = seconds };
         var errors = ValidateModel(settings);
         Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.MinDwellSeconds)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(-1)]
+    public void AutoDirector_MaxConcurrentScreens_OutOfRange_FailsValidation(int screens)
+    {
+        var settings = new AutoDirectorSettings { MaxConcurrentScreens = screens };
+        var errors = ValidateModel(settings);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.MaxConcurrentScreens)));
+    }
+
+    [Theory]
+    [InlineData(0.2)]
+    [InlineData(5.5)]
+    public void AutoDirector_BufferPreloadSeconds_OutOfRange_FailsValidation(double seconds)
+    {
+        var settings = new AutoDirectorSettings { BufferPreloadSeconds = seconds };
+        var errors = ValidateModel(settings);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.BufferPreloadSeconds)));
     }
 
     [Fact]

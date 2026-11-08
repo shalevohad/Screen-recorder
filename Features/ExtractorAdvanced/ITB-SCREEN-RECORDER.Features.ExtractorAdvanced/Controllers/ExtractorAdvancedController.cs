@@ -36,7 +36,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly IStationRoleProvider? _stationRoleProvider;
         private readonly ILogger<ExtractorAdvancedController> _logger;
         private readonly IOptionsMonitor<SystemConfig>? _systemConfig;
-        private static readonly SemaphoreSlim _activeStreamThrottle = new SemaphoreSlim(20, 20);
+        private static readonly SemaphoreSlim _activeStreamThrottle = new SemaphoreSlim(32, 32);
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
@@ -1075,7 +1075,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return;
             }
 
-            bool acquired = await _activeStreamThrottle.WaitAsync(TimeSpan.FromSeconds(2), ct);
+            bool acquired = await _activeStreamThrottle.WaitAsync(TimeSpan.FromSeconds(5), ct);
             if (!acquired)
             {
                 Response.StatusCode = 503;
@@ -1132,11 +1132,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
 
                 string codecArgs;
-                bool needsTranscoding = Math.Abs(safeSpeed - 1.0) >= 0.05 || (maxHeight.HasValue && maxHeight.Value > 0 && maxHeight.Value < 1080);
+                bool isNativeSpeed = Math.Abs(safeSpeed - 1.0) < 0.05;
 
-                if (!needsTranscoding)
+                if (isNativeSpeed)
                 {
-                    // 1x Playback speed & native resolution: zero-CPU direct stream copy
+                    // 1x Playback speed: zero-CPU direct stream copy for unlimited multi-screen scalability (Rule 8)
                     codecArgs = "-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
                 }
                 else
@@ -1151,24 +1151,21 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         filterParts.Add($"scale=-2:{targetH}:flags=bilinear");
                     }
 
-                    if (Math.Abs(safeSpeed - 1.0) >= 0.05)
+                    double ptsScale = 1.0 / safeSpeed;
+                    string ptsScaleStr = ptsScale.ToString("0.000", CultureInfo.InvariantCulture);
+                    int step = (int)Math.Round(safeSpeed);
+                    if (step > 1)
                     {
-                        double ptsScale = 1.0 / safeSpeed;
-                        string ptsScaleStr = ptsScale.ToString("0.000", CultureInfo.InvariantCulture);
-                        int step = (int)Math.Round(safeSpeed);
-                        if (step > 1)
-                        {
-                            filterParts.Add($"framestep={step}");
-                        }
-                        filterParts.Add($"setpts={ptsScaleStr}*PTS");
+                        filterParts.Add($"framestep={step}");
                     }
+                    filterParts.Add($"setpts={ptsScaleStr}*PTS");
 
                     string vfFilter = string.Join(",", filterParts);
-                    codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+                    codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -threads 2 -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
                 }
 
-                // Minimal probe buffers and fast seeking for zero-latency playback startup
-                string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
+                // Minimal probe buffers, multi-threading bound, and fast seeking for zero-latency playback startup
+                string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 131072 -analyzeduration 500000 " +
                                    $"-ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                    $"-i \"{normalizedPath}\" -t {chunkDurationSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                    $"{codecArgs}";
@@ -1191,7 +1188,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     process.Start();
                     var stderrTask = process.StandardError.ReadToEndAsync(ct);
 
-                    byte[] buffer = new byte[65536];
+                    byte[] buffer = new byte[131072];
                     int bytesRead;
                     var stdout = process.StandardOutput.BaseStream;
                     long totalBytesSent = 0;
@@ -1209,8 +1206,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     {
                         await Response.Body.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
                         totalBytesSent += bytesRead;
-                        // Flush initial moov/ftyp segment (<= 128KB) for immediate browser playback start
-                        if (totalBytesSent <= 131072)
+                        // Flush initial moov/ftyp segment (<= 256KB) for immediate browser playback start, and smooth periodic flushing
+                        if (totalBytesSent <= 262144 || (totalBytesSent % 524288 < bytesRead))
                         {
                             await Response.Body.FlushAsync(ct);
                         }
