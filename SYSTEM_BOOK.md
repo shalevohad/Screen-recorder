@@ -343,38 +343,234 @@ FFmpeg probes on hot files must include:
 
 ## 7. Multi-Monitor Topology & Dynamic Hot-Plug
 
-### 1. Multi-Monitor Stream Mapping & WHEP Proxy Routing (Rule 11)
+### 1. High-Level Architecture & Process Topology (Rule 11)
+
+Workstations in enterprise and mission-critical environments routinely operate with 2, 3, or more displays attached across hybrid GPUs (e.g., NVIDIA dGPU + Intel iGPU, dual discrete GPUs, or USB DisplayLink adapters) with mixed resolutions, orientations, and DPI scalings.
+
+```mermaid
+graph TD
+    subgraph Workstation ["Managed Workstation (AgentWorker - Session 1+)"]
+        GPU0["GPU 0: NVIDIA RTX"] -->|DXGI Output 0| D0["Display 0: Primary 4K (0,0)"]
+        GPU1["GPU 1: Intel UHD"] -->|DXGI Output 0| D1["Display 1: Secondary 1080p (3840,0)"]
+        
+        D0 -->|D3D11 Staging| Pipe0["VideoPipeline 0 (NVENC 25-30 FPS)"]
+        D1 -->|D3D11 Staging| Pipe1["VideoPipeline 1 (QSV/NVENC 15-20 FPS)"]
+        
+        Audio["WASAPI Audio Loopback + Mic"] -.->|Muxed Audio| Pipe0
+        HotPlug["SessionGuard: WM_DISPLAYCHANGE"] -->|Dynamic Spawn / Flush| Pipe1
+        
+        Pipe0 -->|RTMP: live/WS01/mon-0| MTX["MediaMTX v1.15.4 (:19350)"]
+        Pipe1 -->|RTMP: live/WS01/mon-1| MTX
+        
+        Meta["Display Topology Tracker"] -->|SignalR C2 Telemetry| ServerApi["ASP.NET Core Server"]
+    end
+
+    subgraph ServerInfra ["Server & Storage Infrastructure"]
+        MTX -->|Epoch Wall-Clock Chunks| Storage["NetApp UNC / Local Fallback"]
+        MTX -->|WHEP Proxy| Whep["/api/v1/whep/live/{host}/{displayId}"]
+        ServerApi --> SQLiteCatalog[("Catalog DB: recording_chunks")]
+    end
+
+    subgraph DashboardClient ["Tactical C2 NOC Dashboard (ClientApp)"]
+        Whep --> PlayerEngine["WebRTC Multi-Stream Engine"]
+        ServerApi --> LayoutEngine["Virtual Desktop Layout Engine"]
+        
+        PlayerEngine & LayoutEngine --> Grid["1. Dashboard Grid (Virtual Canvas Default + Card Switcher)"]
+        PlayerEngine & LayoutEngine --> Theater["2. Fullscreen Theater (Pan/Zoom Canvas + HUD Minimap)"]
+        PlayerEngine & LayoutEngine --> Intercom["3. Master Audio Dock (Exclusive Solo Sink)"]
+        PlayerEngine & LayoutEngine --> Studio["4. Extractor Studio (Multi-Track Synchronized Player)"]
+    end
+```
+
+#### Core Multi-GPU & Cross-Platform Invariants
+- **Multi-Adapter DXGI Capture Manager ([`DxgiMultiScreenCapture.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiMultiScreenCapture.cs))**:
+  - Monitors are enumerated across all graphics adapters via Vortice.DXGI on Windows.
+  - When displays reside on separate GPUs (e.g., discrete NVIDIA + integrated Intel), DXGI allocates a dedicated `ID3D11Device` on each adapter. Each monitor duplicates frames on its own adapter VRAM, maps to system staging memory, and feeds its own pipeline with **zero cross-GPU PCIe bus transfers**.
+  - **DirectX Multi-Adapter Device Invariant**: When invoking `D3D11CreateDevice` with an explicit `IDXGIAdapter` pointer (from multi-GPU enumeration), `DriverType` **must** be set to `DriverType.Unknown`. Passing `DriverType.Hardware` with a non-null adapter parameter causes DirectX to fail with Win32 `E_INVALIDARG`.
+- **Linux Multi-Screen Discovery & Capture ([`LinuxX11DisplayEnumerator.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/LinuxX11DisplayEnumerator.cs), [`LinuxX11ScreenCapture.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/LinuxX11ScreenCapture.cs))**:
+  - Linux uses native P/Invoke discovery against `libXinerama.so.1` (`XineramaQueryScreens`) to enumerate discrete physical monitors, query virtual desktop bounding boxes, and gracefully fall back to the root window geometry when Xinerama is unavailable.
+  - Sub-rectangle capture is performed via native `XGetImage` on the root window, enabling independent capture of each physical screen without desktop compositor overhead.
+- **Session Protection**: All captures attach to the active interactive input desktop using `DesktopSecurityManager.TryAttachToInputDesktop()`.
+
+### 2. Multi-Monitor Stream Mapping & WHEP Proxy Routing (Rule 11)
 - Each display is captured on its native GPU adapter via DXGI DDA (Windows) or XRandR/PipeWire (Linux). Zero cross-GPU PCIe bus transfers.
 - **Deterministic Display Index Sorting ([`DxgiDisplayEnumerator.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiDisplayEnumerator.cs))**: Enumerated displays are sorted so that the physical Windows primary display (virtual coordinates `X=0, Y=0`) is deterministically indexed as `mon-0`, ensuring it is always the initial audio carrier, while secondary displays are sequentially assigned `mon-1`, `mon-2`, etc.
-- Stream paths:
+- **Stream Paths**:
   - Primary Display + Audio: `live/{hostname}/mon-0`
   - Secondary Displays (Video only): `live/{hostname}/mon-1`, `live/{hostname}/mon-2`, etc.
-  - Legacy Single-Monitor Path: `live/{hostname}`
+  - Legacy Single-Monitor Path: `live/{hostname}` (acts as an alias to `live/{hostname}/mon-0`).
+- **Resource Footprint & Audio Channel Routing**:
+  - Primary Display (`mon-0`): Full framerate (25–30 FPS), full bitrate, attached to `AudioCaptureFactory` (WASAPI loopback + mic mix).
+  - Secondary Displays (`mon-1`, `mon-2`): Adaptive framerate (15–20 FPS default), video-only (`-map 0:v -an`), bypassing the audio loopback socket. This halves network bandwidth, eliminates redundant audio DSP processing, and avoids acoustic feedback.
+- **Storage Directory Hierarchy**:
+  MediaMTX records according to the clean root pattern configured by `RecordingChunkScheduler`:
+  ```
+  {StorageRoot}/
+  └── {hostname}/
+      ├── mon-0/
+      │   ├── 2026-11-08_12-00-00-000000.mp4
+      │   └── 2026-11-08_12-05-00-000000.mp4
+      └── mon-1/
+          ├── 2026-11-08_12-00-00-000000.mp4
+          └── 2026-11-08_12-05-00-000000.mp4
+  ```
 - **WHEP Reverse Proxy & Stream Path Fallback ([`WhepProxyController.cs`](./ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs))**:
   - Exposes an air-gapped reverse proxy endpoint `/api/v1/whep/{*streamPath}` routing WebRTC SDP exchanges to MediaMTX.
   - Automatically handles stream path aliases: if a client requests `live/{hostname}/mon-0` and MediaMTX returns 404 (e.g. older single-monitor agent streaming to root), it seamlessly falls back to `live/{hostname}`. Conversely, if `live/{hostname}` returns 404, it queries `live/{hostname}/mon-0`.
   - Air-Gapped WebRTC configuration: Client players connect via `/api/v1/whep` with empty ICE server lists (`iceServers: []`), eliminating external STUN lookups and cross-origin localhost connection failures.
-- **Dynamic Hot-Plug, Audio Carrier Failover & Anti-Flipflop Governor (Rule 11)**:
-  - Display connect/disconnect events spawn or cleanly terminate individual display pipelines without interrupting active recording on surviving displays.
-  - **Immediate Failover on Carrier Disconnect**: If the primary monitor carrying audio (`mon-0`) disconnects during streaming, [`MultiDisplayPipelineManager`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs) detects that the audio carrier is lost, promotes the first surviving display (e.g. `mon-1`) to become the active Primary Audio Carrier, and re-engages its pipeline with `audioChannels: 2`. The dynamic audio writer and [`AudioPacer`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/AudioPacer.cs) immediately route live audio packets to the promoted carrier within <800ms, ensuring zero loss of sound during recording.
-  - **Anti-Flipflop 60s Stabilization Buffer on Reconnect**: When `mon-0` reconnects or flaps (loose HDMI/DP cable, graphics driver reset), it engages video capture immediately (`audioChannels: 0`) so the workstation's display recording is complete without delay. However, to prevent stream thrashing and audible glitches, audio remains on the surviving carrier (`mon-1`) until `mon-0` has been continuously, stably present for **a full 60 seconds** (`AudioCarrierHysteresisSeconds`).
+
+### 3. Dynamic Hot-Plug / Unplug Sequence & Audio Carrier Governor
+
+Connecting or disconnecting a monitor at runtime starts or gracefully flushes discrete pipelines without interrupting the surviving streams:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Op as Operator at Workstation
+    participant Worker as AgentWorker Engine
+    participant MTX as MediaMTX & Storage
+    participant Server as ASP.NET Server (SignalR C2)
+    participant UI as Dashboard Grid & Theater
+
+    Note over Worker: Workstation active with Primary Display (mon-0)
+    Op->>Worker: Connects Display 2 via HDMI / Docking Station
+    Worker->>Worker: SessionGuard catches WM_DISPLAYCHANGE / XRandR
+    Worker->>Worker: Enumerate new Output, init D3D11 on Adapter 1
+    Worker->>Worker: Spin up dedicated VideoPipeline & FFmpeg instance
+    Worker->>MTX: RTMP Publish -> live/WS01/mon-1
+    Worker->>Server: C2 Telemetry: StationDisplayTopologyDto (2 displays)
+    Server->>UI: SignalR Broadcast: OnDisplayTopologyChanged
+    UI->>UI: Card updates to [2 DISPLAYS], displays Canvas & adds [2] tab
+
+    Note over Worker,UI: Live recording on both displays...
+
+    Op->>Worker: Disconnects Display 2 (Unplug / Power off)
+    Worker->>Worker: DXGI AccessLost detected on mon-1
+    Worker->>Worker: Gracefully flush FFmpeg stdin of mon-1
+    MTX->>MTX: Close & finalize active chunk for mon-1
+    Worker->>Server: C2 Telemetry: StationDisplayTopologyDto (1 display)
+    Server->>UI: SignalR Broadcast: OnDisplayTopologyChanged
+    Note over UI: If viewer was on mon-1, auto-transitions to mon-0 with HUD toast
+```
+
+- **Dynamic Pipeline Supervisor ([`MultiDisplayPipelineManager.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs))**:
+  - Encapsulates active display pipelines in `ConcurrentDictionary<string, DisplaySessionPipeline> _pipelines`.
+  - Windows: `WindowsSessionGuard` hooks Win32 `SystemEvents.DisplaySettingsChanged` and `WM_DISPLAYCHANGE`.
+  - Linux: `LinuxDesktopSessionGuard` provides background display polling to trigger pipeline dynamic synchronization.
+- **Immediate Failover on Carrier Disconnect**:
+  - If the primary monitor carrying audio (`mon-0`) disconnects during streaming, `MultiDisplayPipelineManager` detects that the audio carrier is lost, promotes the first surviving display (e.g. `mon-1`) to become the active Primary Audio Carrier, and re-engages its pipeline with `audioChannels: 2`.
+  - The dynamic audio writer and [`AudioPacer`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/AudioPacer.cs) immediately route live audio packets to the promoted carrier within <800ms, ensuring zero loss of sound during recording.
+- **Anti-Flipflop 60s Stabilization Buffer on Reconnect**:
+  - When `mon-0` reconnects or flaps (loose HDMI/DP cable, graphics driver reset), it engages video capture immediately (`audioChannels: 0`) so workstation display recording is complete without delay.
+  - To prevent stream thrashing and audible glitches, audio remains on the surviving carrier (`mon-1`) until `mon-0` has been continuously, stably present for **a full 60 seconds** (`AudioCarrierHysteresisSeconds`).
   - **Flap Abort Resilience**: If `mon-0` disconnects at any point before the 60-second window completes, the stabilization timer aborts and resets to `null`, while the surviving carrier continues streaming audio uninterrupted.
   - **Graceful Handover**: After 60 seconds of uninterrupted stability, the governor smoothly promotes `mon-0` to `audioChannels: 2` and demotes `mon-1` to video-only (`audioChannels: 0`), triggering `AudioCarrierChanged`.
-  - **System-Wide Audio Awareness**:
-    - [`StationDisplayTopologyDto.cs`](./ITB-SCREEN-RECORDER.Core/Contracts/Topology/StationDisplayTopologyDto.cs) carries `AudioCarrierDisplayId` (e.g. `"mon-0"` or `"mon-1"`) and per-display `HasAudio` booleans.
-    - [`RecordingChunkScheduler.cs`](./ITB-SCREEN-RECORDER.Server/Services/RecordingChunkScheduler.cs) inspects `display.HasAudio` and `agent.DisplayTopology.AudioCarrierDisplayId` dynamically rather than hardcoding `mon-0`, ensuring recording chunk metadata accurately reflects the actual audio stream.
+- **System-Wide Audio Awareness**:
+  - [`StationDisplayTopologyDto.cs`](./ITB-SCREEN-RECORDER.Core/Contracts/Topology/StationDisplayTopologyDto.cs) carries `AudioCarrierDisplayId` (e.g. `"mon-0"` or `"mon-1"`) and per-display `HasAudio` booleans.
+  - [`RecordingChunkScheduler.cs`](./ITB-SCREEN-RECORDER.Server/Services/RecordingChunkScheduler.cs) inspects `display.HasAudio` and `agent.DisplayTopology.AudioCarrierDisplayId` dynamically rather than hardcoding `mon-0`, ensuring recording chunk metadata accurately reflects the actual audio stream.
 
-### 2. Frontend Topology Display, Audio Solo & Overlap Prevention (Rule 12)
+### 4. Data Contracts, C2 Protocol & SQLite Metadata Catalog
+
+#### C# Domain DTOs (`ITB-SCREEN-RECORDER.Core`)
+```csharp
+namespace ITB_SCREEN_RECORDER.Core.Contracts.Topology
+{
+    public class StationDisplayTopologyDto
+    {
+        public string Hostname { get; set; } = string.Empty;
+        public List<DisplayMetadataDto> Displays { get; set; } = new();
+        public DesktopBoundsDto VirtualDesktopBounds { get; set; } = new();
+        public string AudioCarrierDisplayId { get; set; } = "mon-0";
+        public long TimestampEpochMs { get; set; }
+    }
+
+    public class DisplayMetadataDto
+    {
+        public string DisplayId { get; set; } = "mon-0";          // "mon-0", "mon-1", "mon-2"
+        public string DisplayName { get; set; } = string.Empty;     // @"\\.\DISPLAY1"
+        public string AdapterName { get; set; } = string.Empty;     // "NVIDIA GeForce RTX 4070"
+        public string AdapterLuid { get; set; } = string.Empty;     // "0x0001004A"
+        public bool IsPrimary { get; set; }
+        public bool HasAudio { get; set; }
+        public int X { get; set; }                                 // Virtual desktop coordinate
+        public int Y { get; set; }
+        public int Width { get; set; }                             // e.g. 3840
+        public int Height { get; set; }                            // e.g. 2160
+        public double ScaleFactor { get; set; } = 1.0;             // DPI scale: 1.0, 1.25, 1.5
+        public int RefreshRateHz { get; set; } = 60;
+        public int TargetFps { get; set; } = 30;
+    }
+
+    public class DesktopBoundsDto
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+    }
+}
+```
+
+#### SQLite Catalog Schema (`recording_chunks`)
+The catalog database (`catalog.db`) indexes chunk metadata with explicit multi-display columns:
+```sql
+ALTER TABLE recording_chunks ADD COLUMN display_id TEXT DEFAULT 'mon-0';
+ALTER TABLE recording_chunks ADD COLUMN is_primary INTEGER DEFAULT 1;
+ALTER TABLE recording_chunks ADD COLUMN display_bounds TEXT; -- JSON: {"x":0,"y":0,"w":1920,"h":1080}
+
+CREATE INDEX IF NOT EXISTS idx_chunks_station_display 
+ON recording_chunks(station_id, display_id, start_epoch_ms);
+```
+- **Covering Index Optimization**: The index `idx_chunks_station_window_covering` includes `display_id`. Any query fetching chunks for a station window is resolved entirely from the index tree without secondary table lookups, maintaining sub-millisecond query latency on high-density 100-station deployments.
+
+#### SignalR C2 Protocol Messages
+- `OnDisplayTopologyChanged(StationDisplayTopologyDto topology)`: Fired whenever monitors are added, removed, or resized.
+- `OnAudioMonitoringChanged(string stationId, string? activeListenerUserId)`: Synchronizes the active audio solo sink across NOC operator stations.
+
+### 5. Frontend Topology Display, Audio Solo & Overlap Prevention (Rule 12)
+
+#### Component Hierarchy (`ClientApp`)
+```
+StationThumbnail (Grid Card)
+  ├── Card Header (Status, Title, Override tags)
+  ├── Card Display Switcher Pill: [ ⊞ Canvas | 🖥 1 | 🖥 2 ]
+  ├── Viewport
+  │     ├── VirtualTopologyCanvas (Default)
+  │     │     ├── Sub-Display 0 (WebRTCPlayer: live/{host}/mon-0)
+  │     │     └── Sub-Display 1 (WebRTCPlayer: live/{host}/mon-1)
+  │     └── SingleDisplaySoloView (When 1 or 2 is selected)
+  ├── Tactical Audio Intercom Button: [ 🎧 Listen / 🟢 LISTENING ]
+  └── Card Footer (Telemetry micro-bars, Actions)
+
+FullscreenModal (Theater View)
+  ├── Top Floating Tactical Bar ([ ⊞ CANVAS ] [ 🖥 1 ] [ 🖥 2 ] [ 👁 SPOTLIGHT ])
+  ├── Theater Body:
+  │     ├── Interactive Virtual Desktop Canvas (Pan & Zoom, Double-Click Zoom)
+  │     └── Solo Display Viewport
+  └── FullscreenMinimapNavigator (Appears in Solo/Spotlight)
+        ├── Proportional Miniature Canvas Box
+        ├── Glowing Active Display Highlight (● LIVE FOCUS)
+        └── Clickable Display Switcher
+
+MasterAudioDock (Floating Bottom Intercom Bar)
+  ├── Active Station Label ([ 🎧 WS-OPERATOR-02 ])
+  ├── Real-time Spectral VU Meter (5-bar animation)
+  ├── Volume Slider (0% - 100%)
+  └── Global Mute All Button (Hotkey: M)
+```
+
+#### High-Density Stream Governance (Pillars of Zero-Crash)
 - **Virtual Desktop Canvas**: Real-time monitor positioning according to physical OS virtual desktop bounds $(X, Y, W, H)$.
-- **Station Display Bar**: Direct toggle on station cards `[ ⊞ Canvas | 🖥 1 | 🖥 2 ]` positioned at top-right (`top: 8px; right: 8px; z-index: 25`).
+- **Station Display Bar**: Direct toggle on station cards `[ ⊞ Canvas | 🖥 1 | 🖥 2 ]` positioned at top-right (`top: 8px; right: 8px; z-index: 25`). Clicking `[ 🖥 1 ]` immediately tears down the `mon-1` WHEP session, halving decoding overhead for that card.
 - **Four-Quadrant Decoupled Overlays**: To guarantee zero visual collisions across dense fleets:
   - Top-Left: Clickable status tag (`⚠️ MONITOR ONLY` / `⏱ SNOOZED (30m)`).
   - Top-Right: Multi-monitor display selector bar (`StationDisplayBar`).
   - Bottom-Left: Custom configuration / policy tag (`.tactical-override-tag`).
   - Bottom-Right: Audio feed indicator (`.tactical-audio-indicator` — `🔈 MUTED` / `🔊 LIVE`).
 - **Responsive Card Geometry**: Minimum card width set to 340px (scaling to 760px) ensuring headers never wrap or overlap controls.
-- **Fullscreen Minimap Radar**: Clicking off-canvas displays an interactive HUD Minimap for one-click monitor switching.
-- **Exclusive Audio Solo**: Strict intercom radio mode. Only **one** station plays audio across the entire NOC grid at any time; all other video players stay muted to avoid browser audio buffer resource exhaustion.
+- **Fullscreen Minimap Radar ([`FullscreenMinimapNavigator.jsx`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/FullscreenMinimapNavigator.jsx))**: When switching away from Canvas to Solo or Spotlight mode in Fullscreen, a clickable Picture-in-Picture Minimap HUD renders in the corner, highlighting the active display (`● LIVE FOCUS`) and enabling instant display hopping.
+- **Exclusive Audio Solo**: Strict intercom radio mode. Only **one** station plays audio across the entire NOC grid at any time; all other video players stay muted (`audioTrack.enabled = false`) to avoid browser audio buffer resource exhaustion.
+- **Pure Geometry Normalization ([`topologyLayout.js`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/utils/topologyLayout.js))**: All virtual desktop geometry calculations route through `calculateTopologyBounds` and `calculateNormalizedDisplayRect`. These functions properly normalize negative monitor coordinates (e.g. a secondary monitor positioned to the left at $X = -1920$) into positive percentage coordinates ($0\% - 100\%$).
 - **Seamless Live Stream Preservation & Grayscale-to-Color Transition**: Because workstations stream continuous RTMP/WebRTC regardless of recording status, toggling between Live Monitor (`MONITOR`) and Recording (`REC`) does NOT unmount or reload the stream (zero black screen, zero loading matte). The WebRTC peer connection remains uninterrupted, and the video element executes a smooth CSS filter animation between tactical monochrome (`grayscale(100%)`) and full color (`grayscale(0%)`).
 - **Stream Health & Black Screen Validation**: Automated suite (`streamHealth.test.js`) continuously verifies luma/entropy across buffers, multi-monitor path non-collision, and WebRTC connection pooling across 100+ stations.
 
@@ -384,13 +580,123 @@ FFmpeg probes on hot files must include:
 
 ### 1. Synchronized Multicam Track Cutting (Rule 9)
 Handled by [`SynchronizedTrackCutter.cs`](./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/SynchronizedTrackCutter.cs):
-- Trims global idle gaps across all stations equally.
-- For station-specific internal dropouts, injects a synthetic 5-second "No Signal" test pattern ([`NoSignalPatternService.cs`](./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/NoSignalPatternService.cs)) sliced to millisecond precision via `ffconcat`. All exported tracks maintain exact timeline alignment.
+- **Universal Clock Synchronization**: Slices multiple display tracks synchronously, keyed to UTC epoch start times.
+- **Global Gap Trimming**: Trims global idle gaps across all stations equally to maintain timeline parity.
+- **Synthetic "No Signal" Gap Bridging**: For station-specific internal dropouts (e.g. secondary monitor disconnected or machine offline), injects a synthetic 5-second "No Signal" test pattern ([`NoSignalPatternService.cs`](./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/NoSignalPatternService.cs)) sliced to millisecond precision via `ffconcat`. All exported tracks maintain exact timeline alignment:
+  ```
+  ┌──────────────────────────────┐
+  │          MONITOR 2           │
+  │        [ DISCONNECTED ]      │
+  │     Standby / Off-line       │
+  └──────────────────────────────┘
+  ```
+- **Safe Station File Paths**: When cutting display-specific tracks (e.g. `station-A/mon-1`), always sanitize the station identifier with `safeStationId = stationId.Replace('/', '_').Replace('\\', '_')` to prevent the OS from interpreting slashes as nonexistent subdirectories during manifest or output MP4 generation.
 
-### 2. Activity Focus & Dynamic Transitions (Rule 13)
-- Evaluates mouse and keyboard activity to generate an intelligent director cut.
-- Applies symmetric dip-to-black transitions with a 1-second pre-roll lead-in ($T - 1000\text{ms}$).
-- Overlays a persistent minimap HUD that never dips or fades.
+### 2. Multi-Monitor Dynamic Auto-Director & Persistent HUD (Rule 13)
+
+Reviewing multi-monitor workstations on standard single-screen monitors introduces a severe dilemma:
+- **Static Multi-Screen Letterboxing / Side-by-Side**: Drastically shrinks each screen to 50% or 25% size, rendering UI text, system terminals, small buttons, and tactical maps completely unreadable.
+- **Occluding Floating Picture-in-Picture (PiP)**: Stacking multiple floating PiP windows directly over the primary video obscures taskbars, charts, and mission-critical corner data.
+
+#### The Architectural Solution & 6 Core Invariants
+1. **Full-Resolution Hero Surface (100% Readability)**:
+   The currently active or operator-selected monitor is displayed at 100% native resolution and full canvas area at all times.
+2. **Persistent Tactical Minimap HUD Overlay**:
+   A lightweight, semi-transparent (60–70% opacity) dark-glass topology wireframe sits persistently in the viewport corner. Non-active monitors are subtle wireframe boxes with display index badges (`[1]`, `[2]`), while the currently viewed monitor shines with a radiant glow indicator (`● ACTIVE: Mon X`).
+   - **HUD Persistence Invariant**: The Minimap HUD lives on an independent overlay plane. During video transitions, the Minimap **never** blinks out, fades, or dips to black; it remains 100% crisp and visible, smoothly updating its active highlight at the transition's inflection point.
+3. **Millisecond-Locked Dip-to-Black Video Transition**:
+   Transitions between monitors execute as a controlled **Dip to Black** (fade-down -> black frame -> fade-up, default 300ms duration).
+   - **Zero-Time-Drift Invariant**: The transition duration is strictly accounted for in master timecode calculations. Not a single millisecond is added, dropped, or desynchronized relative to concurrent stations or multi-track audio.
+4. **Auto-Director (במאי אוטומטי) with 1-Second Pre-Roll Lead-In**:
+   The system automatically parses recorded mouse clicks, keystrokes, and cursor trajectories across monitor boundaries:
+   - **1-Second Pre-Roll Invariant ($T - 1000\text{ms}$)**: When an activity transition is triggered by a user action at timestamp $T$, the Dip-to-Black transition initiates **1.0 second prior**:
+     $$\text{TransitionStart} = \max(T_{\text{prev}}, T_{\text{click}} - 1000\text{ms})$$
+     This allows the viewer's eyes to land comfortably on the new screen, observe the cursor trajectory, and absorb the spatial context *before* the click occurs, eliminating disorienting jump-cuts.
+   - **Hysteresis & Anti-Flicker**: Imposes a minimum dwell time (2.0–3.0s) to prevent rapid back-and-forth ping-pong transitions during incidental mouse sweeps.
+5. **Interactive Manual Override in Advanced Editor**:
+   The operator has full creative and forensic authority:
+   - **Direct Minimap Click**: Clicking any monitor on the Minimap HUD immediately cuts to that display.
+   - **Timeline Split & Switch (`S` key)**: Split segments at playhead and assign displays with clear visual indicators (`[⚡ Auto]` vs `[✋ Manual Override]`).
+6. **Unified Dual-Plane Foundation for Export & DVR from Time 0**:
+   Raw video tracks (`mon-0`, `mon-1`, `mon-2`) remain completely unbaked in storage. The Director Plan drives both:
+   - Interactive client-side DVR scrubbing from Time 0 in the browser (via CSS/WebGL dip-to-black and dynamic Minimap HUD).
+   - Server-side FFmpeg MP4/MKV standalone file export.
+
+#### Architectural Layer Diagram
+```mermaid
+graph TD
+    subgraph DataPlane ["1. Raw Data & Telemetry Plane (Time 0)"]
+        RawV0["Track 0: mon-0 (Raw MP4/fMP4)"]
+        RawV1["Track 1: mon-1 (Raw MP4/fMP4)"]
+        RawV2["Track 2: mon-2 (Raw MP4/fMP4)"]
+        Telemetry["Telemetry: Clicks, Keystrokes & Cursor (X,Y,EpochMs)"]
+        Topology["Topology: OS Screen Coordinates (X, Y, W, H)"]
+    end
+
+    subgraph DirectorEngine ["2. Auto-Director Heuristic Engine"]
+        Telemetry & Topology --> Analyzer["ActivityFocusAnalyzer"]
+        Analyzer --> PreRoll["1s Pre-Roll Lead-In (T - 1000ms)"]
+        PreRoll --> Hysteresis["Dwell-Time Dampener (Anti-Flicker)"]
+        Hysteresis --> AutoPlan["DirectorPlan: [ {Start, End, DisplayId, Mode: Auto} ]"]
+    end
+
+    subgraph StudioUI ["3. ExtractorAdvanced Studio UI"]
+        AutoPlan --> TimelineTrack["DirectorTrack (TimelineBoard)"]
+        TimelineTrack --> UserOverride["Manual Override: Split (S), ContextMenu, Minimap Click"]
+        UserOverride --> FinalPlan["Final StationDirectorPlan ({Auto / Manual})"]
+    end
+
+    subgraph PlaybackAndExport ["4. Execution: DVR Player & FFmpeg Export"]
+        FinalPlan --> DvrPlayer["DVR / LiveTail Player (Web Player)"]
+        FinalPlan --> TrackCutter["SynchronizedTrackCutter (FFmpeg)"]
+        
+        DvrPlayer --> WebGLDip["CSS/WebGL Dip-to-Black + Interactive Persistent Minimap HUD"]
+        TrackCutter --> FFmpegGraph["FFmpeg xfade=fadeblack + Persistent Minimap PNG/SVG Overlay"]
+        FFmpegGraph --> MasterMP4["Single Pristine MP4 Export (100% Resolution, Zero-Drift)"]
+    end
+```
+
+#### Data Contracts & Models
+
+##### `StationDirectorSegmentDto`
+```csharp
+public class StationDirectorSegmentDto
+{
+    public long StartEpochMs { get; set; }
+    public long EndEpochMs { get; set; }
+    public string TargetDisplayId { get; set; } = "mon-0"; // "mon-0", "mon-1", "canvas"
+    public bool IsManualOverride { get; set; }
+    public string? TriggerReason { get; set; } // "MouseClick", "Keystroke", "ManualOverride", "Default"
+    public double TransitionDurationSec { get; set; } = 0.3; // 300ms dip-to-black
+}
+```
+
+##### `StationDirectorPlanDto`
+```csharp
+public class StationDirectorPlanDto
+{
+    public string StationId { get; set; } = string.Empty;
+    public long TimelineStartEpochMs { get; set; }
+    public long TimelineEndEpochMs { get; set; }
+    public List<StationDirectorSegmentDto> Segments { get; set; } = new();
+    public StationDisplayTopologyDto Topology { get; set; } = new();
+}
+```
+
+#### Engine Components
+- **`ActivityFocusAnalyzer` (`ITB-SCREEN-RECORDER.Core` / `Features/Extractor`)**:
+  - Maps click coordinates `(X, Y)` to target monitor index from `StationDisplayTopologyDto`.
+  - Calculates 1-second pre-roll start: $\max(T_{\text{prev}}, T_{\text{click}} - 1000\text{ms})$.
+  - Evaluates minimum dwell-time (2.0s) to suppress rapid ping-pong transitions during incidental mouse sweeps.
+- **`DipToBlackFilterBuilder` (`Features/Extractor`)**:
+  - Builds FFmpeg `filter_complex` graphs using zero-loss symmetric `fade=out` + `concat` + `fade=in` (or `xfade=fadeblack`).
+  - Strict 1:1 timeline alignment maintains zero audio and multicam drift.
+- **`MinimapOverlaySvgGenerator` (`Features/Extractor`)**:
+  - Generates SVG/PNG overlay sequences rendering the persistent Minimap HUD.
+  - Generates vector badges with radiant active display highlights for burning onto exported MP4s.
+- **React Studio UI Components (`Features/ExtractorAdvanced/Client`)**:
+  - `PersistentMinimapHud.jsx` & `.scss`: Tactical dark-glass floating HUD with normalized monitor boxes based on real OS bounds, active display glow badge, and click-to-switch handler.
+  - `DirectorTrack.jsx`: Timeline track with color-coded segment blocks (`[⚡ Auto: Mon 1]` in cyan vs `[✋ Override: Mon 2]` in amber), split tool (`S` key), and context menus.
 
 ### 3. Keystroke Telemetry Sync, Ingestion Latency Calibration & Timeline Ruler
 - **Ingestion Pipeline Latency Compensation (`KEYSTROKE_CALIBRATION_OFFSET_MS = 2500`)**:
@@ -403,7 +709,7 @@ Handled by [`SynchronizedTrackCutter.cs`](./Features/Extractor/ITB-SCREEN-RECORD
 - **Live Dashboard Viewing vs. Database Storage Invariant (Active Streaming vs. Active Recording)**:
   - **Live Dashboard Telemetry (`_isStreaming == true`)**: Whenever a station is actively streaming (operator viewing or monitoring), keystrokes are captured by [`WorkerEngine.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/WorkerEngine.cs), forwarded over IPC to [`AgentSupervisorService.cs`](./ITB-SCREEN-RECORDER.AgentService/AgentSupervisorService.cs), and transmitted in real-time to the server over Fast Path (`/api/v1/agent/keystrokes/fast`) and periodic heartbeat. The server broadcasts them via SignalR (`_broadcastService.BroadcastLiveKeystrokesAsync` and `BroadcastTelemetryAsync`), ensuring the operator sees live keystroke overlays in the NOC Dashboard and Station Grid.
   - **Database Persistence Gate (`IsRecording == true`)**: Keystrokes are strictly persisted to SQLite (`catalog.db`) and offline disk storage **ONLY** when the workstation is in an active recording state. [`AgentController.cs`](./ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs) inspects `report.IsRecording` and `_telemetryState.IsStationRecording(hostname)` before queuing `_catalogRepository.BulkInsertKeystrokesAsync`. If recording is inactive, database storage is bypassed, ensuring non-recorded typing is never stored in the database.
-  - **Forensic Timeline Replay Correlation**: Forensic extraction ([`ExtractorAdvancedController.cs`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs)) queries active video chunks and strips out any keystrokes falling into timeline gaps outside recorded video chunks. Studio Timeline UI ([`TimelineKeystrokes.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx)) validates all keystrokes against `recordingSegments`, completely eliminating false keystroke indicators in gap regions.
+- **Forensic Timeline Replay Correlation**: Forensic extraction ([`ExtractorAdvancedController.cs`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs)) queries active video chunks and strips out any keystrokes falling into timeline gaps outside recorded video chunks. Studio Timeline UI ([`TimelineKeystrokes.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx)) validates all keystrokes against `recordingSegments`, completely eliminating false keystroke indicators in gap regions.
 
 ---
 
