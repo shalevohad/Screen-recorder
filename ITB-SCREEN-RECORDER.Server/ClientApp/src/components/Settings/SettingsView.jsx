@@ -56,6 +56,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const [form, setForm] = useState(null);
     const [stations, setStations] = useState([]);
     const [overrides, setOverrides] = useState({});
+    const [activeFeatures, setActiveFeatures] = useState([]);
     const [status, setStatus] = useState({ loading: true, saving: false, error: null, saved: false });
     const [restartState, setRestartState] = useState(null);
 
@@ -77,10 +78,11 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
 
     const loadData = useCallback(async () => {
         try {
-            const [settingsRes, stationsRes, overridesRes] = await Promise.all([
+            const [settingsRes, stationsRes, overridesRes, featuresRes] = await Promise.all([
                 fetch('/api/v1/settings'),
                 fetch('/api/v1/dashboard/stations'),
-                fetch('/api/v1/dashboard/stations/overrides')
+                fetch('/api/v1/dashboard/stations/overrides'),
+                fetch('/api/v1/features/active').catch(() => null)
             ]);
 
             if (!settingsRes.ok) throw new Error(`Server returned ${settingsRes.status}`);
@@ -96,6 +98,13 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                     mapped[k.toUpperCase()] = overridesData[k];
                 });
                 setOverrides(mapped);
+            }
+
+            if (featuresRes && featuresRes.ok) {
+                try {
+                    const featData = await featuresRes.json();
+                    setActiveFeatures(Array.isArray(featData) ? featData : []);
+                } catch {}
             }
 
             setStatus(s => ({ ...s, loading: false }));
@@ -389,6 +398,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                             <form id="globalSettingsForm" onSubmit={handleSaveGlobalConfig}>
                                 <SystemNetworkTab
                                     form={form}
+                                    activeFeatures={activeFeatures}
                                     updateField={updateField}
                                     updateDashboardField={updateDashboardField}
                                     updateMediaMtxField={updateMediaMtxField}

@@ -4721,4 +4721,60 @@ In `App.jsx`:
 
 ---
 
+## 74. Keyframe Rapid Deletion & Protection, Canvas Dynamic Wall Clock, 52px Audio Routing Architecture & Server Feature Secrecy (2026-11-08)
+
+### 74.1 Direct Keyframe Rapid Deletion & Root Protection Invariant
+To streamline high-tempo forensic and director timeline editing:
+1. **Direct Fast-Deletion Controls**:
+   - Added a dedicated delete button (`btn-del-current-kf`, `🗑`) directly within the keyframe navigator cluster (`◀ KF X/Y ▶ 🗑`) in [CanvasKeyframeTrack.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/CanvasKeyframeTrack.jsx).
+   - Added per-row delete actions (`btn-row-delete`) inside the quick-jump dropdown (`kf-quick-jump-dropdown`), allowing operators to purge superfluous or accidental keyframes with a single click without selecting or highlighting them on the canvas or timeline.
+2. **Root Keyframe 0 (t = 0) Protection Invariant**:
+   - Root Keyframe 0 establishes the baseline composition for all tracks. It is strictly protected:
+     - The navigator delete button is disabled (`disabled={activeKfIndex <= 0 || keyframes.length <= 1}`).
+     - Row 0 in the quick-jump list suppresses the delete button entirely.
+     - State reducers in [ExtractorAdvancedStudio.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx) enforce an immediate guard check:
+       ```javascript
+       if (idxToDelete === 0) return prev;
+       ```
+     - Deletion automatically adjusts `activeKfIndex` to prevent index-out-of-bounds errors.
+
+### 74.2 Canvas Dynamic Wall Clock Decoupling from Settings Popovers
+Previously, the UTC Wall Clock position was configured inside static popover menus, preventing dynamic repositioning across timeline segments.
+- **Decoupled Architecture**: Removed the `UTC CLOCK POSITION` button matrix from both `CanvasKeyframeTrack.jsx` and `MulticamViewport.jsx` inspector popovers.
+- **Dynamic Keyframe Persistence**: The clock position is now treated identically to workstation screen coordinates:
+  - Dragging or cycling the clock directly on the canvas updates `safeActiveIdx` via `updateKeyframeClockPosition(safeActiveIdx, newPos)`.
+  - The position persists within the active Keyframe object, allowing the clock to dynamically transition between positions (e.g. `top-right` to `bottom-left`) as the playhead advances through keyframes during playback and forensic export.
+  - The quick-jump dropdown retains an informational readout badge (`⏱️ {kClockLabel}`) displaying the current keyframe's clock position.
+
+### 74.3 Standardized 52px Audio Routing Track, 230px Sidebar & Draggable Cut Architecture
+In [AudioRoutingTrack.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.jsx) and [AudioRoutingTrack.scss](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.scss):
+1. **Unified 52px Track Geometry**:
+   - Replaced the inconsistent collapsed placeholder with a standardized 52px track matching the visual hierarchy of `TimelineTrack` (`station-collapsed-track`, `audio-routing-track-container`).
+2. **230px Tactical Sidebar Controls**:
+   - Status beacon and audio icon (`🔊` / `🔇`).
+   - Audio lane badge (`A1`).
+   - Workstation source dropdown selector (`audio-station-select`) enabling immediate audio source reassignment across available stations.
+   - 3-State tactical channel cycle button (`btn-channel-toggle`) cycling smoothly between `SYS`, `MIC`, and `BOTH` with distinct tactical color codings.
+   - Master GAIN slider (0% to 200%) with real-time percentage readout, accompanied by relative nudge buttons (`[-]` / `[+]` 10%) to adjust gain relative to other active sources.
+   - Solo (`S`) and Mute (`M`) operational controls.
+3. **Interactive Draggable Audio Cut Blocks (`audio-clip-block`)**:
+   - Drag-and-drop movement is calculated via client delta projections relative to the timeline bounding client rect:
+     ```javascript
+     const deltaMs = (dx / (rect.width || 1)) * (viewportRange.endEpochMs - viewportRange.startEpochMs);
+     ```
+   - Automatically snaps to playhead and Mark In / Mark Out bounds within `baseEpochMs` constraints.
+   - Synchronizes seamlessly with the `audioPlan` state prop via an active change detection effect.
+
+### 74.4 Dynamic Feature Settings Secrecy (עקרון החשאיות)
+In compliance with enterprise operational security, server capabilities and installed feature modules must remain strictly confidential:
+1. **Backend Configuration Suppression**:
+   - [SettingsController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/SettingsController.cs) injects registered feature modules (`IEnumerable<IFeatureModule>? features = null`) and evaluates active features via `HasFeature(string keyword)`.
+   - On `GET /api/v1/settings`: if the server does not have the `extractor` feature loaded, `config.AutoDirector` is stripped to `null`, completely withholding feature configuration schemas from unauthorized inspection.
+   - On `PUT /api/v1/settings`: updates attempting to configure uninstalled features are silently ignored or rejected.
+2. **Frontend Conditional Surface Rendering**:
+   - [SettingsView.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/SettingsView.jsx) queries `/api/v1/features/active` on component mount and distributes `activeFeatures` to its tabs.
+   - [SystemNetworkTab.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/SystemNetworkTab.jsx) evaluates `hasReplayStudioFeature`. The entire `STEALTH OPS: AUTO-DIRECTOR & REPLAY STUDIO ENGINE` subpanel is strictly suppressed unless both stealth authorization and feature module registration are verified.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

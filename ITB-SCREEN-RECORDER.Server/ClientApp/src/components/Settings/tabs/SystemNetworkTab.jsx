@@ -4,7 +4,15 @@
 import React from 'react';
 import { useAuth } from '../../../context/AuthContext';
 
-export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField, updateAutoDirectorField }) {
+export default function SystemNetworkTab({ form, activeFeatures = [], updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField, updateAutoDirectorField }) {
+    const hasReplayStudioFeature = React.useMemo(() => {
+        if (!Array.isArray(activeFeatures) || activeFeatures.length === 0) return false;
+        return activeFeatures.some(f =>
+            f.id === 'extractor-advanced-studio' ||
+            f.id === 'extractor-slicer' ||
+            (typeof f.id === 'string' && f.id.toLowerCase().includes('extractor'))
+        );
+    }, [activeFeatures]);
     const { isSystemRoot, hasPermission } = useAuth();
 
     if (!form) return null;
@@ -345,7 +353,8 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                 </div>
             </div>
             {/* STEALTH REPLAY STUDIO & AUTO-DIRECTOR ENGINE CONFIGURATION */}
-            {isStealthAuthorized && (
+            {/* Principle of Secrecy (עקרון החשאיות): Feature settings strictly exposed ONLY if server has feature active */}
+            {isStealthAuthorized && hasReplayStudioFeature && (
                 <div className="security-subpanel stealth-studio-subpanel" style={{ borderColor: 'rgba(6, 182, 212, 0.35)', background: 'rgba(6, 182, 212, 0.03)' }}>
                     <div className="subpanel-header">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

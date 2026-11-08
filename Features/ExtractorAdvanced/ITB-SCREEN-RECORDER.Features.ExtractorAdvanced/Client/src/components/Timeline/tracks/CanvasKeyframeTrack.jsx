@@ -251,6 +251,22 @@ export default function CanvasKeyframeTrack({
                     >
                         ▶
                     </button>
+
+                    <button
+                        type="button"
+                        className="btn-kf-nav btn-del-current-kf"
+                        disabled={activeKfIndex <= 0 || keyframes.length <= 1}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (activeKfIndex > 0 && onDeleteKeyframe) {
+                                onDeleteKeyframe(activeKfIndex);
+                                setSelectedConfigKfIndex(null);
+                            }
+                        }}
+                        title={activeKfIndex > 0 ? `Delete Current Keyframe #${activeKfIndex + 1}` : "Root Keyframe 1 cannot be deleted"}
+                    >
+                        🗑
+                    </button>
                 </div>
 
                 <button
@@ -325,6 +341,24 @@ export default function CanvasKeyframeTrack({
                                             >
                                                 ⚙
                                             </button>
+                                            {kIdx > 0 && (
+                                                <button
+                                                    type="button"
+                                                    className="btn-row-delete"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (onDeleteKeyframe) {
+                                                            onDeleteKeyframe(kIdx);
+                                                            if (selectedConfigKfIndex === kIdx) {
+                                                                setSelectedConfigKfIndex(null);
+                                                            }
+                                                        }
+                                                    }}
+                                                    title={`Delete Keyframe #${kIdx + 1}`}
+                                                >
+                                                    🗑
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -491,32 +525,6 @@ export default function CanvasKeyframeTrack({
                                                 <span className="kf-root-desc">Base layout governing cut origin (t = 0)</span>
                                             </div>
                                         )}
-
-                                        {/* UTC Wall Clock Position Selector (Available for ALL keyframes!) */}
-                                        <div className="kf-field-row">
-                                            <div className="kf-field-header-row">
-                                                <span className="kf-field-label">UTC CLOCK POSITION</span>
-                                                <span className="kf-current-clock-badge">⏱️ {clockPosLabel}</span>
-                                            </div>
-                                            <div className="kf-clock-pos-buttons">
-                                                {[
-                                                    { id: 'top-left', label: '↖ Top-Left' },
-                                                    { id: 'top-right', label: '↗ Top-Right' },
-                                                    { id: 'bottom-left', label: '↙ Bottom-Left' },
-                                                    { id: 'bottom-right', label: '↘ Bottom-Right' }
-                                                ].map(pos => (
-                                                    <button
-                                                        key={pos.id}
-                                                        type="button"
-                                                        className={`btn-clock-pos-choice ${clockPos === pos.id ? 'is-active' : ''}`}
-                                                        onClick={() => onUpdateKeyframeClockPosition?.(idx, pos.id)}
-                                                        title={`Set UTC Wall Clock to ${pos.label}`}
-                                                    >
-                                                        {pos.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
 
                                         {/* Layout & Feeds Settings Readout */}
                                         <div className="kf-field-row kf-layout-summary-row">

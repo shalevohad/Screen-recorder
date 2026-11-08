@@ -219,8 +219,16 @@ export default function ExtractorAdvancedStudio() {
     const handleDeleteKeyframe = useCallback((idxToDelete) => {
         setCanvasLayoutTimeline(prev => {
             if (!prev?.keyframes || prev.keyframes.length <= 1) return prev;
+            if (idxToDelete === 0) return prev; // Invariant: Root keyframe (index 0) cannot be deleted
             const nextKfs = prev.keyframes.filter((_, i) => i !== idxToDelete);
-            setActiveKfIndex(prevIdx => Math.max(0, prevIdx - 1));
+            setActiveKfIndex(prevIdx => {
+                if (prevIdx === idxToDelete) {
+                    return Math.max(0, idxToDelete - 1);
+                } else if (prevIdx > idxToDelete) {
+                    return prevIdx - 1;
+                }
+                return Math.min(prevIdx, nextKfs.length - 1);
+            });
             return { ...prev, keyframes: nextKfs };
         });
     }, []);

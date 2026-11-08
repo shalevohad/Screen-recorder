@@ -7,6 +7,322 @@
 // Tactical NOC Real-Time Reactive Audio Track Styling with Waveforms & Gain Scale
 // ==========================================
 
+.audio-routing-tracks-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.timeline-track-container.audio-routing-track-container {
+    height: 52px !important;
+    min-height: 52px !important;
+    max-height: 52px !important;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+    background: #0B111E;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    position: relative;
+    user-select: none;
+    box-sizing: border-box;
+
+    .track-sidebar.audio-track-sidebar {
+        width: 230px !important;
+        min-width: 230px !important;
+        max-width: 230px !important;
+        height: 52px !important;
+        position: relative;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        white-space: nowrap;
+        flex-wrap: nowrap;
+        overflow: hidden;
+        gap: 5px;
+        padding: 0 6px;
+        box-sizing: border-box;
+        background-color: rgba(30, 41, 59, 0.55);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 3px solid #10B981;
+
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            min-width: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+
+            &.online {
+                background-color: #10B981;
+                box-shadow: 0 0 6px #10B981;
+            }
+
+            &.idle {
+                background-color: #64748B;
+            }
+        }
+
+        .audio-lane-icon {
+            font-size: 11px;
+            color: #10B981;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .audio-lane-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 7.5px;
+            font-weight: 800;
+            color: #070A10;
+            padding: 1px 4px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .audio-station-picker {
+            flex-shrink: 1;
+            min-width: 0;
+
+            .audio-station-select {
+                background: rgba(15, 23, 42, 0.85);
+                border: 1px solid rgba(6, 182, 212, 0.35);
+                color: #38BDF8;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 7.5px;
+                font-weight: 700;
+                padding: 1px 3px;
+                border-radius: 3px;
+                max-width: 68px;
+                height: 22px;
+                outline: none;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    border-color: #06B6D4;
+                }
+
+                option {
+                    background: #0B111E;
+                    color: #F8FAFC;
+                }
+            }
+        }
+
+        .btn-channel-toggle {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 7px;
+            font-weight: 800;
+            padding: 1px 4px;
+            height: 22px;
+            border-radius: 3px;
+            border: 1px solid;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+
+            &.mode-both {
+                background: rgba(16, 185, 129, 0.15);
+                color: #10B981;
+                border-color: rgba(16, 185, 129, 0.4);
+                &:hover {
+                    background: rgba(16, 185, 129, 0.28);
+                    box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
+                }
+            }
+
+            &.mode-sys {
+                background: rgba(139, 92, 246, 0.15);
+                color: #C084FC;
+                border-color: rgba(139, 92, 246, 0.4);
+                &:hover {
+                    background: rgba(139, 92, 246, 0.28);
+                    box-shadow: 0 0 6px rgba(139, 92, 246, 0.3);
+                }
+            }
+
+            &.mode-mic {
+                background: rgba(245, 158, 11, 0.15);
+                color: #F59E0B;
+                border-color: rgba(245, 158, 11, 0.4);
+                &:hover {
+                    background: rgba(245, 158, 11, 0.28);
+                    box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);
+                }
+            }
+        }
+
+        .audio-gain-cluster {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            flex-shrink: 0;
+
+            .audio-gain-slider {
+                width: 36px;
+                height: 3px;
+                cursor: pointer;
+                accent-color: #10B981;
+                outline: none;
+            }
+
+            .gain-pct-badge {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 7px;
+                font-weight: 800;
+                color: #38BDF8;
+                min-width: 24px;
+                text-align: right;
+            }
+
+            .btn-gain-nudge {
+                width: 14px;
+                height: 16px;
+                border-radius: 2px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 8px;
+                font-weight: 800;
+                background: rgba(30, 41, 59, 0.85);
+                border: 1px solid rgba(148, 163, 184, 0.25);
+                color: #CBD5E1;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                line-height: 1;
+                transition: all 0.12s ease;
+
+                &:hover {
+                    background: #10B981;
+                    color: #070A10;
+                    border-color: #10B981;
+                }
+            }
+        }
+
+        .audio-mute-solo-btns {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            flex-shrink: 0;
+
+            .btn-audio-mute,
+            .btn-audio-solo {
+                width: 15px;
+                height: 16px;
+                border-radius: 2px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 7.5px;
+                font-weight: 800;
+                border: 1px solid rgba(148, 163, 184, 0.25);
+                background: rgba(30, 41, 59, 0.7);
+                color: #94A3B8;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                transition: all 0.12s ease;
+            }
+
+            .btn-audio-mute.is-active {
+                background: #F43F5E;
+                color: #FFFFFF;
+                border-color: #F43F5E;
+            }
+
+            .btn-audio-solo.is-active {
+                background: #F59E0B;
+                color: #070A10;
+                border-color: #F59E0B;
+            }
+        }
+    }
+
+    .track-surface.audio-track-surface {
+        flex: 1;
+        height: 52px !important;
+        position: relative;
+        overflow: hidden;
+        background: #070A10;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+
+        &.is-drag-over {
+            outline: 2px dashed #06B6D4;
+            background: rgba(6, 182, 212, 0.08);
+        }
+
+        .audio-clip-block {
+            position: absolute;
+            top: 2px;
+            bottom: 2px;
+            height: 48px;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            border-left: 3px solid #10B981;
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: grab;
+            z-index: 10;
+            transition: border-color 0.15s ease;
+
+            &:active {
+                cursor: grabbing;
+                box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+            }
+
+            &.is-selected {
+                border-color: #06B6D4;
+                box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+            }
+
+            .trim-handle {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 7px;
+                z-index: 25;
+                cursor: ew-resize;
+                background: rgba(255, 255, 255, 0.08);
+                transition: background 0.15s ease;
+
+                &:hover {
+                    background: #06B6D4;
+                }
+
+                &.trim-handle-left {
+                    left: 0;
+                    border-right: 1px solid rgba(255, 255, 255, 0.15);
+                }
+
+                &.trim-handle-right {
+                    right: 0;
+                    border-left: 1px solid rgba(255, 255, 255, 0.15);
+                }
+            }
+
+            .clip-waveform-graphic {
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                opacity: 0.65;
+
+                .waveform-svg {
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+        }
+    }
+}
+
 .audio-routing-track-container {
     display: flex;
     align-items: stretch;

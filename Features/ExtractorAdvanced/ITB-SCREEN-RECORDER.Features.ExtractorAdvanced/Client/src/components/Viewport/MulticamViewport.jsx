@@ -4262,27 +4262,6 @@ export default function MulticamViewport({
                                         )}
 
                                         <div className="settings-section">
-                                            <span className="section-label">UTC CLOCK POSITION</span>
-                                            <div className="clock-grid">
-                                                {[
-                                                    { id: 'top-left', label: '↖ Top-Left' },
-                                                    { id: 'top-right', label: '↗ Top-Right' },
-                                                    { id: 'bottom-left', label: '↙ Bottom-Left' },
-                                                    { id: 'bottom-right', label: '↘ Bottom-Right' }
-                                                ].map(pos => (
-                                                    <button
-                                                        key={pos.id}
-                                                        type="button"
-                                                        className={`btn-choice ${activeClockPosition === pos.id ? 'is-active' : ''}`}
-                                                        onClick={() => handleUpdateActiveKfClockPos(pos.id)}
-                                                    >
-                                                        {pos.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="settings-section">
                                             <span className="section-label">ACTIVE COMPOSITION</span>
                                             <div className="composition-summary">
                                                 <span>📺 {virtualW}×{virtualH}</span>

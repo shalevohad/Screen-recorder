@@ -487,14 +487,55 @@ export default function AudioRoutingTrack({
     onUpdateAudioPlan = null
 }) {
     const containerRef = useRef(null);
+    const isDraggingRef = useRef(false);
 
-    // Default: Closed / collapsed (26px) with 0 active playback channels initially
-    const [isBusExpanded, setIsBusExpanded] = useState(() => {
-        try {
-            return localStorage.getItem('itb_audio_bus_expanded') === 'true';
-        } catch {
-            return false;
+    // Multi-Lane Architecture State
+    const [lanes, setLanes] = useState(() => {
+        if (audioPlan?.segments && audioPlan.segments.length > 0) {
+            return [
+                {
+                    id: 'A1',
+                    name: 'Track A1',
+                    isMuted: false,
+                    isSolo: false,
+                    gain: 1.0,
+                    channelMode: 'both',
+                    clips: audioPlan.segments.map((s, idx) => ({
+                        id: s.id || `clip_${idx}_${s.startEpochMs || s.StartEpochMs}`,
+                        startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? baseEpochMs,
+                        endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? (baseEpochMs + viewportDurationMs),
+                        sourceStationId: s.sourceStationId ?? s.SourceStationId ?? (stations[0]?.id || 'station-0'),
+                        gain: s.gain ?? s.Gain ?? 1.0,
+                        channelMode: s.channelMode ?? s.ChannelMode ?? 'both',
+                        fadeInMs: s.fadeInMs ?? s.FadeInMs ?? 50,
+                        fadeOutMs: s.fadeOutMs ?? s.FadeOutMs ?? 50
+                    }))
+                }
+            ];
         }
+
+        return [
+            {
+                id: 'A1',
+                name: 'Track A1',
+                isMuted: false,
+                isSolo: false,
+                gain: 1.0,
+                channelMode: 'both',
+                clips: [
+                    {
+                        id: `clip_default_${Date.now()}`,
+                        startEpochMs: baseEpochMs,
+                        endEpochMs: baseEpochMs + viewportDurationMs,
+                        sourceStationId: stations[0]?.id || 'station-0',
+                        gain: 1.0,
+                        channelMode: 'both',
+                        fadeInMs: 50,
+                        fadeOutMs: 50
+                    }
+                ]
+            }
+        ];
     });
 
     const [isMasterMuted, setIsMasterMuted] = useState(false);
@@ -516,53 +557,39 @@ export default function AudioRoutingTrack({
         return () => window.removeEventListener('itb-live-audio-level', handleLevel);
     }, []);
 
-    const toggleBusExpanded = useCallback(() => {
-        setIsBusExpanded(prev => {
-            const next = !prev;
-            try {
-                localStorage.setItem('itb_audio_bus_expanded', String(next));
-            } catch {}
-            return next;
-        });
-    }, []);
+    // Synchronize lanes whenever audioPlan prop updates from outside (project load, server sync, undo/redo)
+    useEffect(() => {
+        if (isDraggingRef.current) return; // Do not interrupt an active mouse drag operation
+        if (!audioPlan?.segments || audioPlan.segments.length === 0) return;
 
-    // Multi-Lane Architecture State
-    const [lanes, setLanes] = useState(() => {
-        if (audioPlan?.segments && audioPlan.segments.length > 0) {
+        setLanes(prev => {
+            const currentA1 = prev.find(l => l.id === 'A1') || prev[0];
+            const updatedClips = audioPlan.segments.map((s, idx) => ({
+                id: s.id || `clip_${idx}_${s.startEpochMs || s.StartEpochMs}`,
+                startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? baseEpochMs,
+                endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? (baseEpochMs + viewportDurationMs),
+                sourceStationId: s.sourceStationId ?? s.SourceStationId ?? (stations[0]?.id || 'station-0'),
+                gain: s.gain ?? s.Gain ?? 1.0,
+                channelMode: s.channelMode ?? s.ChannelMode ?? currentA1?.channelMode ?? 'both',
+                fadeInMs: s.fadeInMs ?? s.FadeInMs ?? 50,
+                fadeOutMs: s.fadeOutMs ?? s.FadeOutMs ?? 50
+            }));
+
             return [
                 {
-                    id: 'A1',
-                    name: 'Track A1',
-                    isMuted: false,
-                    isSolo: false,
-                    gain: 1.0,
-                    channelMode: 'both',
-                    clips: audioPlan.segments.map((s, idx) => ({
-                        id: `clip_${idx}_${s.startEpochMs || s.StartEpochMs}`,
-                        startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? baseEpochMs,
-                        endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? (baseEpochMs + viewportDurationMs),
-                        sourceStationId: s.sourceStationId ?? s.SourceStationId ?? (stations[0]?.id || 'station-0'),
-                        gain: s.gain ?? s.Gain ?? 1.0,
-                        channelMode: s.channelMode ?? s.ChannelMode ?? 'both',
-                        fadeInMs: s.fadeInMs ?? s.FadeInMs ?? 50,
-                        fadeOutMs: s.fadeOutMs ?? s.FadeOutMs ?? 50
-                    }))
+                    ...(currentA1 || {
+                        id: 'A1',
+                        name: 'Track A1',
+                        isMuted: false,
+                        isSolo: false,
+                        gain: 1.0,
+                        channelMode: 'both'
+                    }),
+                    clips: updatedClips
                 }
             ];
-        }
-
-        return [
-            {
-                id: 'A1',
-                name: 'Track A1',
-                isMuted: false,
-                isSolo: false,
-                gain: 1.0,
-                channelMode: 'both',
-                clips: []
-            }
-        ];
-    });
+        });
+    }, [audioPlan, baseEpochMs, viewportDurationMs, stations]);
 
     const playheadEpoch = baseEpochMs + playheadMs;
     const vpStartEpoch = baseEpochMs + viewportStartMs;
@@ -911,6 +938,19 @@ export default function AudioRoutingTrack({
         setSelectedMenuClip(prev => prev ? (type === 'in' ? { ...prev, fadeInMs: num } : { ...prev, fadeOutMs: num }) : null);
     }, [syncLanesToPlan]);
 
+    // Relative Gain Nudge (+10% or -10%)
+    const handleNudgeLaneGain = useCallback((laneId, delta) => {
+        setLanes(prev => {
+            const updated = prev.map(l => {
+                if (l.id !== laneId) return l;
+                const newGain = Math.max(0, Math.min(2.0, Math.round((l.gain + delta) * 100) / 100));
+                return { ...l, gain: newGain };
+            });
+            syncLanesToPlan(updated);
+            return updated;
+        });
+    }, [syncLanesToPlan]);
+
     // Drag to Move Entire Clip Along Timeline
     const handleClipMoveDrag = useCallback((ev, laneId, clipId) => {
         ev.preventDefault();
@@ -921,21 +961,26 @@ export default function AudioRoutingTrack({
         const clip = lane?.clips?.find(c => c.id === clipId);
         if (!clip) return;
 
+        isDraggingRef.current = true;
         const startClientX = ev.clientX;
         const initialStart = clip.startEpochMs;
         const initialEnd = clip.endEpochMs;
         const clipDur = initialEnd - initialStart;
 
-        const containerEl = containerRef.current;
-        if (!containerEl) return;
-        const rect = containerEl.querySelector('.audio-lane-timeline')?.getBoundingClientRect();
+        const surfaceEl = ev.currentTarget.closest('.track-surface') ||
+                          ev.currentTarget.closest('.audio-track-surface') ||
+                          containerRef.current?.querySelector('.track-surface') ||
+                          containerRef.current?.querySelector('.audio-track-surface') ||
+                          containerRef.current?.querySelector('.audio-lane-timeline');
+        if (!surfaceEl) return;
+        const rect = surfaceEl.getBoundingClientRect();
         if (!rect || rect.width <= 0) return;
 
         let hasMoved = false;
 
         const handleMouseMove = (moveEv) => {
             const dx = moveEv.clientX - startClientX;
-            if (Math.abs(dx) > 3) hasMoved = true;
+            if (Math.abs(dx) > 2) hasMoved = true;
             const deltaMs = (dx / rect.width) * viewportDurationMs;
 
             let targetStart = Math.round(initialStart + deltaMs);
@@ -973,6 +1018,7 @@ export default function AudioRoutingTrack({
         const handleMouseUp = () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            isDraggingRef.current = false;
             if (hasMoved) {
                 setLanes(prev => {
                     syncLanesToPlan(prev);
@@ -994,14 +1040,21 @@ export default function AudioRoutingTrack({
         const currentClip = currentLane?.clips.find(c => c.id === clipId);
         if (!currentClip) return;
 
+        isDraggingRef.current = true;
         const origStart = currentClip.startEpochMs;
         const origEnd = currentClip.endEpochMs;
 
+        const surfaceEl = ev.currentTarget.closest('.track-surface') ||
+                          ev.currentTarget.closest('.audio-track-surface') ||
+                          containerRef.current?.querySelector('.track-surface') ||
+                          containerRef.current?.querySelector('.audio-track-surface') ||
+                          containerRef.current?.querySelector('.audio-lane-timeline');
+        if (!surfaceEl) return;
+        const rect = surfaceEl.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return;
+
         const handleMouseMove = (moveEv) => {
             const deltaX = moveEv.clientX - startX;
-            const containerEl = containerRef.current?.querySelector('.audio-lane-timeline');
-            if (!containerEl) return;
-            const rect = containerEl.getBoundingClientRect();
             const deltaMs = (deltaX / rect.width) * viewportDurationMs;
 
             setLanes(prev => prev.map(l => {
@@ -1025,6 +1078,7 @@ export default function AudioRoutingTrack({
         const handleMouseUp = () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            isDraggingRef.current = false;
             setLanes(latest => {
                 syncLanesToPlan(latest);
                 return latest;
@@ -1132,292 +1186,192 @@ export default function AudioRoutingTrack({
     if (!stations || stations.length === 0) return null;
 
     // -------------------------------------------------------------
-    // RENDER: COLLAPSED VIEW (Closed by default, 28px)
-    // Aggregates waveforms across all active stations & channels
-    // -------------------------------------------------------------
-    if (!isBusExpanded) {
-        return (
-            <div
-                className="audio-routing-track-container is-compact-track"
-                ref={containerRef}
-                title="Audio Master Bus is Collapsed. Click or double-click to Expand Multi-Track Lanes (Fairlight/Premiere NLE)"
-            >
-                <div className="audio-track-label collapsed-bus-sidebar" onClick={toggleBusExpanded}>
-                    <button type="button" className="btn-expand-bus" title="Expand Audio Master Bus">
-                        ▶
-                    </button>
-                    <span className="audio-icon">{isMasterMuted || masterActiveClips.length === 0 ? '🔇' : '🔊'}</span>
-                    <span className="audio-title">AUDIO MASTER BUS</span>
-                    <span className="badge-bus-status">
-                        {masterActiveClips.length > 0 ? `${masterActiveClips.length} CLIPS ACTIVE` : (isMasterMuted ? 'MUTED' : '0 ACTIVE')}
-                    </span>
-                    <div className="mini-vu-dot" style={{ background: liveLevel.isPlaying ? '#10B981' : '#64748B' }} />
-                </div>
-                <div
-                    className="audio-track-timeline collapsed-bus-timeline"
-                    onClick={(ev) => {
-                        if (!ev.target.closest('.collapsed-master-clip')) {
-                            toggleBusExpanded();
-                        }
-                    }}
-                >
-                    {masterActiveClips.length === 0 ? (
-                        <>
-                            <div className="collapsed-audio-guide-line" />
-                            <span className="collapsed-audio-label">
-                                [ 🔇 MASTER AUDIO BUS (0 ACTIVE) — CLICK TO EXPAND MULTI-TRACK LANES ]
-                            </span>
-                        </>
-                    ) : (
-                        <CollapsedMasterAggregatedWaveform
-                            masterActiveClips={masterActiveClips}
-                            stations={stations}
-                            vpStartEpoch={vpStartEpoch}
-                            viewportDurationMs={viewportDurationMs}
-                            timeMode={timeMode}
-                            onExpand={toggleBusExpanded}
-                        />
-                    )}
-                </div>
-            </div>
-        );
-    }
-
-    // -------------------------------------------------------------
-    // RENDER: EXPANDED MULTI-LANE VIEW
+    // RENDER: UNIFIED AUDIO TRACK (Matches TimelineTrack 52px height & 230px sidebar)
     // -------------------------------------------------------------
     return (
-        <div className="audio-routing-track-container is-expanded-multitrack" ref={containerRef}>
-            {/* Master Header Deck */}
-            <div className="audio-bus-master-bar">
-                <div className="master-bar-left">
-                    <button
-                        type="button"
-                        className="btn-expand-bus is-open"
-                        onClick={toggleBusExpanded}
-                        title="Collapse Audio Master Bus"
+        <div className="audio-routing-tracks-wrapper" ref={containerRef}>
+            {lanes.map((lane, lIdx) => {
+                const laneColor = LANE_COLORS[lIdx % LANE_COLORS.length];
+                const isDragOver = dragOverLaneId === lane.id;
+                const activeStation = stations.find(s => s.id === lane.clips[0]?.sourceStationId) || stations[0];
+                const activeStationName = activeStation ? (activeStation.displayName || activeStation.hostname || activeStation.id) : (stations[0]?.displayName || 'Station');
+
+                return (
+                    <div
+                        key={lane.id}
+                        className="timeline-track-container audio-routing-track-container station-collapsed-track"
                     >
-                        ▼
-                    </button>
-                    <span className="audio-icon">🔊</span>
-                    <span className="audio-master-title">AUDIO MASTER BUS</span>
-                    <span className="badge-lanes-count">{lanes.length} TRACKS</span>
+                        {/* Track Sidebar (230px, 52px height) matching station track layout */}
+                        <div
+                            className="track-sidebar station-collapsed-sidebar audio-track-sidebar"
+                            style={{ borderLeftColor: laneColor }}
+                            title={`Audio Track: ${lane.name} • Station: ${activeStationName} [${(lane.channelMode || 'both').toUpperCase()}]`}
+                        >
+                            <div className={`status-indicator ${lane.isMuted || isMasterMuted ? 'idle' : 'online'}`} title={lane.isMuted ? 'Audio Muted' : 'Audio Active'} />
+                            <span className="audio-lane-icon" title="Audio Bus">
+                                {lane.isMuted || isMasterMuted ? '🔇' : '🔊'}
+                            </span>
+                            <span className="audio-lane-tag" style={{ backgroundColor: laneColor }} title={`Lane ${lane.id}`}>
+                                {lane.id}
+                            </span>
 
-                    <button
-                        type="button"
-                        className="btn-add-audio-lane"
-                        onClick={handleAddLane}
-                        title="Add New Audio Lane (A2, A3...)"
-                    >
-                        ＋ ADD AUDIO LANE
-                    </button>
-
-                    <button
-                        type="button"
-                        className="btn-split-playhead"
-                        onClick={handleGlobalSplitAtPlayhead}
-                        title="Split clip at playhead (Ctrl+K / Razor Tool)"
-                    >
-                        ✂️ SPLIT AT PLAYHEAD
-                    </button>
-                </div>
-
-                <div className="master-bar-right">
-                    {/* Live Acoustic VU Meter Readout */}
-                    <div className="vu-meter-readout" title={`Current Master Level: ${liveLevel.db.toFixed(1)} dB`}>
-                        <span className="vu-db-text">{liveLevel.db > -55 ? `${liveLevel.db.toFixed(0)} dB` : '-∞ dB'}</span>
-                        <div className="vu-meter-groove">
-                            <div
-                                className="vu-meter-bar"
-                                style={{
-                                    width: `${Math.min(100, Math.max(0, (liveLevel.peak || 0) * 100))}%`,
-                                    background: liveLevel.peak > 0.85 ? '#F43F5E' : (liveLevel.peak > 0.65 ? '#F59E0B' : '#10B981')
-                                }}
-                            />
-                        </div>
-                    </div>
-
-                    <button
-                        type="button"
-                        className={`btn-master-mute ${isMasterMuted ? 'is-muted' : ''}`}
-                        onClick={() => {
-                            setIsMasterMuted(prev => {
-                                const next = !prev;
-                                syncLanesToPlan(lanes);
-                                return next;
-                            });
-                        }}
-                        title={isMasterMuted ? 'Unmute All Audio Buses' : 'Mute All Audio Buses'}
-                    >
-                        {isMasterMuted ? '🔇 MUTED' : '🔊 MUTE ALL'}
-                    </button>
-                </div>
-            </div>
-
-            {/* Individual Audio Lanes (A1, A2, A3...) */}
-            <div className="audio-lanes-stack">
-                {lanes.map((lane, lIdx) => {
-                    const laneColor = LANE_COLORS[lIdx % LANE_COLORS.length];
-                    const isDragOver = dragOverLaneId === lane.id;
-                    const activeStation = stations.find(s => s.id === lane.clips[0]?.sourceStationId) || stations[0];
-
-                    return (
-                        <div key={lane.id} className="audio-lane-row">
-                            {/* Lane Control Strip (Header) */}
-                            <div className="audio-lane-header" style={{ borderLeftColor: laneColor }}>
-                                <div className="lane-ident">
-                                    <span className="lane-badge" style={{ backgroundColor: laneColor }}>{lane.id}</span>
-                                    <span className="lane-name">{lane.name}</span>
-                                </div>
-
-                                <div className="lane-station-selector">
-                                    <select
-                                        className="lane-station-select"
-                                        value={activeStation?.id || ''}
-                                        onChange={(e) => handleSetLaneStation(lane.id, e.target.value)}
-                                        title="Select source workstation for this track / Drop workstation here"
-                                    >
-                                        {stations.map(st => (
-                                            <option key={st.id} value={st.id}>
-                                                {st.displayName || st.hostname || st.id}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="lane-buttons-group">
-                                    <button
-                                        type="button"
-                                        className={`btn-lane-toggle mute-btn ${lane.isMuted ? 'active' : ''}`}
-                                        onClick={() => handleToggleLaneMute(lane.id)}
-                                        title={lane.isMuted ? 'Unmute Lane' : 'Mute Lane'}
-                                    >
-                                        M
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`btn-lane-toggle solo-btn ${lane.isSolo ? 'active' : ''}`}
-                                        onClick={() => handleToggleLaneSolo(lane.id)}
-                                        title={lane.isSolo ? 'Unsolo Lane' : 'Solo Lane'}
-                                    >
-                                        S
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`btn-lane-channel-mode mode-${lane.channelMode || 'both'}`}
-                                        onClick={() => handleCycleLaneChannelMode(lane.id)}
-                                        title={`Discrete Audio Channel: ${(lane.channelMode || 'both').toUpperCase()} (Click to toggle BOTH / SYS / MIC)`}
-                                    >
-                                        {(lane.channelMode || 'both').toUpperCase()}
-                                    </button>
-                                </div>
-
-                                <div className="lane-gain-control">
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="2"
-                                        step="0.05"
-                                        value={lane.gain}
-                                        onChange={(e) => handleUpdateLaneGain(lane.id, e.target.value)}
-                                        title={`Lane Gain: ${Math.round(lane.gain * 100)}%`}
-                                        className="lane-gain-slider"
-                                    />
-                                    <span className="gain-label-pct">{Math.round(lane.gain * 100)}%</span>
-                                </div>
-
-                                {lanes.length > 1 && (
-                                    <button
-                                        type="button"
-                                        className="btn-remove-lane"
-                                        onClick={() => handleRemoveLane(lane.id)}
-                                        title="Delete Audio Lane"
-                                    >
-                                        ✕
-                                    </button>
-                                )}
+                            {/* Workstation Source Selector */}
+                            <div className="audio-station-picker" title="Change Audio Workstation Source">
+                                <select
+                                    className="audio-station-select"
+                                    value={activeStation?.id || ''}
+                                    onChange={(e) => handleSetLaneStation(lane.id, e.target.value)}
+                                    title="Select source workstation for audio track"
+                                >
+                                    {stations.map(st => (
+                                        <option key={st.id} value={st.id}>
+                                            {st.displayName || st.hostname || st.id}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
-                            {/* Lane Timeline Track Canvas with Drag & Drop */}
-                            <div
-                                className={`audio-lane-timeline ${isDragOver ? 'is-drag-over' : ''}`}
-                                onClick={() => setSelectedClipIds([])}
-                                onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = 'copy';
-                                    if (dragOverLaneId !== lane.id) setDragOverLaneId(lane.id);
-                                }}
-                                onDragLeave={() => {
-                                    if (dragOverLaneId === lane.id) setDragOverLaneId(null);
-                                }}
-                                onDrop={(e) => {
-                                    e.preventDefault();
-                                    setDragOverLaneId(null);
-                                    const stId = e.dataTransfer.getData('text/station-id') || e.dataTransfer.getData('text/plain');
-                                    if (stId) {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                                        const dropEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
-                                        handleAddClipToLane(lane.id, stId, dropEpoch);
-                                    }
-                                }}
-                                onDoubleClick={(e) => {
+                            {/* Channel Mode Toggle: SYS \ MIC \ BOTH */}
+                            <button
+                                type="button"
+                                className={`btn-channel-toggle mode-${lane.channelMode || 'both'}`}
+                                onClick={() => handleCycleLaneChannelMode(lane.id)}
+                                title={`Audio Channel: ${(lane.channelMode || 'both').toUpperCase()} (Click to toggle SYS \\ MIC \\ BOTH)`}
+                            >
+                                {(lane.channelMode || 'both') === 'both' ? '⚡ BOTH' : ((lane.channelMode || 'both') === 'sys' ? '💻 SYS' : '🎙️ MIC')}
+                            </button>
+
+                            {/* Gain Level Controls: Slider + Percentage + Relative Nudges */}
+                            <div className="audio-gain-cluster" title={`Master Track Gain: ${Math.round(lane.gain * 100)}%`}>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="2"
+                                    step="0.05"
+                                    value={lane.gain}
+                                    onChange={(e) => handleUpdateLaneGain(lane.id, e.target.value)}
+                                    className="audio-gain-slider"
+                                    title={`Track Gain: ${Math.round(lane.gain * 100)}%`}
+                                />
+                                <span className="gain-pct-badge">{Math.round(lane.gain * 100)}%</span>
+                                <button
+                                    type="button"
+                                    className="btn-gain-nudge btn-gain-down"
+                                    onClick={() => handleNudgeLaneGain(lane.id, -0.1)}
+                                    title="Decrease Gain (-10%) relative to other sources"
+                                >
+                                    -
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-gain-nudge btn-gain-up"
+                                    onClick={() => handleNudgeLaneGain(lane.id, 0.1)}
+                                    title="Increase Gain (+10%) relative to other sources"
+                                >
+                                    +
+                                </button>
+                            </div>
+
+                            {/* Solo & Mute Buttons */}
+                            <div className="audio-mute-solo-btns">
+                                <button
+                                    type="button"
+                                    className={`btn-audio-mute ${lane.isMuted ? 'is-active' : ''}`}
+                                    onClick={() => handleToggleLaneMute(lane.id)}
+                                    title={lane.isMuted ? 'Unmute Track' : 'Mute Track'}
+                                >
+                                    M
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`btn-audio-solo ${lane.isSolo ? 'is-active' : ''}`}
+                                    onClick={() => handleToggleLaneSolo(lane.id)}
+                                    title={lane.isSolo ? 'Unsolo Track' : 'Solo Track'}
+                                >
+                                    S
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Track Timeline Surface with Draggable & Trimmable Audio Cuts */}
+                        <div
+                            className={`track-surface audio-track-surface ${isDragOver ? 'is-drag-over' : ''}`}
+                            onClick={() => setSelectedClipIds([])}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'copy';
+                                if (dragOverLaneId !== lane.id) setDragOverLaneId(lane.id);
+                            }}
+                            onDragLeave={() => {
+                                if (dragOverLaneId === lane.id) setDragOverLaneId(null);
+                            }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                setDragOverLaneId(null);
+                                const stId = e.dataTransfer.getData('text/station-id') || e.dataTransfer.getData('text/plain');
+                                if (stId) {
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                                    const clickEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
-                                    handleAddClipToLane(lane.id, stations[0]?.id, clickEpoch);
-                                }}
-                            >
-                                {lane.clips.map(clip => {
-                                    const st = stations.find(x => x.id === clip.sourceStationId);
-                                    const stationName = st ? (st.displayName || st.hostname || st.id) : clip.sourceStationId;
+                                    const dropEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
+                                    handleAddClipToLane(lane.id, stId, dropEpoch);
+                                }
+                            }}
+                            onDoubleClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                                const clickEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
+                                handleAddClipToLane(lane.id, stations[0]?.id, clickEpoch);
+                            }}
+                        >
+                            {lane.clips.map(clip => {
+                                const st = stations.find(x => x.id === clip.sourceStationId);
+                                const stationName = st ? (st.displayName || st.hostname || st.id) : clip.sourceStationId;
 
-                                    if (clip.endEpochMs <= vpStartEpoch || clip.startEpochMs >= vpEndEpoch) return null;
+                                if (clip.endEpochMs <= vpStartEpoch || clip.startEpochMs >= vpEndEpoch) return null;
 
-                                    return (
-                                        <AudioClipRenderer
-                                            key={clip.id}
-                                            clip={clip}
-                                            lane={lane}
-                                            laneColor={laneColor}
-                                            isSelected={selectedClipIds.includes(clip.id)}
-                                            onSelect={(ev) => {
-                                                ev.stopPropagation();
-                                                if (ev.ctrlKey || ev.metaKey) {
-                                                    setSelectedClipIds(prev =>
-                                                        prev.includes(clip.id) ? prev.filter(x => x !== clip.id) : [...prev, clip.id]
-                                                    );
-                                                } else {
-                                                    setSelectedClipIds([clip.id]);
-                                                }
-                                            }}
-                                            onOpenMenu={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
-                                            onTrimDrag={(ev, edge) => handleTrimDrag(ev, lane.id, clip.id, edge)}
-                                            onClipMoveDrag={(ev) => handleClipMoveDrag(ev, lane.id, clip.id)}
-                                            onToggleChannelMode={() => handleCycleClipChannelMode(lane.id, clip.id)}
-                                            vpStartEpoch={vpStartEpoch}
-                                            viewportDurationMs={viewportDurationMs}
-                                            timeMode={timeMode}
-                                            stationName={stationName}
-                                        />
-                                    );
-                                })}
+                                return (
+                                    <AudioClipRenderer
+                                        key={clip.id}
+                                        clip={clip}
+                                        lane={lane}
+                                        laneColor={laneColor}
+                                        isSelected={selectedClipIds.includes(clip.id)}
+                                        onSelect={(ev) => {
+                                            ev.stopPropagation();
+                                            if (ev.ctrlKey || ev.metaKey) {
+                                                setSelectedClipIds(prev =>
+                                                    prev.includes(clip.id) ? prev.filter(x => x !== clip.id) : [...prev, clip.id]
+                                                );
+                                            } else {
+                                                setSelectedClipIds([clip.id]);
+                                            }
+                                        }}
+                                        onOpenMenu={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
+                                        onTrimDrag={(ev, edge) => handleTrimDrag(ev, lane.id, clip.id, edge)}
+                                        onClipMoveDrag={(ev) => handleClipMoveDrag(ev, lane.id, clip.id)}
+                                        onToggleChannelMode={() => handleCycleClipChannelMode(lane.id, clip.id)}
+                                        vpStartEpoch={vpStartEpoch}
+                                        viewportDurationMs={viewportDurationMs}
+                                        timeMode={timeMode}
+                                        stationName={stationName}
+                                    />
+                                );
+                            })}
 
-                                {/* Empty Lane Insertion Guide */}
-                                {lane.clips.length === 0 && (
-                                    <div
-                                        className="empty-lane-placeholder"
-                                        onClick={() => handleAddClipToLane(lane.id, stations[0]?.id, playheadEpoch)}
-                                        title="Click or drop workstation here to insert audio clip"
-                                    >
-                                        <span>＋ CLICK OR DRAG WORKSTATION HERE ({lane.name})</span>
-                                    </div>
-                                )}
-                            </div>
+                            {/* Empty Lane Insertion Guide */}
+                            {lane.clips.length === 0 && (
+                                <div
+                                    className="empty-lane-placeholder"
+                                    onClick={() => handleAddClipToLane(lane.id, stations[0]?.id, playheadEpoch)}
+                                    title="Click or drop workstation here to insert audio clip"
+                                >
+                                    <span>＋ CLICK OR DRAG WORKSTATION HERE ({lane.name})</span>
+                                </div>
+                            )}
                         </div>
-                    );
-                })}
-            </div>
+                    </div>
+                );
+            })}
 
             {/* Tactical Floating Context Menu for Audio Clip Rendered via Portal to eliminate clipping */}
             {selectedMenuClip && createPortal(

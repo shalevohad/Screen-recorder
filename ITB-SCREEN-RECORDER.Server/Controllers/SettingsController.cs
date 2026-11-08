@@ -12,6 +12,7 @@ using ITB_SCREEN_RECORDER.Server.Services.Security;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Models.Security;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Plugins;
 using Microsoft.Extensions.Options;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
@@ -46,6 +47,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly IStorageTelemetryService _storageTelemetryService;
         private readonly IServerRestartService? _restartService;
         private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
+        private readonly IEnumerable<IFeatureModule> _features;
 
         public SettingsController(
             ISystemConfigDbSyncService syncService,
@@ -57,7 +59,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             TelemetryBroadcastService broadcastService,
             IStorageTelemetryService storageTelemetryService,
             Microsoft.Extensions.Logging.ILogger<SettingsController> logger,
-            IServerRestartService? restartService = null)
+            IServerRestartService? restartService = null,
+            IEnumerable<IFeatureModule>? features = null)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
@@ -69,6 +72,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _storageTelemetryService = storageTelemetryService;
             _logger = logger;
             _restartService = restartService;
+            _features = features ?? Enumerable.Empty<IFeatureModule>();
+        }
+
+        private bool HasFeature(string featureIdOrKeyword)
+        {
+            return _features.Any(f => f.IsEnabled &&
+                (f.Id.Equals(featureIdOrKeyword, StringComparison.OrdinalIgnoreCase) ||
+                 f.Id.IndexOf(featureIdOrKeyword, StringComparison.OrdinalIgnoreCase) >= 0));
         }
 
         [HttpGet]
@@ -76,37 +87,37 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public IActionResult Get()
         {
             var config = _configMonitor.CurrentValue;
-            if (!User.HasClaim("is_root", "true") && !User.HasClaim("perm", PermissionKeys.SecurityRolesManage))
+            var isRootOrSecAdmin = User.HasClaim("is_root", "true") || User.HasClaim("perm", PermissionKeys.SecurityRolesManage);
+            var hasExtractor = HasFeature("extractor");
+
+            var result = new SystemConfig
             {
-                if (config.Security != null && !string.IsNullOrEmpty(config.Security.JwtSecretKey))
-                {
-                    var masked = new SystemConfig
+                HttpPort = config.HttpPort,
+                RecordingRetentionDays = config.RecordingRetentionDays,
+                MaxStorageQuotaGb = config.MaxStorageQuotaGb,
+                DashboardRefreshRateMs = config.DashboardRefreshRateMs,
+                DisplayTimezone = config.DisplayTimezone,
+                DisplayLocale = config.DisplayLocale,
+                ManualDstTransitions = config.ManualDstTransitions,
+                Dashboard = config.Dashboard,
+                MediaMtx = config.MediaMtx,
+                Storage = config.Storage,
+                DefaultVideoBitrate = config.DefaultVideoBitrate,
+                DefaultTargetFps = config.DefaultTargetFps,
+                Discovery = config.Discovery,
+                // Principle of Secrecy (עקרון החשאיות): AutoDirector settings are strictly suppressed if this server does not have the feature installed.
+                AutoDirector = hasExtractor ? (config.AutoDirector ?? new AutoDirectorSettings()) : null,
+                Security = (!isRootOrSecAdmin && config.Security != null && !string.IsNullOrEmpty(config.Security.JwtSecretKey))
+                    ? new SecuritySettings
                     {
-                        HttpPort = config.HttpPort,
-                        RecordingRetentionDays = config.RecordingRetentionDays,
-                        MaxStorageQuotaGb = config.MaxStorageQuotaGb,
-                        DashboardRefreshRateMs = config.DashboardRefreshRateMs,
-                        DisplayTimezone = config.DisplayTimezone,
-                        DisplayLocale = config.DisplayLocale,
-                        ManualDstTransitions = config.ManualDstTransitions,
-                        Dashboard = config.Dashboard,
-                        MediaMtx = config.MediaMtx,
-                        Storage = config.Storage,
-                        DefaultVideoBitrate = config.DefaultVideoBitrate,
-                        DefaultTargetFps = config.DefaultTargetFps,
-                        Discovery = config.Discovery,
-                        AutoDirector = config.AutoDirector ?? new AutoDirectorSettings(),
-                        Security = new SecuritySettings
-                        {
-                            AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
-                            TokenExpirationHours = config.Security.TokenExpirationHours,
-                            JwtSecretKey = "***"
-                        }
-                    };
-                    return Ok(masked);
-                }
-            }
-            return Ok(config);
+                        AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
+                        TokenExpirationHours = config.Security.TokenExpirationHours,
+                        JwtSecretKey = "***"
+                    }
+                    : config.Security
+            };
+
+            return Ok(result);
         }
 
         [HttpGet("dst-transitions")]
@@ -208,7 +219,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         config.Discovery.NetworkInterfaceName = updatedConfig.Discovery.NetworkInterfaceName;
                     }
 
-                    if (updatedConfig.AutoDirector != null)
+                    // Principle of Secrecy (עקרון החשאיות): Accept AutoDirector configuration updates ONLY if the server has the feature installed.
+                    if (updatedConfig.AutoDirector != null && HasFeature("extractor"))
                     {
                         config.AutoDirector ??= new AutoDirectorSettings();
                         if (updatedConfig.AutoDirector.MinDwellSeconds > 0)
