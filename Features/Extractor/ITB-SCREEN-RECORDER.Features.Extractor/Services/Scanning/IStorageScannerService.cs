@@ -16,5 +16,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc);
         Task<ReindexResult> ScanAndIndexMissingFilesAsync(CancellationToken ct = default);
         Task<int> ForceIndexStationAsync(string hostname, CancellationToken ct = default);
+        Task<List<string>> GetRecordingDatesAsync(int? year = null, int? month = null, string? stationId = null, string? timeMode = "LOCAL", CancellationToken ct = default);
     }
 }

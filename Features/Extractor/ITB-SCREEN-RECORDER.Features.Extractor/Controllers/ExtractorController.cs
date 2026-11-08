@@ -38,6 +38,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
             return Ok(hosts);
         }
 
+        [HttpGet("recording-dates")]
+        public virtual async Task<IActionResult> GetRecordingDates(
+            [FromQuery] int? year,
+            [FromQuery] int? month,
+            [FromQuery] string? stationId,
+            [FromQuery] string? timeMode,
+            CancellationToken ct)
+        {
+            var dates = await _storageScanner.GetRecordingDatesAsync(year, month, stationId, timeMode ?? "LOCAL", ct);
+            return Ok(dates);
+        }
+
         [HttpPost("reindex")]
         public virtual async Task<IActionResult> ReindexStorage(CancellationToken ct)
         {

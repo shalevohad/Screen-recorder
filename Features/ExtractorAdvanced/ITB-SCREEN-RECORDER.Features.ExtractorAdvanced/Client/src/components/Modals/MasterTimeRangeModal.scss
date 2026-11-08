@@ -574,6 +574,34 @@
                             border-radius: 6px !important;
                         }
 
+                        .cal-cell-recording-dot {
+                            position: absolute;
+                            bottom: 3.5px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            width: 5px;
+                            height: 5px;
+                            border-radius: 50%;
+                            background-color: var(--accent-emerald, #10B981);
+                            box-shadow: 0 0 6px var(--accent-emerald, #10B981), 0 0 2px rgba(16, 185, 129, 0.9);
+                            pointer-events: none;
+                            transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+                        }
+
+                        &:hover:not(.empty) .cal-cell-recording-dot {
+                            transform: translateX(-50%) scale(1.35);
+                            box-shadow: 0 0 9px var(--accent-emerald, #10B981), 0 0 4px rgba(16, 185, 129, 1);
+                        }
+
+                        &.start-edge,
+                        &.end-edge {
+                            .cal-cell-recording-dot {
+                                background-color: #020617;
+                                border: 1px solid var(--accent-emerald, #10B981);
+                                box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+                            }
+                        }
+
                         .cal-cell-bookmark-ribbon {
                             position: absolute;
                             top: 2px;
@@ -594,6 +622,46 @@
                                 font-weight: 900;
                                 line-height: 1;
                             }
+                        }
+                    }
+                }
+
+                .cal-indicators-legend {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-start;
+                    gap: 14px;
+                    width: 100%;
+                    padding: 6px 4px 2px 4px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.4px;
+                    color: var(--text-muted, #94a3b8);
+
+                    .legend-item {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5.5px;
+
+                        &.recordings {
+                            color: #cbd5e1;
+                        }
+
+                        &.bookmarks {
+                            color: var(--accent-amber-light, #fbbf24);
+                        }
+
+                        .legend-dot.green {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 50%;
+                            background-color: var(--accent-emerald, #10b981);
+                            box-shadow: 0 0 6px var(--accent-emerald, #10b981);
+                        }
+
+                        .legend-icon.amber {
+                            font-size: 10px;
+                            line-height: 1;
                         }
                     }
                 }

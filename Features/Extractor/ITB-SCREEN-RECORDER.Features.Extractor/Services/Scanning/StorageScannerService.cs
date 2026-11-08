@@ -201,6 +201,99 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return hostsSet.OrderBy(h => h).ToList();
         }
 
+        public async Task<List<string>> GetRecordingDatesAsync(
+            int? year = null,
+            int? month = null,
+            string? stationId = null,
+            string? timeMode = "LOCAL",
+            CancellationToken ct = default)
+        {
+            var datesSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                using var conn = OpenCatalogDbConnection();
+
+                string timeModifier = string.Equals(timeMode, "LOCAL", StringComparison.OrdinalIgnoreCase) 
+                    ? ", 'localtime'" 
+                    : "";
+
+                var whereClauses = new List<string>();
+                var parameters = new DynamicParameters();
+
+                if (!string.IsNullOrWhiteSpace(stationId))
+                {
+                    string cleanHost = stationId.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? stationId.Substring(5) : stationId;
+                    whereClauses.Add(@"(station_id = @cleanHost 
+                                       OR station_id = ('live/' || @cleanHost) 
+                                       OR station_id = @rawHost 
+                                       OR station_id LIKE (@cleanHost || '/%') 
+                                       OR station_id LIKE ('live/' || @cleanHost || '/%')) COLLATE NOCASE");
+                    parameters.Add("cleanHost", cleanHost);
+                    parameters.Add("rawHost", stationId);
+                }
+
+                if (year.HasValue && year.Value > 2000)
+                {
+                    DateTime startUtc;
+                    DateTime endUtc;
+                    if (month.HasValue && month.Value >= 1 && month.Value <= 12)
+                    {
+                        startUtc = new DateTime(year.Value, month.Value, 1, 0, 0, 0, DateTimeKind.Utc);
+                        endUtc = startUtc.AddMonths(1);
+                    }
+                    else
+                    {
+                        startUtc = new DateTime(year.Value, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                        endUtc = startUtc.AddYears(1);
+                    }
+
+                    long minEpoch = new DateTimeOffset(startUtc.AddDays(-1)).ToUnixTimeMilliseconds();
+                    long maxEpoch = new DateTimeOffset(endUtc.AddDays(1)).ToUnixTimeMilliseconds();
+
+                    whereClauses.Add("end_epoch_ms >= @minEpoch AND start_epoch_ms <= @maxEpoch");
+                    parameters.Add("minEpoch", minEpoch);
+                    parameters.Add("maxEpoch", maxEpoch);
+                }
+
+                string filterStr = whereClauses.Count > 0 
+                    ? "AND " + string.Join(" AND ", whereClauses) 
+                    : "";
+
+                string finalSql = $@"
+                    SELECT DISTINCT date(start_epoch_ms / 1000, 'unixepoch'{timeModifier}) AS rec_date
+                    FROM recording_chunks
+                    WHERE start_epoch_ms > 0 {filterStr}
+                    UNION
+                    SELECT DISTINCT date(end_epoch_ms / 1000, 'unixepoch'{timeModifier}) AS rec_date
+                    FROM recording_chunks
+                    WHERE end_epoch_ms > 0 {filterStr}
+                    ORDER BY 1;";
+
+                var dbDates = await conn.QueryAsync<string>(finalSql, parameters);
+                foreach (var d in dbDates)
+                {
+                    if (!string.IsNullOrWhiteSpace(d) && d.Length == 10 && d[4] == '-' && d[7] == '-')
+                    {
+                        if (year.HasValue)
+                        {
+                            if (!d.StartsWith(year.Value.ToString("D4")))
+                                continue;
+                            if (month.HasValue && !d.Substring(5, 2).Equals(month.Value.ToString("D2")))
+                                continue;
+                        }
+                        datesSet.Add(d);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[STORAGE SCANNER] Failed querying recording dates from DB.");
+            }
+
+            return datesSet.OrderBy(d => d).ToList();
+        }
+
         private static void ScanHostsInDirectory(string dir, HashSet<string> hostsSet)
         {
             if (!Directory.Exists(dir)) return;

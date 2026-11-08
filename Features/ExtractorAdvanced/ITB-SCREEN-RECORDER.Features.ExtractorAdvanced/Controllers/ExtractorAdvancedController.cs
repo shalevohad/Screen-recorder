@@ -560,6 +560,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             return "1080p";
         }
 
+        [HttpGet("recording-dates")]
+        public async Task<IActionResult> GetRecordingDates(
+            [FromQuery] int? year,
+            [FromQuery] int? month,
+            [FromQuery] string? stationId,
+            [FromQuery] string? timeMode,
+            CancellationToken ct)
+        {
+            var dates = await _storageScanner.GetRecordingDatesAsync(year, month, stationId, timeMode ?? "LOCAL", ct);
+            return Ok(dates);
+        }
+
         [HttpGet("timeline-segments")]
         [HttpGet("/api/v1/extractor/timeline-segments")]
         public async Task<IActionResult> GetTimelineSegments(

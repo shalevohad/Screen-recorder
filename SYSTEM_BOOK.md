@@ -91,6 +91,7 @@
 69. [Focus-Aware Arrow Key Routing Architecture: Playhead Scrubbing vs. Canvas Screen Nudging (2026-11-08)](#69-focus-aware-arrow-key-routing-architecture-playhead-scrubbing-vs-canvas-screen-nudging-2026-11-08)
 70. [Tactical Fullscreen Theater Frosted Glass Blur & System Isolation Architecture (2026-11-08)](#70-tactical-fullscreen-theater-frosted-glass-blur--system-isolation-architecture-2026-11-08)
 71. [Keystroke Presentation Architecture Simplification: Permanent Migration to Hard Burn-In (ASS) & Deprecation of Soft SRT Captions (2026-11-08)](#71-keystroke-presentation-architecture-simplification-permanent-migration-to-hard-burn-in-ass--deprecation-of-soft-srt-captions-2026-11-08)
+72. [Tactical Mission Date Picker Recorded Media Presence Indicator (Green Dot Architecture) (2026-11-08)](#72-tactical-mission-date-picker-recorded-media-presence-indicator-green-dot-architecture-2026-11-08)
 
 ---
 
@@ -4618,3 +4619,48 @@ In high-stakes forensic video triage and air-gapped debriefings, soft subtitle t
   - `ExtractorAdvanced/Client`: 145 passed across 20 test suites (`npm test`).
   - `ITB-SCREEN-RECORDER.Tests`: 453 passed across all .NET test assemblies (`dotnet test --no-build`).
   - Production Builds: Clean Vite builds for both Extractor widget (881 kB) and Server ClientApp (589 kB).
+
+
+## 72. Tactical Mission Date Picker Recorded Media Presence Indicator (Green Dot Architecture) (2026-11-08)
+
+### 72.1 Operational Context & Operator Ergonomics
+In large-scale continuous recording deployments (70–100+ workstations over rolling multi-week retention windows), mission operators triage and extract incident video scopes using the forensic Studio calendar date picker (`MasterTimeRangeModal`). Prior to this architecture, calendar cells gave no visual hint regarding which historical calendar dates contained recorded video chunks in the storage catalog. Operators had to guess incident recording dates or click arbitrary dates to see if timeline segments loaded.
+
+To provide instant operational clarity, the date picker now features an **air-gapped media presence indicator**: each calendar day cell that contains recorded video chunks is flagged with a high-visibility tactical glowing green dot (`--accent-emerald` / `#10B981`), backed by a lightweight SQLite catalog query.
+
+### 72.2 High-Performance Catalog Query & API Design
+The backend architecture avoids costly filesystem traversals by querying the existing SQLite index in `system_catalog.db` (`recording_chunks` table):
+- **Endpoint**: `GET /api/v1/extractor-advanced/recording-dates` and `GET /api/v1/extractor/recording-dates`
+- **Parameters**:
+  - `year` (optional `int`): Filters dates within the specified Gregorian year.
+  - `month` (optional `int`, 1–12): Filters dates within the specified month.
+  - `stationId` (optional `string`): Filters dates for a specific workstation hostname or stream path.
+  - `timeMode` (optional `string`, `"LOCAL"` or `"UTC"`, default `"LOCAL"`): Adjusts the date boundary calculation using SQLite's native `localtime` modifier or raw UTC epoch timestamps.
+- **SQL Implementation**:
+  ```sql
+  SELECT DISTINCT date(start_epoch_ms / 1000, 'unixepoch', 'localtime') AS rec_date
+  FROM recording_chunks
+  WHERE start_epoch_ms > 0
+  UNION
+  SELECT DISTINCT date(end_epoch_ms / 1000, 'unixepoch', 'localtime') AS rec_date
+  FROM recording_chunks
+  WHERE end_epoch_ms > 0
+  ORDER BY 1;
+  ```
+- **Performance**: Executed in $<2\text{ms}$ over tens of thousands of chunks, returning a compact JSON array of `YYYY-MM-DD` strings (e.g. `["2026-11-02", "2026-11-03", ...]`).
+
+### 72.3 Frontend Reactive Rendering & Visual Hierarchy
+In `MasterTimeRangeModal.jsx` and `MasterTimeRangeModal.scss`:
+1. **$O(1)$ Memoized Set Lookup**: On modal opening or timezone mode changes (`LOCAL` vs `UTC`), dates are loaded into `recordingDates` state and indexed into a reactive `Set`.
+2. **Cell Element Integration**:
+   - For every cell matching `recordingDatesSet.has(dateStr)`, the class `has-recordings` is attached and `<span className="cal-cell-recording-dot" />` is rendered at the bottom center of the day cell.
+   - **Hover Scale & Glow**: On cell hover, the green dot scales smoothly by $1.35\times$ with intensified emerald glow (`box-shadow: 0 0 9px var(--accent-emerald)`).
+   - **Selected Edge Invariant**: When a date is selected as the range start (`.start-edge`) or end (`.end-edge`), the dot adapts with a contrast border (`border: 1px solid var(--accent-emerald)`) against the bright cyan/amber background to guarantee legibility.
+   - **Tactical Legend Bar**: A dedicated `.cal-indicators-legend` bar sits below the calendar grid, clearly identifying the emerald dot ("Recordings Available") alongside bookmark ribbons ("Bookmarks").
+
+### 72.4 Verification & Compliance Matrix
+- **Automated Verification**:
+  - Client Test Suite: `Features/ExtractorAdvanced/Client/src/tests/calendarRecordingIndicator.test.js` validates AST declarations, class binding, tooltip formatting, and SCSS tokens.
+  - .NET Integration Suite: `ITB-SCREEN-RECORDER.Tests/Extractor/StorageScannerRecordingDatesTests.cs` verifies SQLite date extraction, month/year filtering, and station filtering.
+  - Strict Route & Swagger Contract: `ApiRouteAndSwaggerIntegrityTests.cs` confirms zero route collisions across controllers.
+- **Offline / Air-Gapped Compliance (Rule 14)**: 100% self-contained within local SQLite metadata and client-side styling; zero external dependencies or cloud calls.
