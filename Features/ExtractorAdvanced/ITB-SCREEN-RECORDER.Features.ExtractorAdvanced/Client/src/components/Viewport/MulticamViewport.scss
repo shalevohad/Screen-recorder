@@ -26,6 +26,46 @@
         height: 100%;
     }
 
+    /* ============================================================== */
+    /* FULLSCREEN CANVAS GRID CINEMA THEATER BLUR                     */
+    /* Heavily blurs unrelated surrounding system menus and toolbars  */
+    /* so they cannot be identified, preserving ambient spatial depth */
+    /* ============================================================== */
+    &.fullscreen-grid-active {
+        /* CAD Precision Rulers: Heavily blurred frosted glass in fullscreen theater */
+        .canvas-rulers-top-row,
+        .canvas-ruler-left-bar,
+        .canvas-ruler-corner {
+            filter: blur(14px) opacity(0.25) !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transition: filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
+        }
+
+        /* Left & Right Tactical Wing Docks: Heavily blurred frosted glass; smoothly unblurs on direct hover */
+        .canvas-left-wing-dock,
+        .canvas-right-wing-dock {
+            filter: blur(14px) opacity(0.35) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            transition: filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
+
+            &:hover,
+            &.has-active-popout {
+                filter: blur(0px) opacity(1) !important;
+            }
+        }
+
+        /* Outer Arena & Stage Wrapper: Cinematic dark frosted vignette */
+        .canvas-editing-arena {
+            background: #020617 !important;
+        }
+
+        .canvas-stage-wrapper {
+            background: radial-gradient(circle at center, rgba(15, 23, 42, 0.75) 0%, rgba(2, 6, 23, 0.98) 100%) !important;
+        }
+    }
+
     /* Universal Master Canvas Composition Mode Bar */
     .multicam-composition-mode-bar {
         .btn-comp-action {

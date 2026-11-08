@@ -1121,6 +1121,23 @@ export default function ExtractorAdvancedStudio() {
     }, []);
 
     useEffect(() => {
+        if (isGridFullscreen) {
+            document.body?.classList?.add('is-studio-fullscreen');
+            window.dispatchEvent(new CustomEvent('itb:studio-fullscreen-change', {
+                detail: { isFullscreen: true }
+            }));
+        } else {
+            document.body?.classList?.remove('is-studio-fullscreen');
+            window.dispatchEvent(new CustomEvent('itb:studio-fullscreen-change', {
+                detail: { isFullscreen: false }
+            }));
+        }
+        return () => {
+            document.body?.classList?.remove('is-studio-fullscreen');
+        };
+    }, [isGridFullscreen]);
+
+    useEffect(() => {
         const handleFullscreenChange = () => {
             if (!document.fullscreenElement && isGridFullscreen) {
                 setIsGridFullscreen(false);
@@ -1473,7 +1490,7 @@ export default function ExtractorAdvancedStudio() {
     }, [currentPlayheadEpochMs, canvasLayoutTimeline?.keyframes, activeKfIndex]);
 
     return (
-        <div className="extractor-advanced-studio">
+        <div className={`extractor-advanced-studio ${isGridFullscreen ? 'is-cinema-mode' : ''}`}>
             <div className="studio-workspace-area">
                 <TopScopeBar
                     timeRange={timeRange}

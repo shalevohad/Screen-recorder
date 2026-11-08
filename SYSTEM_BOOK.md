@@ -87,6 +87,9 @@
 65. [Enterprise Release v1.0.70 & Forensic Gap Keystroke Elimination & CI/CD Security Hardening (2026-11-07)](#65-enterprise-release-v1070--forensic-gap-keystroke-elimination--cicd-security-hardening-2026-11-07)
 66. [Comprehensive Viewport Popover & Context Menu Stacking & Occlusion Immunity Architecture (2026-11-08)](#66-comprehensive-viewport-popover--context-menu-stacking--occlusion-immunity-architecture-2026-11-08)
 67. [Canvas Layout Keyframe UTC Clock Position Synchronization & Dynamic FFmpeg Drawtext Interval Chaining (2026-11-08)](#67-canvas-layout-keyframe-utc-clock-position-synchronization--dynamic-ffmpeg-drawtext-interval-chaining-2026-11-08)
+68. [Tactical Keyframe Management, Instant Timeline Skipping & Real-Time Inspector Suite (2026-11-08)](#68-tactical-keyframe-management-instant-timeline-skipping--real-time-inspector-suite-2026-11-08)
+69. [Focus-Aware Arrow Key Routing Architecture: Playhead Scrubbing vs. Canvas Screen Nudging (2026-11-08)](#69-focus-aware-arrow-key-routing-architecture-playhead-scrubbing-vs-canvas-screen-nudging-2026-11-08)
+70. [Tactical Fullscreen Theater Frosted Glass Blur & System Isolation Architecture (2026-11-08)](#70-tactical-fullscreen-theater-frosted-glass-blur--system-isolation-architecture-2026-11-08)
 
 ---
 
@@ -4534,3 +4537,50 @@ To permanently resolve this conflict, the studio implements a centralized focus 
   - Verified coordinate boundary clamping at (0, 0) and canvas edges.
   - Verified component integration across Studio, Viewport, TransportBar, and Hotkeys.
 - **Full Regression**: 134 Client tests in 18 suites passing 100%; 458 .NET tests in `ITB-SCREEN-RECORDER.Tests` passing 100%.
+
+
+## 70. Tactical Fullscreen Theater Frosted Glass Blur & System Isolation Architecture (2026-11-08)
+
+### 70.1 Operational Problem Statement & Identification / OCR Risks
+During high-stakes forensic video triage and multi-station review, operators require a dedicated full-screen "Theater Mode" (`isGridFullscreen` / `is-cinema-mode`) to focus intently on multicam workstation video feeds without peripheral visual distractions. However, in previous iterations:
+1. Surrounding application shell elements—specifically the central command bar (`CommandCenterHeader`), fleet navigation tabs (`FleetTabs` / `.dashboard-tabs-bar-wrapper`), vertical dashboard dock (`DashboardDock` / `.dashboard-vertical-dock`), top studio scope bar (`TopScopeBar`), and CAD precision rulers (`.canvas-rulers-top-row`, `.canvas-ruler-left-bar`)—remained partially or fully legible in the background.
+2. In air-gapped security operations centers (SOC/NOC), peripheral text containing workstation hostnames, IP addresses, session identifiers, and fleet statistics visible around the cinema theater created visual cognitive clutter and introduced operational security (OPSEC) risks if captured via ambient screen recording or over-the-shoulder observation.
+3. The operational mandate required: all peripheral elements and unrelated menus outside the active cinema theater MUST be heavily frosted and blurred to a level where text and UI controls cannot be identified or deciphered ("שלא יזהו"), while preserving an ambient dark-glass silhouette so operators maintain spatial depth awareness ("אבל עדיין ידעו שיש שם משהו").
+
+### 70.2 DOM Containing Block Decoupling & Host-Widget Event Synchronization
+1. **CSS Containing Block Invariant**:
+   - Under the CSS Transforms and Compositing specifications, any ancestor element that applies a non-none `filter`, `backdrop-filter`, or `transform` becomes a new containing block for all its `position: fixed` descendants.
+   - In `DashboardGrid.scss`, `.tab-pane-content-wrapper` previously had `backdrop-filter: blur(24px)`. Consequently, when ExtractorAdvanced entered cinema fullscreen mode (`.studio-lower-body.cinema-fullscreen-mode` with `position: fixed; inset: 0; z-index: 10000;`), it was trapped inside `.tab-pane-content-wrapper`, leaving the host `FleetTabs` and `DashboardDock` completely outside its bounds and exposed to the user.
+2. **Containing Block Decoupling**:
+   - In `DashboardGrid.scss`, when fullscreen theater mode is active (`.studio-theater-active` or `body.is-studio-fullscreen`), `.tab-pane-content-wrapper.feature-active-pane` explicitly disables `backdrop-filter` (`backdrop-filter: none !important`) and sets `background-color: transparent`. This frees the fixed cinema viewport to span the entire OS display surface.
+3. **Host-Widget Bidirectional Event Bridge**:
+   - When the operator toggles theater fullscreen via `isGridFullscreen` in `ExtractorAdvancedStudio.jsx`:
+     - Toggles `document.body.classList.toggle('is-studio-fullscreen', isGridFullscreen)`.
+     - Dispatches a custom window event `itb:studio-fullscreen-change` with `{ detail: { isFullscreen: isGridFullscreen } }`.
+   - `DashboardGrid.jsx` on the host side listens to both `itb:studio-fullscreen-change` and the browser native `fullscreenchange` event, dynamically synchronizing its local `isStudioFullscreen` state and applying the `.studio-theater-active` class to `.dashboard-layout-wrapper`.
+
+### 70.3 Frosted Glass Blur Optics Matrix & Hover Ergonomics
+To ensure that all unrelated interface components are unrecognizable without causing GPU compositor rasterization penalties, the optical blur hierarchy is applied as follows:
+
+| Component / Layer | CSS Selector | Blur Filter & Brightness | Opacity | Interaction / Ergonomics |
+| :--- | :--- | :--- | :--- | :--- |
+| **Fleet Navigation Tabs** | `.dashboard-tabs-bar-wrapper` | `blur(18px) brightness(0.35) saturate(120%)` | `0.4` | `pointer-events: none` (Isolated) |
+| **Dashboard Vertical Dock** | `.dashboard-vertical-dock` | `blur(18px) brightness(0.35) saturate(120%)` | `0.4` | `pointer-events: none` (Isolated) |
+| **Command Center Header** | `header.command-center-top-bar` | `blur(18px) brightness(0.35) saturate(120%)` | `0.4` | `pointer-events: none` (Isolated) |
+| **Studio Top Scope Bar** | `.studio-top-scope-bar` | `blur(18px) brightness(0.30) saturate(120%)` | `0.35` | `pointer-events: none` (Isolated) |
+| **CAD Precision Rulers** | `.canvas-rulers-top-row`, `.canvas-ruler-left-bar`, `.canvas-ruler-corner` | `blur(14px)` | `0.25` | `pointer-events: none` (Dimmed) |
+| **Canvas Wing Docks** | `.canvas-left-wing-dock`, `.canvas-right-wing-dock` | `blur(14px)` + `backdrop-filter: blur(20px)` | `0.35` | **Smart Hover Exemption**: On hover or active popout (`&:hover, &.has-active-popout`), immediately snaps to `blur(0px) opacity(1)` for full tool access. |
+| **Active Theater Canvas** | `.multicam-stage-wrapper`, `.canvas-stage-outer-wrapper` | `filter: none` (Crystal Clear) | `1.0` | 100% full-resolution, crisp zero-loss forensic rendering with ambient radial vignette. |
+
+### 70.4 Automated Verification Suite
+- **Automated Client Test**: `Features/ExtractorAdvanced/Client/src/tests/fullscreenTheaterBlur.test.js` (6 test specifications):
+  - Verified `document.body` dynamically mounts and unmounts `is-studio-fullscreen`.
+  - Verified `itb:studio-fullscreen-change` custom event dispatches with `{ detail: { isFullscreen: true/false } }`.
+  - Verified container renders `.is-cinema-mode` class during fullscreen.
+  - Verified CSS selectors target `.studio-top-scope-bar`, CAD rulers, and wing docks with heavy blur.
+  - Verified host-level selectors target `.dashboard-tabs-bar-wrapper`, `.dashboard-vertical-dock`, and `header.command-center-top-bar`.
+  - Verified wing dock hover exemption rules (`&:hover, &.has-active-popout`).
+- **Regression Matrix**:
+  - `ExtractorAdvanced/Client`: 140 passed across 19 test suites (`npm test`).
+  - Production Vite Builds: `ExtractorAdvanced` (882 kB, 0 errors), `ClientApp` (590 kB, 0 errors).
+  - Backend Regression: 458 passed across all .NET test assemblies (`dotnet test --no-build`).

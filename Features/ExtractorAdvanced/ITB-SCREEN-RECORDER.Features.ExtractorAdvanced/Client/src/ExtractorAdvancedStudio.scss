@@ -192,6 +192,17 @@
     }
 
 
+    /* Dim and heavily blur studio top scope bar when in Fullscreen Cinema Mode */
+    &.is-cinema-mode {
+        .studio-top-scope-bar {
+            filter: blur(18px) brightness(0.3) saturate(120%) !important;
+            opacity: 0.35 !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
+        }
+    }
+
     /* ============================================================== */
     /* FULLSCREEN CANVAS GRID CINEMA MODE (THEATER PARITY)            */
     /* ============================================================== */
@@ -217,6 +228,8 @@
             justify-content: space-between;
             z-index: 9600;
             pointer-events: auto;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 
             &.is-hud-hidden {

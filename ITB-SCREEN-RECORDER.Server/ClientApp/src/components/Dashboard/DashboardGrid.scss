@@ -330,6 +330,48 @@ html, body, #root {
         }
     }
 
+    /* ============================================================== */
+    /* CINEMA THEATER BLUR: BLUR UNRELATED SURROUNDING SYSTEM WINDOWS */
+    /* Heavily blurs unrelated surrounding system menus and toolbars  */
+    /* so they cannot be identified, preserving ambient spatial depth */
+    /* ============================================================== */
+    &.studio-theater-active {
+        .dashboard-vertical-dock {
+            filter: blur(18px) brightness(0.35) saturate(120%) !important;
+            opacity: 0.4 !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
+        }
+
+        .dashboard-tabs-bar-wrapper {
+            filter: blur(18px) brightness(0.35) saturate(120%) !important;
+            opacity: 0.4 !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
+        }
+
+        .tactical-active-filter-banner,
+        .tactical-fault-isolation-banner,
+        .not-recording-alert-banner {
+            filter: blur(18px) brightness(0.35) !important;
+            opacity: 0.25 !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transition: filter 0.35s ease, opacity 0.35s ease !important;
+        }
+
+        .tab-pane-content-wrapper.feature-active-pane {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            background-color: transparent !important;
+            border-color: rgba(255, 255, 255, 0.04) !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+    }
+
     .dashboard-pagination-bar {
         display: flex;
         justify-content: center;
@@ -657,5 +699,32 @@ html, body, #root {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+/* Global Studio Fullscreen Cinema Theater Frosted Blur */
+body.is-studio-fullscreen {
+    .dashboard-vertical-dock {
+        filter: blur(18px) brightness(0.35) saturate(120%) !important;
+        opacity: 0.4 !important;
+        pointer-events: none !important;
+        user-select: none !important;
+        transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
+    }
+
+    .dashboard-tabs-bar-wrapper {
+        filter: blur(18px) brightness(0.35) saturate(120%) !important;
+        opacity: 0.4 !important;
+        pointer-events: none !important;
+        user-select: none !important;
+        transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
+    }
+
+    header.command-center-top-bar {
+        filter: blur(18px) brightness(0.35) saturate(120%) !important;
+        opacity: 0.4 !important;
+        pointer-events: none !important;
+        user-select: none !important;
+        transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
     }
 }
