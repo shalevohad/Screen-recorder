@@ -61,7 +61,7 @@
                 width: 100%;
                 height: 26px;
                 box-sizing: border-box;
-                padding-left: 50px;
+                padding-left: 80px; // 150px badge slot + 80px = 230px to align perfectly with track sidebars
                 padding-right: 58px;
             }
         }
@@ -73,7 +73,7 @@
         justify-content: center;
         gap: 12px;
         padding: 4px 0 6px 0;
-        margin-left: 180px;
+        margin-left: 230px;
         margin-right: 58px;
         box-sizing: border-box;
 

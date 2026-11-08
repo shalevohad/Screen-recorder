@@ -21,6 +21,8 @@ import { useTimelineDrag } from './hooks/useTimelineDrag.js';
 import './TimelineBoard.scss';
 
 const TRACKS_PER_BANK = 4;
+const TIMELINE_SIDEBAR_WIDTH_PX = 230;
+const TIMELINE_EXPORT_WIDTH_PX = 58;
 
 export default function TimelineBoard({
     stations = [],
@@ -145,8 +147,8 @@ export default function TimelineBoard({
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
         const rect = trackAreaRef.current.getBoundingClientRect();
-        const contentLeft = rect.left + 200;
-        const contentWidth = rect.width - 200 - 58;
+        const contentLeft = rect.left + TIMELINE_SIDEBAR_WIDTH_PX;
+        const contentWidth = rect.width - TIMELINE_SIDEBAR_WIDTH_PX - TIMELINE_EXPORT_WIDTH_PX;
         if (contentWidth <= 0) return viewportStartMs;
         const offsetX = Math.max(0, Math.min(clientX - contentLeft, contentWidth));
         return Math.round(viewportStartMs + (offsetX / contentWidth) * viewportDurationMs);
@@ -208,12 +210,12 @@ export default function TimelineBoard({
                 const maxDynamicZoom = Math.max(32, currentTotal / 2000);
 
                 const rect = el.getBoundingClientRect();
-                const contentLeft = rect.left + 200;
-                const contentWidth = rect.width - 200 - 58;
+                const contentLeft = rect.left + TIMELINE_SIDEBAR_WIDTH_PX;
+                const contentWidth = rect.width - TIMELINE_SIDEBAR_WIDTH_PX - TIMELINE_EXPORT_WIDTH_PX;
 
                 let mouseRatio = 0.5;
                 if (contentWidth > 0) {
-                    if (e.clientX >= contentLeft && e.clientX <= rect.right - 58) {
+                    if (e.clientX >= contentLeft && e.clientX <= rect.right - TIMELINE_EXPORT_WIDTH_PX) {
                         mouseRatio = Math.max(0, Math.min(1, (e.clientX - contentLeft) / contentWidth));
                     } else {
                         const visibleDurationMs = currentTotal / Math.max(1, currentZoom);
@@ -250,7 +252,7 @@ export default function TimelineBoard({
             onContextMenu={(e) => {
                 e.preventDefault();
                 const rect = trackAreaRef.current?.getBoundingClientRect();
-                if (!rect || e.clientX - rect.left < 200 || e.clientX > rect.right - 58) return;
+                if (!rect || e.clientX - rect.left < TIMELINE_SIDEBAR_WIDTH_PX || e.clientX > rect.right - TIMELINE_EXPORT_WIDTH_PX) return;
                 setContextMenu({ x: e.clientX, y: e.clientY, targetMs: Math.max(0, Math.min(totalDurationMs, getMsFromClientX(e.clientX))) });
             }}
         >
@@ -371,7 +373,7 @@ export default function TimelineBoard({
                 onMouseMove={(e) => {
                     if (draggingTarget || !trackAreaRef.current) return;
                     const rect = trackAreaRef.current.getBoundingClientRect();
-                    if (e.clientX >= rect.left + 200 && e.clientX <= rect.right - 58) {
+                    if (e.clientX >= rect.left + TIMELINE_SIDEBAR_WIDTH_PX && e.clientX <= rect.right - TIMELINE_EXPORT_WIDTH_PX) {
                         setHoverMs(getMsFromClientX(e.clientX));
                     } else {
                         setHoverMs(null);
