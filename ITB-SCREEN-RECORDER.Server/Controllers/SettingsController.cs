@@ -46,6 +46,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly IStorageTelemetryService _storageTelemetryService;
         private readonly IServerRestartService? _restartService;
+        private readonly IStorageRetentionCoordinator? _retentionCoordinator;
         private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
         private readonly IEnumerable<IFeatureModule> _features;
 
@@ -60,7 +61,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IStorageTelemetryService storageTelemetryService,
             Microsoft.Extensions.Logging.ILogger<SettingsController> logger,
             IServerRestartService? restartService = null,
-            IEnumerable<IFeatureModule>? features = null)
+            IEnumerable<IFeatureModule>? features = null,
+            IStorageRetentionCoordinator? retentionCoordinator = null)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
@@ -73,6 +75,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _logger = logger;
             _restartService = restartService;
             _features = features ?? Enumerable.Empty<IFeatureModule>();
+            _retentionCoordinator = retentionCoordinator;
         }
 
         private bool HasFeature(string featureIdOrKeyword)
@@ -139,7 +142,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             if (updatedConfig == null) return BadRequest(new { message = "Invalid configuration payload." });
 
-            int oldHttpPort = _configMonitor.CurrentValue.HttpPort;
+            var prevConfig = _configMonitor.CurrentValue;
+            int oldHttpPort = prevConfig.HttpPort;
             bool portChanged = updatedConfig.HttpPort > 0 && updatedConfig.HttpPort != oldHttpPort;
 
             try
@@ -273,6 +277,17 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     _restartService?.ScheduleRestart(1500);
                 }
 
+                // If Retention days or Quota changed, trigger immediate retention sweep
+                bool retentionOrQuotaChanged = updatedConfig.MaxStorageQuotaGb != prevConfig.MaxStorageQuotaGb
+                    || (updatedConfig.Storage != null && updatedConfig.Storage.RetentionDays != prevConfig.Storage?.RetentionDays)
+                    || updatedConfig.RecordingRetentionDays != prevConfig.RecordingRetentionDays;
+
+                if (retentionOrQuotaChanged)
+                {
+                    _logger.LogInformation("[SETTINGS] Storage retention or quota changed. Triggering immediate retention sweep.");
+                    _retentionCoordinator?.TriggerImmediateSweep();
+                }
+
                 return Ok(new
                 {
                     currentConfig.HttpPort,
@@ -315,6 +330,15 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             var telemetry = _storageTelemetryService.GetCurrentStorageTelemetry();
             return Ok(telemetry);
+        }
+
+        [HttpPost("storage/run-retention")]
+        [AuthorizePermission(PermissionKeys.SettingsStorage)]
+        public IActionResult RunRetentionSweep()
+        {
+            _logger.LogInformation("[SETTINGS] Manual storage retention and quota sweep triggered via API.");
+            _retentionCoordinator?.TriggerImmediateSweep();
+            return Ok(new { success = true, message = "Storage retention and quota sweep triggered." });
         }
 
         #region Security & Policy API

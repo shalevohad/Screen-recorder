@@ -19,7 +19,11 @@ import {
     deleteKeyframe,
     insertExplicitKeyframe,
     updateKeyframeClockPosition,
-    resolveActiveKeyframeClockPosition
+    resolveActiveKeyframeClockPosition,
+    fitInCell,
+    generateAutoPackPlacements,
+    createPlacementFromFeed,
+    getPackCells
 } from '../../utils/nleTimelineEngine.js';
 import {
     computeDecoderAllocations,
@@ -114,195 +118,7 @@ function getShadowCss(shadowEffect, isSelected, bColor) {
 
 
 
-function fitInCell(cellX, cellY, cellW, cellH, aspect) {
-    const safeAspect = aspect > 0 ? aspect : (16 / 9);
-    const cellAspect = cellW / cellH;
-    let w, h, x, y;
-    if (safeAspect >= cellAspect) {
-        w = cellW;
-        h = Math.round(w / safeAspect);
-        x = cellX;
-        y = cellY + Math.round((cellH - h) / 2);
-    } else {
-        h = cellH;
-        w = Math.round(h * safeAspect);
-        x = cellX + Math.round((cellW - w) / 2);
-        y = cellY;
-    }
-    return { x, y, width: w, height: h };
-}
-
-export function generateAutoPackPlacements(feeds, W = DEFAULT_VIRTUAL_CANVAS_W, H = DEFAULT_VIRTUAL_CANVAS_H) {
-    const count = feeds.length;
-    if (count === 0) return [];
-
-    if (count === 1) {
-        const f0 = feeds[0];
-        const aspect = f0.nativeAspectRatio || (f0.sourceWidth && f0.sourceHeight ? f0.sourceWidth / f0.sourceHeight : 16 / 9);
-        const { x, y, width, height } = fitInCell(0, 0, W, H, aspect);
-        return [{
-            ...f0,
-            x,
-            y,
-            width,
-            height,
-            sourceWidth: f0.sourceWidth || 1920,
-            sourceHeight: f0.sourceHeight || 1080,
-            nativeAspectRatio: aspect,
-            aspectRatio: aspect,
-            zIndex: 0,
-            rotation: 0,
-            borderWidth: 0,
-            borderColor: SLOT_BORDER_COLORS[0],
-            shadowEffect: 'deep',
-            borderRadius: 0
-        }];
-    }
-
-    if (count === 2) {
-        const halfW = Math.round(W / 2);
-        return feeds.slice(0, 2).map((f, idx) => {
-            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-            const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, H, aspect);
-            return {
-                ...f,
-                x,
-                y,
-                width,
-                height,
-                sourceWidth: f.sourceWidth || 1920,
-                sourceHeight: f.sourceHeight || 1080,
-                nativeAspectRatio: aspect,
-                aspectRatio: aspect,
-                zIndex: idx,
-                rotation: 0,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                shadowEffect: 'deep',
-                borderRadius: 0
-            };
-        });
-    }
-
-    if (count === 3) {
-        const isUltrawide = (W / H) >= 2.5;
-        if (isUltrawide) {
-            const thirdW = Math.round(W / 3);
-            return feeds.slice(0, 3).map((f, idx) => {
-                const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-                const { x, y, width, height } = fitInCell(idx * thirdW, 0, thirdW, H, aspect);
-                return {
-                    ...f,
-                    x,
-                    y,
-                    width,
-                    height,
-                    sourceWidth: f.sourceWidth || 1920,
-                    sourceHeight: f.sourceHeight || 1080,
-                    nativeAspectRatio: aspect,
-                    aspectRatio: aspect,
-                    zIndex: idx,
-                    rotation: 0,
-                    borderWidth: 2,
-                    borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                    shadowEffect: 'deep',
-                    borderRadius: 0
-                };
-            });
-        }
-        const cellW = Math.round(W / 2);
-        const cellH = Math.round(H / 2);
-        const gridCells = [
-            { cx: 0, cy: 0 },
-            { cx: cellW, cy: 0 },
-            { cx: Math.round(cellW / 2), cy: cellH }
-        ];
-        return feeds.slice(0, 3).map((f, idx) => {
-            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-            const { cx, cy } = gridCells[idx];
-            const { x, y, width, height } = fitInCell(cx, cy, cellW, cellH, aspect);
-            return {
-                ...f,
-                x,
-                y,
-                width,
-                height,
-                sourceWidth: f.sourceWidth || 1920,
-                sourceHeight: f.sourceHeight || 1080,
-                nativeAspectRatio: aspect,
-                aspectRatio: aspect,
-                zIndex: idx,
-                rotation: 0,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                shadowEffect: 'deep',
-                borderRadius: 0
-            };
-        });
-    }
-
-    if (count === 4) {
-        const cellW = Math.round(W / 2);
-        const cellH = Math.round(H / 2);
-        const gridCells = [
-            { cx: 0, cy: 0 },
-            { cx: cellW, cy: 0 },
-            { cx: 0, cy: cellH },
-            { cx: cellW, cy: cellH }
-        ];
-        return feeds.slice(0, 4).map((f, idx) => {
-            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-            const { cx, cy } = gridCells[idx];
-            const { x, y, width, height } = fitInCell(cx, cy, cellW, cellH, aspect);
-            return {
-                ...f,
-                x,
-                y,
-                width,
-                height,
-                sourceWidth: f.sourceWidth || 1920,
-                sourceHeight: f.sourceHeight || 1080,
-                nativeAspectRatio: aspect,
-                aspectRatio: aspect,
-                zIndex: idx,
-                rotation: 0,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                shadowEffect: 'deep',
-                borderRadius: 0
-            };
-        });
-    }
-
-    const cols = count <= 6 ? 3 : count <= 8 ? 4 : Math.ceil(Math.sqrt(count));
-    const rows = Math.ceil(count / cols);
-    const cellW = Math.floor(W / cols);
-    const cellH = Math.floor(H / rows);
-
-    return feeds.map((f, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-        const { x, y, width, height } = fitInCell(col * cellW, row * cellH, cellW, cellH, aspect);
-        return {
-            ...f,
-            x,
-            y,
-            width,
-            height,
-            sourceWidth: f.sourceWidth || 1920,
-            sourceHeight: f.sourceHeight || 1080,
-            nativeAspectRatio: aspect,
-            aspectRatio: aspect,
-            zIndex: i,
-            rotation: 0,
-            borderWidth: 2,
-            borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length],
-            shadowEffect: 'deep',
-            borderRadius: 0
-        };
-    });
-}
+export { fitInCell, generateAutoPackPlacements, createPlacementFromFeed, getPackCells };
 
 export default function MulticamViewport({
     activeStation,
@@ -1283,64 +1099,36 @@ export default function MulticamViewport({
     // -------------------------------------------------------------
     // LAYER STACKING ACTIONS ("מי לפני מי" - מספור קדימות מוגדר ומדויק)
     // -------------------------------------------------------------
-    const handleBringToFront = useCallback((idx = selectedFeedIndex) => {
+    const reorderLayer = useCallback((idx, action) => {
         if (idx < 0 || !currentPlacements[idx]) return;
         const normalized = normalizeLayers(currentPlacements);
         const currentRank = normalized[idx].zIndex;
         const maxRank = normalized.length;
-        if (currentRank >= maxRank) return;
 
-        const next = normalized.map((p, i) => {
-            if (i === idx) return { ...p, zIndex: maxRank };
-            if (p.zIndex > currentRank) return { ...p, zIndex: p.zIndex - 1 };
-            return p;
-        });
-        updateActivePlacements(next);
-    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+        let next;
+        if (action === 'front') {
+            if (currentRank >= maxRank) return;
+            next = normalized.map((p, i) => i === idx ? { ...p, zIndex: maxRank } : (p.zIndex > currentRank ? { ...p, zIndex: p.zIndex - 1 } : p));
+        } else if (action === 'back') {
+            if (currentRank <= 1) return;
+            next = normalized.map((p, i) => i === idx ? { ...p, zIndex: 1 } : (p.zIndex < currentRank ? { ...p, zIndex: p.zIndex + 1 } : p));
+        } else if (action === 'forward') {
+            const targetRank = currentRank + 1;
+            if (targetRank > maxRank) return;
+            next = normalized.map((p, i) => i === idx ? { ...p, zIndex: targetRank } : (p.zIndex === targetRank ? { ...p, zIndex: currentRank } : p));
+        } else if (action === 'backward') {
+            const targetRank = currentRank - 1;
+            if (targetRank < 1) return;
+            next = normalized.map((p, i) => i === idx ? { ...p, zIndex: targetRank } : (p.zIndex === targetRank ? { ...p, zIndex: currentRank } : p));
+        }
 
-    const handleSendToBack = useCallback((idx = selectedFeedIndex) => {
-        if (idx < 0 || !currentPlacements[idx]) return;
-        const normalized = normalizeLayers(currentPlacements);
-        const currentRank = normalized[idx].zIndex;
-        if (currentRank <= 1) return;
+        if (next) updateActivePlacements(next);
+    }, [currentPlacements, updateActivePlacements]);
 
-        const next = normalized.map((p, i) => {
-            if (i === idx) return { ...p, zIndex: 1 };
-            if (p.zIndex < currentRank) return { ...p, zIndex: p.zIndex + 1 };
-            return p;
-        });
-        updateActivePlacements(next);
-    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
-
-    const handleBringForward = useCallback((idx = selectedFeedIndex) => {
-        if (idx < 0 || !currentPlacements[idx]) return;
-        const normalized = normalizeLayers(currentPlacements);
-        const currentRank = normalized[idx].zIndex;
-        const targetRank = currentRank + 1;
-        if (targetRank > normalized.length) return;
-
-        const next = normalized.map((p, i) => {
-            if (i === idx) return { ...p, zIndex: targetRank };
-            if (p.zIndex === targetRank) return { ...p, zIndex: currentRank };
-            return p;
-        });
-        updateActivePlacements(next);
-    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
-
-    const handleSendBackward = useCallback((idx = selectedFeedIndex) => {
-        if (idx < 0 || !currentPlacements[idx]) return;
-        const normalized = normalizeLayers(currentPlacements);
-        const currentRank = normalized[idx].zIndex;
-        const targetRank = currentRank - 1;
-        if (targetRank < 1) return;
-
-        const next = normalized.map((p, i) => {
-            if (i === idx) return { ...p, zIndex: targetRank };
-            if (p.zIndex === targetRank) return { ...p, zIndex: currentRank };
-            return p;
-        });
-        updateActivePlacements(next);
-    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+    const handleBringToFront = useCallback((idx = selectedFeedIndex) => reorderLayer(idx, 'front'), [reorderLayer, selectedFeedIndex]);
+    const handleSendToBack = useCallback((idx = selectedFeedIndex) => reorderLayer(idx, 'back'), [reorderLayer, selectedFeedIndex]);
+    const handleBringForward = useCallback((idx = selectedFeedIndex) => reorderLayer(idx, 'forward'), [reorderLayer, selectedFeedIndex]);
+    const handleSendBackward = useCallback((idx = selectedFeedIndex) => reorderLayer(idx, 'backward'), [reorderLayer, selectedFeedIndex]);
 
     // -------------------------------------------------------------
     // STYLE UPDATES: BORDER, SHADOW, ROTATION, ROUNDING
@@ -1416,96 +1204,64 @@ export default function MulticamViewport({
         // Strictly use selected station feeds (defaultStationFeeds / availableFeeds)
         const feeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (availableFeeds.length > 0 ? availableFeeds : currentPlacements);
 
+        const makePlacement = (feed, x, y, width, height, zIndex = 0, options = {}) => ({
+            ...feed,
+            x,
+            y,
+            width,
+            height,
+            sourceWidth: feed.sourceWidth || 1920,
+            sourceHeight: feed.sourceHeight || 1080,
+            nativeAspectRatio: feed.nativeAspectRatio || 16 / 9,
+            aspectRatio: feed.aspectRatio || 16 / 9,
+            zIndex,
+            rotation: 0,
+            borderWidth: options.borderWidth ?? 2,
+            borderColor: options.borderColor ?? SLOT_BORDER_COLORS[zIndex % SLOT_BORDER_COLORS.length],
+            shadowEffect: options.shadowEffect ?? 'deep',
+            borderRadius: options.borderRadius ?? 0
+        });
+
         switch (presetId) {
             case 'auto':
             case 'auto-grid':
                 newPlacements = generateAutoPackPlacements(feeds, virtualW, virtualH);
                 break;
             case '1x1':
-                if (feeds.length > 0) {
-                    newPlacements = [{
-                        ...feeds[0],
-                        x: 0,
-                        y: 0,
-                        width: virtualW,
-                        height: virtualH,
-                        zIndex: 1,
-                        rotation: 0,
-                        borderWidth: 0,
-                        borderColor: SLOT_BORDER_COLORS[0],
-                        shadowEffect: 'none',
-                        borderRadius: 0
-                    }];
-                }
+                newPlacements = feeds.length > 0 ? generateAutoPackPlacements(feeds.slice(0, 1), virtualW, virtualH) : [];
                 break;
             case '1x2':
-                if (feeds.length >= 2) {
-                    const halfW = Math.round(virtualW / 2);
-                    newPlacements = feeds.slice(0, 2).map((f, idx) => {
-                        const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-                        const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, virtualH, aspect);
-                        return {
-                            ...f,
-                            x,
-                            y,
-                            width,
-                            height,
-                            sourceWidth: f.sourceWidth || 1920,
-                            sourceHeight: f.sourceHeight || 1080,
-                            nativeAspectRatio: aspect,
-                            aspectRatio: aspect,
-                            zIndex: idx + 1,
-                            rotation: 0,
-                            borderWidth: 2,
-                            borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                            shadowEffect: 'deep',
-                            borderRadius: 0
-                        };
-                    });
-                } else {
-                    newPlacements = generateAutoPackPlacements(feeds, virtualW, virtualH);
-                }
+                newPlacements = feeds.length >= 2
+                    ? generateAutoPackPlacements(feeds.slice(0, 2), virtualW, virtualH)
+                    : generateAutoPackPlacements(feeds, virtualW, virtualH);
                 break;
-            case '2x2': {
-                const halfW = Math.round(virtualW / 2);
-                const halfH = Math.round(virtualH / 2);
-                newPlacements = feeds.slice(0, 4).map((f, idx) => ({
-                    ...f,
-                    x: (idx % 2) * halfW,
-                    y: Math.floor(idx / 2) * halfH,
-                    width: halfW,
-                    height: halfH,
-                    zIndex: idx,
-                    rotation: 0,
-                    borderWidth: 2,
-                    borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                    shadowEffect: 'deep',
-                    borderRadius: 0
-                }));
+            case '2x2':
+                newPlacements = feeds.length >= 4
+                    ? generateAutoPackPlacements(feeds.slice(0, 4), virtualW, virtualH)
+                    : generateAutoPackPlacements(feeds, virtualW, virtualH);
                 break;
-            }
+            case '3-grid':
+                newPlacements = feeds.length >= 3
+                    ? generateAutoPackPlacements(feeds.slice(0, 3), virtualW, virtualH)
+                    : generateAutoPackPlacements(feeds, virtualW, virtualH);
+                break;
             case '1+3-pip':
                 if (feeds.length >= 2) {
                     newPlacements = [
-                        { ...feeds[0], x: 0, y: 0, width: virtualW, height: virtualH, zIndex: 0, rotation: 0, borderWidth: 0, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'none', borderRadius: 0 }
+                        makePlacement(feeds[0], 0, 0, virtualW, virtualH, 0, { borderWidth: 0, shadowEffect: 'none' })
                     ];
-                    const insets = feeds.slice(1, 4);
                     const insetW = Math.round(virtualW * 0.23);
                     const insetH = Math.round(insetW / (16 / 9));
-                    insets.forEach((f, idx) => {
-                        newPlacements.push({
-                            ...f,
-                            x: virtualW - insetW - 24,
-                            y: 24 + idx * (insetH + 16),
-                            width: insetW,
-                            height: insetH,
-                            zIndex: 10 + idx,
-                            rotation: 0,
-                            borderWidth: 3,
-                            borderColor: SLOT_BORDER_COLORS[(idx + 1) % SLOT_BORDER_COLORS.length],
-                            shadowEffect: 'glow-cyan',
-                            borderRadius: 6
-                        });
+                    feeds.slice(1, 4).forEach((f, idx) => {
+                        newPlacements.push(makePlacement(
+                            f,
+                            virtualW - insetW - 24,
+                            24 + idx * (insetH + 16),
+                            insetW,
+                            insetH,
+                            10 + idx,
+                            { borderWidth: 3, borderColor: SLOT_BORDER_COLORS[(idx + 1) % SLOT_BORDER_COLORS.length], shadowEffect: 'glow-cyan', borderRadius: 6 }
+                        ));
                     });
                 }
                 break;
@@ -1515,47 +1271,10 @@ export default function MulticamViewport({
                     const sideW = virtualW - heroW;
                     const sideH = Math.round(virtualH / 2);
                     newPlacements = [
-                        { ...feeds[0], x: 0, y: 0, width: heroW, height: virtualH, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[1], x: heroW, y: 0, width: sideW, height: sideH, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[2], x: heroW, y: sideH, width: sideW, height: sideH, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
+                        makePlacement(feeds[0], 0, 0, heroW, virtualH, 0),
+                        makePlacement(feeds[1], heroW, 0, sideW, sideH, 1),
+                        makePlacement(feeds[2], heroW, sideH, sideW, sideH, 2)
                     ];
-                }
-                break;
-            case '3-grid':
-                if (feeds.length >= 3) {
-                    const isWide = (virtualW / virtualH) >= 2.5;
-                    if (isWide) {
-                        const thirdW = Math.round(virtualW / 3);
-                        newPlacements = feeds.slice(0, 3).map((f, idx) => {
-                            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-                            const { x, y, width, height } = fitInCell(idx * thirdW, 0, thirdW, virtualH, aspect);
-                            return {
-                                ...f,
-                                x,
-                                y,
-                                width,
-                                height,
-                                sourceWidth: f.sourceWidth || 1920,
-                                sourceHeight: f.sourceHeight || 1080,
-                                nativeAspectRatio: aspect,
-                                aspectRatio: aspect,
-                                zIndex: idx,
-                                rotation: 0,
-                                borderWidth: 2,
-                                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
-                                shadowEffect: 'deep',
-                                borderRadius: 0
-                            };
-                        });
-                    } else {
-                        const halfW = Math.round(virtualW / 2);
-                        const halfH = Math.round(virtualH / 2);
-                        newPlacements = [
-                            { ...feeds[0], x: 0, y: 0, width: halfW, height: halfH, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-                            { ...feeds[1], x: halfW, y: 0, width: halfW, height: halfH, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
-                            { ...feeds[2], x: Math.round(halfW / 2), y: halfH, width: halfW, height: halfH, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
-                        ];
-                    }
                 }
                 break;
             default:
@@ -1572,7 +1291,7 @@ export default function MulticamViewport({
                 hasUserCustomizedRef.current = true;
             }
         }
-    }, [availableFeeds, currentPlacements, updateActivePlacements, virtualW, virtualH]);
+    }, [availableFeeds, currentPlacements, defaultStationFeeds, updateActivePlacements, virtualW, virtualH]);
 
     // -------------------------------------------------------------
     // CUSTOM PRESETS: SAVE & LOAD ("לשמור אותו ולטעון אותו")

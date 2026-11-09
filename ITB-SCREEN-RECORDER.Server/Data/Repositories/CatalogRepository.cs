@@ -146,22 +146,102 @@ public sealed class CatalogRepository : ICatalogRepository
 
     public async Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit)
     {
-        using var db = _factory.CreateConnection();
-        const string sql = @"
-            SELECT station_id AS StationId, file_path AS FilePath, 
-                   start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
-                   file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
-                   width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
-                   COALESCE(display_id, 'mon-0') AS DisplayId
-            FROM recording_chunks
-            WHERE end_epoch_ms < @cutoffUtc
-              AND is_finalized = 1
-            ORDER BY end_epoch_ms ASC
-            LIMIT @batchLimit;
-        ";
+        return await GetExpiredCandidateChunksAsync(cutoffUtc, batchLimit, null);
+    }
 
-        var result = await db.QueryAsync<ChunkFinalizedEvent>(sql, new { cutoffUtc, batchLimit });
+    public async Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit, IEnumerable<string>? excludedFilePaths)
+    {
+        using var db = _factory.CreateConnection();
+        var excludedList = excludedFilePaths?.ToList();
+        string sql;
+        object param;
+
+        if (excludedList != null && excludedList.Count > 0)
+        {
+            sql = @"
+                SELECT station_id AS StationId, file_path AS FilePath, 
+                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
+                       file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
+                       width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
+                       COALESCE(display_id, 'mon-0') AS DisplayId
+                FROM recording_chunks
+                WHERE end_epoch_ms < @cutoffUtc
+                  AND is_finalized = 1
+                  AND file_path NOT IN @excludedList
+                ORDER BY end_epoch_ms ASC
+                LIMIT @batchLimit;
+            ";
+            param = new { cutoffUtc, batchLimit, excludedList };
+        }
+        else
+        {
+            sql = @"
+                SELECT station_id AS StationId, file_path AS FilePath, 
+                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
+                       file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
+                       width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
+                       COALESCE(display_id, 'mon-0') AS DisplayId
+                FROM recording_chunks
+                WHERE end_epoch_ms < @cutoffUtc
+                  AND is_finalized = 1
+                ORDER BY end_epoch_ms ASC
+                LIMIT @batchLimit;
+            ";
+            param = new { cutoffUtc, batchLimit };
+        }
+
+        var result = await db.QueryAsync<ChunkFinalizedEvent>(sql, param);
         return result.AsList();
+    }
+
+    public async Task<IReadOnlyList<ChunkFinalizedEvent>> GetOldestCandidateChunksAsync(int batchLimit, IEnumerable<string>? excludedFilePaths = null)
+    {
+        using var db = _factory.CreateConnection();
+        var excludedList = excludedFilePaths?.ToList();
+        string sql;
+        object param;
+
+        if (excludedList != null && excludedList.Count > 0)
+        {
+            sql = @"
+                SELECT station_id AS StationId, file_path AS FilePath, 
+                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
+                       file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
+                       width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
+                       COALESCE(display_id, 'mon-0') AS DisplayId
+                FROM recording_chunks
+                WHERE is_finalized = 1
+                  AND file_path NOT IN @excludedList
+                ORDER BY start_epoch_ms ASC, end_epoch_ms ASC
+                LIMIT @batchLimit;
+            ";
+            param = new { batchLimit, excludedList };
+        }
+        else
+        {
+            sql = @"
+                SELECT station_id AS StationId, file_path AS FilePath, 
+                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
+                       file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
+                       width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
+                       COALESCE(display_id, 'mon-0') AS DisplayId
+                FROM recording_chunks
+                WHERE is_finalized = 1
+                ORDER BY start_epoch_ms ASC, end_epoch_ms ASC
+                LIMIT @batchLimit;
+            ";
+            param = new { batchLimit };
+        }
+
+        var result = await db.QueryAsync<ChunkFinalizedEvent>(sql, param);
+        return result.AsList();
+    }
+
+    public async Task<long> GetTotalRecordingSizeBytesAsync()
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = "SELECT COALESCE(SUM(file_size_bytes), 0) FROM recording_chunks WHERE is_finalized = 1;";
+        return await db.ExecuteScalarAsync<long>(sql);
     }
 
     public async Task RemoveChunksAsync(IEnumerable<string> filePaths)

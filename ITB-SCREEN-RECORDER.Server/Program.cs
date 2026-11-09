@@ -357,7 +357,9 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 builder.Services.AddSingleton<IRetentionTask, StorageChunksRetentionTask>();
                 builder.Services.AddSingleton<IRetentionTask, KeystrokesRetentionTask>();
-                builder.Services.AddHostedService<StorageRetentionWorker>();
+                builder.Services.AddSingleton<StorageRetentionWorker>();
+                builder.Services.AddSingleton<IStorageRetentionCoordinator>(sp => sp.GetRequiredService<StorageRetentionWorker>());
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<StorageRetentionWorker>());
 
                 var app = builder.Build();
 

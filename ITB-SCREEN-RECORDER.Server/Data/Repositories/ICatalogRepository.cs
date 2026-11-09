@@ -34,6 +34,9 @@ public interface ICatalogRepository : IKeystrokeRepository, IStationRoleProvider
     Task FinalizeChunkAsync(string filePath, long endEpochMs, long fileSizeBytes);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetChunksForWindowAsync(string stationId, long fromEpochMs, long toEpochMs);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit);
+    Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit, IEnumerable<string>? excludedFilePaths);
+    Task<IReadOnlyList<ChunkFinalizedEvent>> GetOldestCandidateChunksAsync(int batchLimit, IEnumerable<string>? excludedFilePaths = null);
+    Task<long> GetTotalRecordingSizeBytesAsync();
     Task RemoveChunksAsync(IEnumerable<string> filePaths);
 
     // Keystrokes Maintenance

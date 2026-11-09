@@ -136,7 +136,7 @@ export function generateWaveformSvgPath(peaks, width = 100, height = 24, gain = 
 }
 
 /**
- * Generates discrete dual-channel SVG paths for SYS (top half) and MIC (bottom half) tracks.
+ * Generates discrete dual-channel SVG paths for SYS and MIC tracks overlaid on top of each other across full height.
  * 
  * @param {number[]|{sys: number[], mic: number[]}} peaks - Peak envelope data
  * @param {number} width - SVG ViewBox width (100)
@@ -157,16 +157,15 @@ export function generateDualChannelWaveformPaths(peaks, width = 100, height = 24
         micData = peaks.map((p, i) => Math.min(1.0, Math.max(0.02, p * (0.92 + 0.15 * Math.cos(i * 0.38)))));
     }
 
-    // Top half: SYS channel (center at 25% height = 6px, maxHalfHeight = 4.8px)
+    // Overlaid on top of each other across the full height (both centered at 50% height)
     const sysPath = generateWaveformSvgPath(sysData, width, height, gain, {
-        yCenter: height * 0.25,
-        maxHalfHeight: (height * 0.25) - 1.2
+        yCenter: height * 0.5,
+        maxHalfHeight: (height * 0.5) - 1.5
     });
 
-    // Bottom half: MIC channel (center at 75% height = 18px, maxHalfHeight = 4.8px)
     const micPath = generateWaveformSvgPath(micData, width, height, gain, {
-        yCenter: height * 0.75,
-        maxHalfHeight: (height * 0.25) - 1.2
+        yCenter: height * 0.5,
+        maxHalfHeight: (height * 0.5) - 1.5
     });
 
     return { sysPath, micPath };

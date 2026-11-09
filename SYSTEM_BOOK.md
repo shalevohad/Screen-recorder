@@ -4796,4 +4796,68 @@ In [MulticamViewport.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Fea
 
 ---
 
+## 75. Storage Quota & Retention FIFO Purge Engine, Superimposed Waveforms & Viewport Modernization
+
+### 75.1 Dual-Phase Storage Retention Engine & FIFO Quota Purge
+To prevent isolated recording servers from exhausting physical disk storage (e.g., reaching 2TB capacity), the server implements a deterministic two-phase retention engine:
+
+```mermaid
+flowchart TD
+    Start["Retention Cycle Trigger (Timer or Immediate Sweep)"] --> P1["Phase 1: Time-Based Sweep<br/>(end_epoch_ms < cutoffEpochMs)"]
+    P1 --> CheckShield1{"Is Chunk Covered by<br/>Bookmark Shield?"}
+    CheckShield1 -- Yes --> SkipShield1["Add to excludedFilePaths<br/>(Preserve Bookmarked Chunk)"]
+    CheckShield1 -- No --> DelP1["Delete Physical File & Remove from DB"]
+    DelP1 --> NextP1{"More Expired Chunks?"}
+    SkipShield1 --> NextP1
+    NextP1 -- Yes --> P1
+    NextP1 -- No --> P2Check{"Current Storage > MaxStorageQuotaGb?<br/>(Tracked Catalog or Disk Telemetry)"}
+
+    P2Check -- No --> Done["Sweep Complete: Storage within Target"]
+    P2Check -- Yes --> P2["Phase 2: Quota-Based FIFO Sweep<br/>(Query Oldest Candidates by start_epoch_ms ASC)"]
+    P2 --> CheckShield2{"Is Chunk Covered by<br/>Bookmark Shield?"}
+    CheckShield2 -- Yes --> SkipShield2["Add to excludedFilePaths<br/>(Preserve Bookmarked Chunk)"]
+    CheckShield2 -- No --> DelP2["Delete Oldest File FIFO & Deduct Size"]
+    DelP2 --> TargetCheck{"Storage <= 95% Target Quota Buffer?"}
+    TargetCheck -- Yes --> Done
+    TargetCheck -- No --> MoreOldest{"More Oldest Chunks?"}
+    SkipShield2 --> MoreOldest
+    MoreOldest -- Yes --> P2
+    MoreOldest -- No --> WarnNoMore["Log Warning: Remaining Storage Protected by Bookmarks"]
+    WarnNoMore --> Done
+```
+
+1. **Phase 1: Time-Based Retention Sweep**:
+   - Purges all candidate chunks where `end_epoch_ms < cutoffEpochMs` based on `RetentionDays` / `RecordingRetentionDays`.
+   - Iterates in batches of 200, passing `excludedFilePaths` across iterations to avoid query deadlock on shielded chunks.
+2. **Phase 2: Quota-Based FIFO Purge**:
+   - Compares both SQLite catalog size (`GetTotalRecordingSizeBytesAsync`) and filesystem telemetry (`StorageTelemetryService.GetCurrentStorageTelemetry`).
+   - If either metric exceeds `MaxStorageQuotaGb`, candidate chunks are retrieved in strict FIFO order (`ORDER BY start_epoch_ms ASC, end_epoch_ms ASC`).
+   - Unshielded files are purged sequentially until storage drops below a 5% safety buffer ($\le 95\%$ of target quota) to prevent disk thrashing.
+3. **Forensic Bookmark Shielding**:
+   - `IRetentionShieldProvider` (e.g., `AdvancedRetentionShieldProvider`) inspects whether any active forensic bookmark overlaps `[startEpochMs, endEpochMs]`.
+   - Protected chunks are strictly preserved under all conditions, even when quota is exceeded.
+4. **On-Demand & Event-Driven Triggers**:
+   - `IStorageRetentionCoordinator` exposes `TriggerImmediateSweep()` using a lightweight `SemaphoreSlim` signaling pattern.
+   - Saves to `SettingsController` immediately wake the retention worker if storage quota or retention days change.
+   - Operators can manually trigger sweeps via `POST /api/v1/settings/storage/run-retention` from the Settings UI.
+
+### 75.2 Audio Track Reskin & Superimposed Overlaid Waveforms
+1. **Visual Alignment with Workstation Tracks**:
+   - Refactored [AudioRoutingTrack.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.jsx) and [AudioRoutingTrack.scss](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.scss) to match `TimelineTrack` standards (52px track height, 230px tactical sidebar, `#0F172A` cards).
+   - Removed cumbersome master bus header banner to present a clean, uniform timeline lane.
+2. **Superimposed DAW-Style Waveforms**:
+   - In [waveformStore.js](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/utils/waveformStore.js), refactored `generateDualChannelWaveformPaths`: both system (`SYS`, `#8B5CF6`) and microphone (`MIC`, `#F59E0B`) share the exact same vertical center baseline (`yCenter: height * 0.5`) across full height.
+   - Removed horizontal dividing line and applied `mix-blend-mode: screen` with `fillOpacity="0.38"` and `strokeOpacity="0.85"`, allowing operators to inspect vocal and system acoustic dynamics concurrently.
+
+### 75.3 Viewport Code Modernization & DRY Mathematical Packaging
+1. **Mathematical Auto-Packing Extracted**:
+   - In [nleTimelineEngine.js](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/utils/nleTimelineEngine.js), extracted `getPackCells(count, W, H)` and `createPlacementFromFeed`.
+   - Replaced redundant 180-line repetitive switch-cases in [MulticamViewport.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx) with a clean 15-line mathematical packing function preserving exact screen placement for 1, 2, 3 (ultrawide and standard), 4, and $N$ screens.
+2. **Unified Layer Reordering**:
+   - Replaced 4 repetitive layer stacking functions (`handleBringToFront`, `handleSendToBack`, `handleBringForward`, `handleSendBackward`) with a single parameterized `reorderLayer(idx, action)` function.
+3. **Preset Template Simplification**:
+   - Streamlined `handleApplyPreset` in `MulticamViewport.jsx` using `makePlacement` helper and direct delegation to `generateAutoPackPlacements`.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

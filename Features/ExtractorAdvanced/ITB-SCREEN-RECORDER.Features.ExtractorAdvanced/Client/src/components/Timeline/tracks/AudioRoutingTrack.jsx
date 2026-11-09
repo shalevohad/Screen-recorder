@@ -47,35 +47,24 @@ function ClipWaveformRenderer({ peaks, channelMode = 'both', effectiveGain = 1.0
         const micColor = AUDIO_CHANNEL_COLORS.mic; // #F59E0B (Amber)
         return (
             <svg viewBox="0 0 100 24" preserveAspectRatio="none" className="waveform-svg waveform-svg-dual">
-                {/* SYS Channel - Top Half */}
+                {/* SYS Channel - Full Height Overlay in Violet */}
                 <path
-                    d={dualPaths?.sysPath || 'M 0,6 L 100,6'}
+                    d={dualPaths?.sysPath || 'M 0,12 L 100,12'}
                     fill={sysColor}
-                    fillOpacity="0.45"
+                    fillOpacity="0.38"
                     stroke={sysColor}
                     strokeWidth="1.1"
-                    strokeOpacity="0.9"
+                    strokeOpacity="0.85"
                     className="waveform-sys-path"
                 />
-                {/* Dividing Centerline */}
-                <line
-                    x1="0"
-                    y1="12"
-                    x2="100"
-                    y2="12"
-                    stroke="rgba(255, 255, 255, 0.22)"
-                    strokeWidth="0.8"
-                    strokeDasharray="2 2"
-                    className="waveform-center-divider"
-                />
-                {/* MIC Channel - Bottom Half */}
+                {/* MIC Channel - Full Height Overlay in Amber */}
                 <path
-                    d={dualPaths?.micPath || 'M 0,18 L 100,18'}
+                    d={dualPaths?.micPath || 'M 0,12 L 100,12'}
                     fill={micColor}
-                    fillOpacity="0.45"
+                    fillOpacity="0.38"
                     stroke={micColor}
                     strokeWidth="1.1"
-                    strokeOpacity="0.9"
+                    strokeOpacity="0.85"
                     className="waveform-mic-path"
                 />
             </svg>
@@ -1204,53 +1193,6 @@ export default function AudioRoutingTrack({
     // -------------------------------------------------------------
     return (
         <div className="audio-routing-tracks-wrapper" ref={containerRef}>
-            {/* Tactical Multi-Track Audio Master Bar */}
-            <div className="audio-bus-master-bar">
-                <div className="master-bar-left">
-                    <span className="audio-icon">{isMasterMuted ? '🔇' : '🔊'}</span>
-                    <span className="audio-master-title">AUDIO MASTER BUS</span>
-                    <span className="badge-lanes-count">{lanes.length} {lanes.length === 1 ? 'TRACK' : 'TRACKS'}</span>
-                    <button
-                        type="button"
-                        className="btn-add-audio-lane"
-                        onClick={handleAddLane}
-                        title="Add New Audio Lane (A2, A3...)"
-                    >
-                        ＋ ADD AUDIO LANE
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-split-playhead"
-                        onClick={handleGlobalSplitAtPlayhead}
-                        title={`Split audio clips at playhead (${formatTimelineClock(playheadEpoch, timeMode, { includeSeconds: true })}) [Ctrl+K]`}
-                    >
-                        ✂️ SPLIT AT PLAYHEAD
-                    </button>
-                </div>
-                <div className="master-bar-right">
-                    <div className="master-vu-readout" title={`Current Master Level: ${liveLevel.db.toFixed(1)} dB`}>
-                        <span className="vu-db-text">{liveLevel.db > -55 ? `${liveLevel.db.toFixed(0)} dB` : '-∞ dB'}</span>
-                        <div className="master-vu-bar-outer">
-                            <div
-                                className="master-vu-bar-inner"
-                                style={{
-                                    width: `${Math.min(100, Math.max(0, (liveLevel.peak || 0) * 100))}%`,
-                                    background: liveLevel.peak > 0.85 ? '#F43F5E' : (liveLevel.peak > 0.65 ? '#F59E0B' : '#10B981')
-                                }}
-                            />
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        className={`btn-master-mute ${isMasterMuted ? 'is-muted' : ''}`}
-                        onClick={() => setIsMasterMuted(prev => !prev)}
-                        title={isMasterMuted ? 'Unmute Master Audio' : 'Mute Master Audio'}
-                    >
-                        {isMasterMuted ? '🔇 MUTED' : '🔊 MUTE'}
-                    </button>
-                </div>
-            </div>
-
             {lanes.map((lane, lIdx) => {
                 const laneColor = LANE_COLORS[lIdx % LANE_COLORS.length];
                 const isDragOver = dragOverLaneId === lane.id;
