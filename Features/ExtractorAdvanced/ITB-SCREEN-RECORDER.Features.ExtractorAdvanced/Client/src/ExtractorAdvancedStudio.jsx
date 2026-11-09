@@ -559,6 +559,7 @@ export default function ExtractorAdvancedStudio() {
                 width: initialW,
                 height: initialH,
                 backgroundColor: "#070A10",
+                preset: 'auto-grid',
                 fps: 30.0,
                 placements: []
             };

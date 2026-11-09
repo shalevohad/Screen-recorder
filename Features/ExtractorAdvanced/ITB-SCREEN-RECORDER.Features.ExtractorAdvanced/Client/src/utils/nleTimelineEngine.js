@@ -433,10 +433,85 @@ export const DEFAULT_CANVAS_SLOT_BORDER_COLORS = [
 ];
 
 /**
- * Computes deterministic bounding cells for packing `count` video feeds onto [W, H].
+ * Mathematical Aspect-Ratio-Aware Optimal Grid Solver
+ * Computes the optimal (rows, cols) and card size (cardW, cardH) to maximize
+ * total canvas area coverage for N cards on a canvas of dimension [W, H]
+ * with a target aspect ratio (width / height).
  */
-export function getPackCells(count, W, H) {
+export function computeOptimalGrid(count, W, H, targetAspect = 16 / 9) {
+    if (count <= 0) return { rows: 1, cols: 1, cardW: W, cardH: H, totalArea: 0 };
+    const safeAspect = targetAspect > 0 ? targetAspect : (16 / 9);
+
+    let bestConfig = null;
+    let maxArea = -1;
+
+    for (let rows = 1; rows <= count; rows++) {
+        const cols = Math.ceil(count / rows);
+        const maxCellW = W / cols;
+        const maxCellH = H / rows;
+
+        // Largest card with safeAspect that fits in (maxCellW, maxCellH)
+        let cardH = Math.min(maxCellH, maxCellW / safeAspect);
+        let cardW = cardH * safeAspect;
+
+        if (cardW > maxCellW) {
+            cardW = maxCellW;
+            cardH = cardW / safeAspect;
+        }
+
+        const totalArea = count * cardW * cardH;
+
+        // Prefer higher area; if area within 0.1%, prefer wider landscape orientation (cols >= rows)
+        const isBetter = totalArea > maxArea * 1.001 || (Math.abs(totalArea - maxArea) <= maxArea * 0.001 && cols >= rows);
+
+        if (isBetter) {
+            maxArea = totalArea;
+            bestConfig = {
+                rows,
+                cols,
+                cardW: Math.round(cardW),
+                cardH: Math.round(cardH),
+                totalArea
+            };
+        }
+    }
+
+    return bestConfig;
+}
+
+/**
+ * Computes deterministic bounding cells for packing `count` video feeds onto [W, H].
+ * Supports targetAspect for optimal aspect-ratio-aware bin-packing with maximal area utilization.
+ */
+export function getPackCells(count, W, H, targetAspect = null) {
     if (count <= 0) return [];
+
+    if (targetAspect) {
+        const optimal = computeOptimalGrid(count, W, H, targetAspect);
+        const { rows, cols, cardW, cardH } = optimal;
+
+        const totalGridW = cols * cardW;
+        const totalGridH = rows * cardH;
+        const gridOffsetX = Math.max(0, Math.round((W - totalGridW) / 2));
+        const gridOffsetY = Math.max(0, Math.round((H - totalGridH) / 2));
+
+        return Array.from({ length: count }, (_, i) => {
+            const r = Math.floor(i / cols);
+            const c = i % cols;
+            // Center any remaining items in an incomplete last row
+            const isLastRow = (r === rows - 1);
+            const remainder = count % cols;
+            const itemsInThisRow = (isLastRow && remainder !== 0) ? remainder : cols;
+            const rowOffsetX = Math.round((cols - itemsInThisRow) * cardW / 2);
+
+            return {
+                cx: gridOffsetX + rowOffsetX + c * cardW,
+                cy: gridOffsetY + r * cardH,
+                cw: cardW,
+                ch: cardH
+            };
+        });
+    }
 
     const isUltrawide = (W / H) >= 2.5;
 
@@ -497,13 +572,20 @@ export function createPlacementFromFeed(f, idx, cell, totalCount = 2, borderColo
 
 /**
  * Auto-packs feeds onto a virtual canvas stage according to aspect ratio and feed count.
- * Strictly packs ONLY the feeds passed into the argument.
+ * Strictly packs ONLY the feeds passed into the argument, maximizing canvas area coverage.
  */
 export function generateAutoPackPlacements(feeds, W = 1920, H = 1080, borderColors = DEFAULT_CANVAS_SLOT_BORDER_COLORS) {
     const count = feeds ? feeds.length : 0;
     if (count === 0) return [];
 
-    const cells = getPackCells(count, W, H);
+    let totalAspect = 0;
+    feeds.slice(0, count).forEach(f => {
+        const a = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : (16 / 9));
+        totalAspect += (a > 0 ? a : (16 / 9));
+    });
+    const avgAspect = totalAspect / count;
+
+    const cells = getPackCells(count, W, H, avgAspect);
     return feeds.slice(0, count).map((f, idx) => createPlacementFromFeed(f, idx, cells[idx], count, borderColors));
 }
 

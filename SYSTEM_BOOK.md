@@ -92,6 +92,10 @@
 70. [Tactical Fullscreen Theater Frosted Glass Blur & System Isolation Architecture (2026-11-08)](#70-tactical-fullscreen-theater-frosted-glass-blur--system-isolation-architecture-2026-11-08)
 71. [Keystroke Presentation Architecture Simplification: Permanent Migration to Hard Burn-In (ASS) & Deprecation of Soft SRT Captions (2026-11-08)](#71-keystroke-presentation-architecture-simplification-permanent-migration-to-hard-burn-in-ass--deprecation-of-soft-srt-captions-2026-11-08)
 72. [Tactical Mission Date Picker Recorded Media Presence Indicator (Green Dot Architecture) (2026-11-08)](#72-tactical-mission-date-picker-recorded-media-presence-indicator-green-dot-architecture-2026-11-08)
+73. [High-Density Waveform Concurrency Guard, Master Bus Aggregation & Autonomous C2 Link Recovery (2026-11-08)](#73-high-density-waveform-concurrency-guard-master-bus-aggregation--autonomous-c2-link-recovery-2026-11-08)
+74. [Keyframe Rapid Deletion & Protection, Canvas Dynamic Wall Clock, 52px Audio Routing Architecture & Server Feature Secrecy (2026-11-08)](#74-keyframe-rapid-deletion--protection-canvas-dynamic-wall-clock-52px-audio-routing-architecture--server-feature-secrecy-2026-11-08)
+75. [Storage Quota & Retention FIFO Purge Engine, Superimposed Waveforms & Viewport Modernization (2026-11-09)](#75-storage-quota--retention-fifo-purge-engine-superimposed-waveforms--viewport-modernization)
+76. [Aspect-Ratio-Aware Canvas Bin-Packing Solver & Dynamic Geometry Synchronization (2026-11-09)](#76-aspect-ratio-aware-canvas-bin-packing-solver--dynamic-geometry-synchronization-2026-11-09)
 
 ---
 
@@ -4858,6 +4862,36 @@ flowchart TD
    - Replaced 4 repetitive layer stacking functions (`handleBringToFront`, `handleSendToBack`, `handleBringForward`, `handleSendBackward`) with a single parameterized `reorderLayer(idx, action)` function.
 3. **Preset Template Simplification**:
    - Streamlined `handleApplyPreset` in `MulticamViewport.jsx` using `makePlacement` helper and direct delegation to `generateAutoPackPlacements`.
+
+---
+
+## 76. Aspect-Ratio-Aware Canvas Bin-Packing Solver & Dynamic Geometry Synchronization (2026-11-09)
+
+### 76.1 Problem Diagnosis & Quadrant Clumping
+On higher-resolution or non-standard aspect ratio canvases (e.g. Ultrawide 21:9 $5040 \times 2160$ or 4K $3840 \times 2160$):
+1. Workstations were initialized with legacy coordinates ($2560 \times 1440$), causing placements ($1280 \times 720$) to stay clustered in the top-left quadrant with vast empty space on the right and bottom.
+2. Timeline keyframe loading unconditionally set `hasUserCustomizedRef.current = true` and `selectedPresetId = 'custom'`, permanently disabling dynamic auto-packing.
+3. `getPackCells` partitioned the bounding canvas into oversized cells and centered each card independently within its cell, introducing 600px chasms between adjacent columns.
+
+### 76.2 Mathematical Optimal Grid Solver (`computeOptimalGrid`)
+In [nleTimelineEngine.js](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/utils/nleTimelineEngine.js):
+- Evaluates candidate row configurations $R \in [1, N]$ with derived columns $C = \lceil N / R \rceil$.
+- Calculates maximum card dimensions $(w, h)$ respecting the target aspect ratio $A = w / h$:
+  $$h = \min\left( \frac{H}{R}, \frac{W}{C \cdot A} \right), \quad w = h \cdot A$$
+- Selects the $(R^*, C^*)$ topology that **maximizes total area coverage** ($N \cdot w \cdot h$).
+- Guarantees at least one dimension (width or height) is **100% filled**:
+  - For $N=4$ on 21:9 ($5040 \times 2160$): Card size is $1920 \times 1080$, filling 100% of canvas height ($2160\text{px}$), jumping area coverage from $33.8\%$ to **$76.2\%$**.
+  - For $N=4$ on 16:9 ($2560 \times 1440$): Card size is $1280 \times 720$ (**$100.0\%$ area utilization**).
+  - For $N=2$ on 32:9 ($5120 \times 1440$): Both cards are $2560 \times 1440$ (**$100.0\%$ area utilization**).
+- Positions cards seamlessly touching side-by-side with zero internal chasms, centering the entire grid horizontally and vertically, and centering odd counts in the last row.
+
+### 76.3 Automatic Canvas Geometry Synchronization
+In [MulticamViewport.jsx](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx):
+- When mounting or whenever canvas geometry (`virtualW, virtualH`) differs from keyframe layout dimensions:
+  - In `auto-grid` mode: dynamically recalculates optimal placements via `generateAutoPackPlacements` to fill the new canvas dimensions.
+  - In custom mode: proportionally rescales coordinates ($x, y, w, h$) by $\frac{W_{\text{new}}}{W_{\text{old}}}$ and $\frac{H_{\text{new}}}{H_{\text{old}}}$.
+- Keyframe synchronization distinguishes explicit user customization (`preset === 'custom'`) from default auto-grid state, preventing accidental lockouts.
+- Applying `auto-grid` explicitly resets `hasUserCustomizedRef.current = false`.
 
 ---
 

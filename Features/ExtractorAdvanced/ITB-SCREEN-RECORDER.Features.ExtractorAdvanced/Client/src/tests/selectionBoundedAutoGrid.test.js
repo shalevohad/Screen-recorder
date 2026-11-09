@@ -1,6 +1,6 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateAutoPackPlacements, getPackCells } from '../utils/nleTimelineEngine.js';
+import { generateAutoPackPlacements, getPackCells, computeOptimalGrid } from '../utils/nleTimelineEngine.js';
 
 describe('Auto-Grid Workstation Selection Invariant & Scope Boundary', () => {
 
@@ -154,5 +154,93 @@ describe('Auto-Grid Workstation Selection Invariant & Scope Boundary', () => {
         assert.equal(cells5.length, 5);
         assert.equal(cells5[3].cx, 320); // (640 / 2) offset
         assert.equal(cells5[4].cx, 960); // 320 + 640
+    });
+
+    test('7. computeOptimalGrid maximizes area coverage for Ultrawide 21:9 (5040x2160) with 4 feeds', () => {
+        const W = 5040;
+        const H = 2160;
+        const count = 4;
+        const optimal = computeOptimalGrid(count, W, H, 16 / 9);
+
+        assert.equal(optimal.rows, 2);
+        assert.equal(optimal.cols, 2);
+        assert.equal(optimal.cardW, 1920);
+        assert.equal(optimal.cardH, 1080);
+        // 4 * 1920 * 1080 = 8,294,400 area vs 1280x720 area of 3,686,400 (over 2.25x larger!)
+        assert.equal(optimal.totalArea, 8294400);
+    });
+
+    test('8. generateAutoPackPlacements on Ultrawide 21:9 produces contiguous centered layout filling 100% height', () => {
+        const selectedStationIds = ['st-1', 'st-2', 'st-3', 'st-4'];
+        const selectedStations = ALL_STATIONS.filter(s => selectedStationIds.includes(s.id));
+        const selectedFeeds = selectedStations.map(createFeedForStation);
+
+        const W = 5040;
+        const H = 2160;
+        const placements = generateAutoPackPlacements(selectedFeeds, W, H);
+
+        assert.equal(placements.length, 4);
+
+        // Check card 0 (top-left)
+        assert.equal(placements[0].width, 1920);
+        assert.equal(placements[0].height, 1080);
+        assert.equal(placements[0].x, 600); // Centered: (5040 - 3840) / 2
+        assert.equal(placements[0].y, 0);
+
+        // Check card 1 (top-right) - touches card 0 seamlessly at x = 2520!
+        assert.equal(placements[1].width, 1920);
+        assert.equal(placements[1].height, 1080);
+        assert.equal(placements[1].x, 2520);
+        assert.equal(placements[1].y, 0);
+        assert.equal(placements[0].x + placements[0].width, placements[1].x, 'Card 0 and Card 1 must touch seamlessly without gap');
+
+        // Check card 2 (bottom-left)
+        assert.equal(placements[2].width, 1920);
+        assert.equal(placements[2].height, 1080);
+        assert.equal(placements[2].x, 600);
+        assert.equal(placements[2].y, 1080);
+
+        // Check card 3 (bottom-right)
+        assert.equal(placements[3].width, 1920);
+        assert.equal(placements[3].height, 1080);
+        assert.equal(placements[3].x, 2520);
+        assert.equal(placements[3].y, 1080);
+
+        // Grid fills 100% of canvas height (1080 + 1080 = 2160)
+        assert.equal(placements[2].y + placements[2].height, H, 'Bottom cards must touch the bottom of the canvas');
+    });
+
+    test('9. computeOptimalGrid handles Super Ultrawide 32:9 (5120x1440) for 2 and 3 feeds', () => {
+        // 2 feeds on 32:9 (5120x1440) -> fills 100% width and 100% height!
+        const opt2 = computeOptimalGrid(2, 5120, 1440, 16 / 9);
+        assert.equal(opt2.rows, 1);
+        assert.equal(opt2.cols, 2);
+        assert.equal(opt2.cardW, 2560);
+        assert.equal(opt2.cardH, 1440);
+        assert.equal(opt2.totalArea, 5120 * 1440);
+
+        // 3 feeds on 32:9 (5120x1440) -> 3 side-by-side columns
+        const opt3 = computeOptimalGrid(3, 5120, 1440, 16 / 9);
+        assert.equal(opt3.rows, 1);
+        assert.equal(opt3.cols, 3);
+        assert.equal(opt3.cardW, Math.round(5120 / 3));
+    });
+
+    test('10. generateAutoPackPlacements centers odd count in last row on 21:9', () => {
+        const selectedStationIds = ['st-1', 'st-2', 'st-3'];
+        const selectedStations = ALL_STATIONS.filter(s => selectedStationIds.includes(s.id));
+        const selectedFeeds = selectedStations.map(createFeedForStation);
+
+        const W = 5040;
+        const H = 2160;
+        const placements = generateAutoPackPlacements(selectedFeeds, W, H);
+
+        assert.equal(placements.length, 3);
+        // Row 0: 2 cards (600 and 2520)
+        assert.equal(placements[0].x, 600);
+        assert.equal(placements[1].x, 2520);
+        // Row 1: 1 card centered at (5040 - 1920) / 2 = 1560
+        assert.equal(placements[2].x, 1560);
+        assert.equal(placements[2].y, 1080);
     });
 });

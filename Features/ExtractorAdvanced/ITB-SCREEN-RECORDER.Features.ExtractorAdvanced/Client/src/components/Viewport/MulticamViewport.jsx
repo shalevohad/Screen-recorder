@@ -713,8 +713,13 @@ export default function MulticamViewport({
             setInternalTimeline(sanitized);
             const hasExisting = sanitized.keyframes.some(k => k.layout?.placements?.length > 0);
             if (hasExisting) {
-                hasUserCustomizedRef.current = true;
-                setSelectedPresetId('custom');
+                const isExplicitCustom = sanitized.keyframes.some(k => k.layout?.preset === 'custom' || k.preset === 'custom');
+                if (isExplicitCustom) {
+                    hasUserCustomizedRef.current = true;
+                    setSelectedPresetId('custom');
+                } else {
+                    setSelectedPresetId('auto-grid');
+                }
             }
         }
     }, [canvasLayoutTimeline, timelineStations]);
@@ -889,6 +894,45 @@ export default function MulticamViewport({
         }
     }, [timelineStations, defaultStationFeeds, selectedPresetId, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
+    // Automatic Canvas Geometry Synchronization:
+    // If the active keyframe's layout dimensions differ from current canvas resolution (virtualW, virtualH),
+    // automatically re-pack (if auto-grid) or resynchronize placements so stations never get trapped in old dimensions.
+    const lastSyncedLayoutDimsRef = useRef({ w: virtualW, h: virtualH });
+    useEffect(() => {
+        if (!currentKf || !currentPlacements || currentPlacements.length === 0) return;
+        const kfW = currentKf.layout?.width;
+        const kfH = currentKf.layout?.height;
+
+        if (kfW && kfH && (kfW !== virtualW || kfH !== virtualH)) {
+            if (lastSyncedLayoutDimsRef.current.w === virtualW &&
+                lastSyncedLayoutDimsRef.current.h === virtualH &&
+                lastSyncedLayoutDimsRef.current.kfW === kfW &&
+                lastSyncedLayoutDimsRef.current.kfH === kfH) {
+                return;
+            }
+            lastSyncedLayoutDimsRef.current = { w: virtualW, h: virtualH, kfW, kfH };
+
+            if (selectedPresetId === 'auto-grid' || !hasUserCustomizedRef.current) {
+                const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : currentPlacements;
+                const autoPacked = generateAutoPackPlacements(targetFeeds, virtualW, virtualH);
+                if (autoPacked.length > 0) {
+                    updateActivePlacements(autoPacked, `Auto-fit to ${virtualW}×${virtualH}`);
+                }
+            } else {
+                const ratioX = virtualW / kfW;
+                const ratioY = virtualH / kfH;
+                const rescaled = currentPlacements.map(p => ({
+                    ...p,
+                    x: Math.round(p.x * ratioX),
+                    y: Math.round(p.y * ratioY),
+                    width: Math.max(40, Math.round(p.width * ratioX)),
+                    height: Math.max(30, Math.round(p.height * ratioY))
+                }));
+                updateActivePlacements(rescaled, `Rescaled to ${virtualW}×${virtualH}`);
+            }
+        }
+    }, [virtualW, virtualH, currentKf, currentPlacements, selectedPresetId, defaultStationFeeds, updateActivePlacements]);
+
     // Sync current canvas layout to parent Studio
     useEffect(() => {
         if (onUpdateCanvasLayout) {
@@ -917,18 +961,24 @@ export default function MulticamViewport({
             // Ignore
         }
 
-        const ratioX = newDims.w / oldDims.w;
-        const ratioY = newDims.h / oldDims.h;
-        const rescaled = currentPlacements.map(p => ({
-            ...p,
-            x: Math.round(p.x * ratioX),
-            y: Math.round(p.y * ratioY),
-            width: Math.max(40, Math.round(p.width * ratioX)),
-            height: Math.max(30, Math.round(p.height * ratioY))
-        }));
-        updateActivePlacements(rescaled, `Resolution change to ${newResId}`);
+        if (!hasUserCustomizedRef.current || selectedPresetId === 'auto-grid') {
+            const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds);
+            const autoPacked = generateAutoPackPlacements(targetFeeds, newDims.w, newDims.h);
+            updateActivePlacements(autoPacked, `Resolution change to ${newResId}`);
+        } else {
+            const ratioX = newDims.w / oldDims.w;
+            const ratioY = newDims.h / oldDims.h;
+            const rescaled = currentPlacements.map(p => ({
+                ...p,
+                x: Math.round(p.x * ratioX),
+                y: Math.round(p.y * ratioY),
+                width: Math.max(40, Math.round(p.width * ratioX)),
+                height: Math.max(30, Math.round(p.height * ratioY))
+            }));
+            updateActivePlacements(rescaled, `Resolution change to ${newResId}`);
+        }
         triggerToast(`Canvas Resolution: ${newResId} (${newDims.w}×${newDims.h})`, 'info', '📺');
-    }, [selectedResolutionId, selectedAspectId, customCanvasDims, currentPlacements, updateActivePlacements, triggerToast]);
+    }, [selectedResolutionId, selectedAspectId, customCanvasDims, currentPlacements, defaultStationFeeds, availableFeeds, selectedPresetId, updateActivePlacements, triggerToast]);
 
     // Apply Manual / Custom Resolution handler
     const handleApplyCustomResolution = useCallback(() => {
@@ -972,21 +1022,27 @@ export default function MulticamViewport({
         }
 
         if (oldDims.w !== newDims.w || oldDims.h !== newDims.h) {
-            const ratioX = newDims.w / oldDims.w;
-            const ratioY = newDims.h / oldDims.h;
-            const rescaled = currentPlacements.map(p => ({
-                ...p,
-                x: Math.round(p.x * ratioX),
-                y: Math.round(p.y * ratioY),
-                width: Math.max(40, Math.round(p.width * ratioX)),
-                height: Math.max(30, Math.round(p.height * ratioY))
-            }));
-            updateActivePlacements(rescaled, `Custom resolution set to ${sanitizedW}×${sanitizedH}`);
+            if (!hasUserCustomizedRef.current || selectedPresetId === 'auto-grid') {
+                const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds);
+                const autoPacked = generateAutoPackPlacements(targetFeeds, newDims.w, newDims.h);
+                updateActivePlacements(autoPacked, `Custom resolution set to ${sanitizedW}×${sanitizedH}`);
+            } else {
+                const ratioX = newDims.w / oldDims.w;
+                const ratioY = newDims.h / oldDims.h;
+                const rescaled = currentPlacements.map(p => ({
+                    ...p,
+                    x: Math.round(p.x * ratioX),
+                    y: Math.round(p.y * ratioY),
+                    width: Math.max(40, Math.round(p.width * ratioX)),
+                    height: Math.max(30, Math.round(p.height * ratioY))
+                }));
+                updateActivePlacements(rescaled, `Custom resolution set to ${sanitizedW}×${sanitizedH}`);
+            }
         }
 
         setShowResolutionPopout(false);
         triggerToast(`Canvas Resolution: Custom (${sanitizedW}×${sanitizedH})`, 'info', '📺');
-    }, [customWidthInput, customHeightInput, selectedResolutionId, selectedAspectId, customCanvasDims, currentPlacements, updateActivePlacements, triggerToast]);
+    }, [customWidthInput, customHeightInput, selectedResolutionId, selectedAspectId, customCanvasDims, currentPlacements, defaultStationFeeds, availableFeeds, selectedPresetId, updateActivePlacements, triggerToast]);
 
     // Switch Aspect Ratio handler (re-packing or rescaling existing placements proportionally to fill the target aspect)
     const handleSelectAspectRatio = useCallback((newAspectId) => {
@@ -1015,7 +1071,7 @@ export default function MulticamViewport({
             // Ignore
         }
 
-        if (!hasUserCustomizedRef.current) {
+        if (!hasUserCustomizedRef.current || selectedPresetId === 'auto-grid') {
             const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds);
             const autoPacked = generateAutoPackPlacements(targetFeeds, newDims.w, newDims.h);
             updateActivePlacements(autoPacked, `Aspect change to ${newAspectId}`);
@@ -1286,6 +1342,7 @@ export default function MulticamViewport({
             setSelectedFeedIndex(0);
             if (presetId === 'auto' || presetId === 'auto-grid') {
                 setSelectedPresetId('auto-grid');
+                hasUserCustomizedRef.current = false;
             } else {
                 setSelectedPresetId(presetId);
                 hasUserCustomizedRef.current = true;
