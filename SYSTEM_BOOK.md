@@ -4850,9 +4850,10 @@ flowchart TD
    - Removed horizontal dividing line and applied `mix-blend-mode: screen` with `fillOpacity="0.38"` and `strokeOpacity="0.85"`, allowing operators to inspect vocal and system acoustic dynamics concurrently.
 
 ### 75.3 Viewport Code Modernization & DRY Mathematical Packaging
-1. **Mathematical Auto-Packing Extracted**:
+1. **Mathematical Auto-Packing Extracted & Dynamic Variable Resolution**:
    - In [nleTimelineEngine.js](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/utils/nleTimelineEngine.js), extracted `getPackCells(count, W, H)` and `createPlacementFromFeed`.
    - Replaced redundant 180-line repetitive switch-cases in [MulticamViewport.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx) with a clean 15-line mathematical packing function preserving exact screen placement for 1, 2, 3 (ultrawide and standard), 4, and $N$ screens.
+   - Refactored `getPackCells(count, W, H)` to eliminate fragmented `if (count === ...)` branches; the grid column count (`cols`) is resolved dynamically as a single variable with organic row derivation (`rows = Math.ceil(count / cols)`), automatic cell dimension scaling (`cellW`, `cellH`), and automatic centering of remaining feeds on incomplete bottom rows.
 2. **Unified Layer Reordering**:
    - Replaced 4 repetitive layer stacking functions (`handleBringToFront`, `handleSendToBack`, `handleBringForward`, `handleSendBackward`) with a single parameterized `reorderLayer(idx, action)` function.
 3. **Preset Template Simplification**:

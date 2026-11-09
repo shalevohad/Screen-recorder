@@ -1,6 +1,6 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateAutoPackPlacements } from '../utils/nleTimelineEngine.js';
+import { generateAutoPackPlacements, getPackCells } from '../utils/nleTimelineEngine.js';
 
 describe('Auto-Grid Workstation Selection Invariant & Scope Boundary', () => {
 
@@ -110,5 +110,49 @@ describe('Auto-Grid Workstation Selection Invariant & Scope Boundary', () => {
         placements = generateAutoPackPlacements(selectedFeeds, 1920, 1080);
         assert.equal(placements.length, 1);
         assert.equal(placements[0].stationId, 'st-1');
+    });
+
+    test('6. getPackCells resolves columns dynamically as variable without if-branch fragmentation', () => {
+        // 1 feed
+        const cells1 = getPackCells(1, 1920, 1080);
+        assert.deepEqual(cells1, [{ cx: 0, cy: 0, cw: 1920, ch: 1080 }]);
+
+        // 2 feeds
+        const cells2 = getPackCells(2, 1920, 1080);
+        assert.deepEqual(cells2, [
+            { cx: 0, cy: 0, cw: 960, ch: 1080 },
+            { cx: 960, cy: 0, cw: 960, ch: 1080 }
+        ]);
+
+        // 3 feeds standard (2 top, 1 centered bottom)
+        const cells3Std = getPackCells(3, 1920, 1080);
+        assert.deepEqual(cells3Std, [
+            { cx: 0, cy: 0, cw: 960, ch: 540 },
+            { cx: 960, cy: 0, cw: 960, ch: 540 },
+            { cx: 480, cy: 540, cw: 960, ch: 540 }
+        ]);
+
+        // 3 feeds ultrawide (3 side-by-side columns)
+        const cells3Ultra = getPackCells(3, 3840, 1080);
+        assert.deepEqual(cells3Ultra, [
+            { cx: 0, cy: 0, cw: 1280, ch: 1080 },
+            { cx: 1280, cy: 0, cw: 1280, ch: 1080 },
+            { cx: 2560, cy: 0, cw: 1280, ch: 1080 }
+        ]);
+
+        // 4 feeds (2x2 grid)
+        const cells4 = getPackCells(4, 1920, 1080);
+        assert.deepEqual(cells4, [
+            { cx: 0, cy: 0, cw: 960, ch: 540 },
+            { cx: 960, cy: 0, cw: 960, ch: 540 },
+            { cx: 0, cy: 540, cw: 960, ch: 540 },
+            { cx: 960, cy: 540, cw: 960, ch: 540 }
+        ]);
+
+        // 5 feeds (3 top, 2 centered bottom)
+        const cells5 = getPackCells(5, 1920, 1080);
+        assert.equal(cells5.length, 5);
+        assert.equal(cells5[3].cx, 320); // (640 / 2) offset
+        assert.equal(cells5[4].cx, 960); // 320 + 640
     });
 });

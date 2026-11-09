@@ -186,7 +186,6 @@ export function synthesizeAutoKeyframe({
             activeKeyframe: initialKf
         };
     }
-
     // CASE 1: Near existing keyframe (within tolerance) -> Edit in place
     const closeIdx = nextKfs.findIndex(k => Math.abs(k.timestampEpochMs - currentEpochMs) <= toleranceMs);
     if (closeIdx >= 0) {
@@ -437,56 +436,37 @@ export const DEFAULT_CANVAS_SLOT_BORDER_COLORS = [
  * Computes deterministic bounding cells for packing `count` video feeds onto [W, H].
  */
 export function getPackCells(count, W, H) {
-    if (count <= 1) {
-        return [{ cx: 0, cy: 0, cw: W, ch: H }];
-    }
-    if (count === 2) {
-        const halfW = Math.round(W / 2);
-        return [
-            { cx: 0, cy: 0, cw: halfW, ch: H },
-            { cx: halfW, cy: 0, cw: halfW, ch: H }
-        ];
-    }
-    if (count === 3) {
-        const isUltrawide = (W / H) >= 2.5;
-        if (isUltrawide) {
-            const thirdW = Math.round(W / 3);
-            return [
-                { cx: 0, cy: 0, cw: thirdW, ch: H },
-                { cx: thirdW, cy: 0, cw: thirdW, ch: H },
-                { cx: thirdW * 2, cy: 0, cw: thirdW, ch: H }
-            ];
-        }
-        const cellW = Math.round(W / 2);
-        const cellH = Math.round(H / 2);
-        return [
-            { cx: 0, cy: 0, cw: cellW, ch: cellH },
-            { cx: cellW, cy: 0, cw: cellW, ch: cellH },
-            { cx: Math.round(cellW / 2), cy: cellH, cw: cellW, ch: cellH }
-        ];
-    }
-    if (count === 4) {
-        const cellW = Math.round(W / 2);
-        const cellH = Math.round(H / 2);
-        return [
-            { cx: 0, cy: 0, cw: cellW, ch: cellH },
-            { cx: cellW, cy: 0, cw: cellW, ch: cellH },
-            { cx: 0, cy: cellH, cw: cellW, ch: cellH },
-            { cx: cellW, cy: cellH, cw: cellW, ch: cellH }
-        ];
-    }
+    if (count <= 0) return [];
 
-    const cols = count <= 6 ? 3 : count <= 8 ? 4 : Math.ceil(Math.sqrt(count));
+    const isUltrawide = (W / H) >= 2.5;
+
+    // Dynamically resolve columns as a single variable
+    const cols = count === 1 ? 1
+        : count === 2 ? 2
+        : count === 3 && isUltrawide ? 3
+        : count <= 4 ? 2
+        : count <= 6 ? 3
+        : count <= 8 ? 4
+        : Math.ceil(Math.sqrt(count));
+
     const rows = Math.ceil(count / cols);
-    const cellW = Math.floor(W / cols);
-    const cellH = Math.floor(H / rows);
+    const cellW = Math.round(W / cols);
+    const cellH = Math.round(H / rows);
 
-    return Array.from({ length: count }, (_, i) => ({
-        cx: (i % cols) * cellW,
-        cy: Math.floor(i / cols) * cellH,
-        cw: cellW,
-        ch: cellH
-    }));
+    return Array.from({ length: count }, (_, i) => {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        // Center any remaining items in an incomplete last row
+        const itemsInRow = (r === rows - 1 && count % cols !== 0) ? (count % cols) : cols;
+        const rowOffsetX = Math.round((cols - itemsInRow) * cellW / 2);
+
+        return {
+            cx: rowOffsetX + c * cellW,
+            cy: r * cellH,
+            cw: cellW,
+            ch: cellH
+        };
+    });
 }
 
 /**
