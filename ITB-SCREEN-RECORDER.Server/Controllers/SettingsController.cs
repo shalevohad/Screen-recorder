@@ -221,6 +221,25 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                             config.Discovery.BroadcastAddress = updatedConfig.Discovery.BroadcastAddress;
                         config.Discovery.EnableBroadcastFallback = updatedConfig.Discovery.EnableBroadcastFallback;
                         config.Discovery.NetworkInterfaceName = updatedConfig.Discovery.NetworkInterfaceName;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.Role))
+                            config.Discovery.Role = updatedConfig.Discovery.Role;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.NodeRole))
+                            config.Discovery.NodeRole = updatedConfig.Discovery.NodeRole;
+                        if (updatedConfig.Discovery.Priority > 0)
+                            config.Discovery.Priority = updatedConfig.Discovery.Priority;
+                        config.Discovery.PartnerServerUrl = updatedConfig.Discovery.PartnerServerUrl;
+                        config.Discovery.AutoFailoverDashboard = updatedConfig.Discovery.AutoFailoverDashboard;
+                        if (updatedConfig.Discovery.DashboardFailoverDelaySeconds > 0)
+                            config.Discovery.DashboardFailoverDelaySeconds = updatedConfig.Discovery.DashboardFailoverDelaySeconds;
+                        if (updatedConfig.Discovery.HeartbeatIntervalSeconds > 0)
+                            config.Discovery.HeartbeatIntervalSeconds = updatedConfig.Discovery.HeartbeatIntervalSeconds;
+                        if (updatedConfig.Discovery.HeartbeatMissedThreshold > 0)
+                            config.Discovery.HeartbeatMissedThreshold = updatedConfig.Discovery.HeartbeatMissedThreshold;
+                        config.Discovery.PreemptLowerPriority = updatedConfig.Discovery.PreemptLowerPriority;
+                        config.Discovery.EnableVirtualIp = updatedConfig.Discovery.EnableVirtualIp;
+                        config.Discovery.VirtualIp = updatedConfig.Discovery.VirtualIp;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.VirtualIpSubnetMask))
+                            config.Discovery.VirtualIpSubnetMask = updatedConfig.Discovery.VirtualIpSubnetMask;
                     }
 
                     // Principle of Secrecy (עקרון החשאיות): Accept AutoDirector configuration updates ONLY if the server has the feature installed.

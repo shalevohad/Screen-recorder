@@ -22,13 +22,23 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
     public class ServerDiscoveryHostedService : BackgroundService
     {
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+        private readonly IClusterService _clusterService;
         private readonly ILogger<ServerDiscoveryHostedService> _logger;
 
         public ServerDiscoveryHostedService(
             IOptionsMonitor<SystemConfig> configMonitor,
             ILogger<ServerDiscoveryHostedService> logger)
+            : this(configMonitor, null!, logger)
+        {
+        }
+
+        public ServerDiscoveryHostedService(
+            IOptionsMonitor<SystemConfig> configMonitor,
+            IClusterService? clusterService,
+            ILogger<ServerDiscoveryHostedService> logger)
         {
             _configMonitor = configMonitor;
+            _clusterService = clusterService!;
             _logger = logger;
         }
 
@@ -155,6 +165,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 bool hasVip = discoveryConfig.EnableVirtualIp && !string.IsNullOrWhiteSpace(discoveryConfig.VirtualIp);
                 string effectiveIp = hasVip ? discoveryConfig.VirtualIp!.Trim() : preferredIp;
 
+                var clusterStatus = _clusterService?.GetClusterStatus();
+                bool isStandbyMode = string.Equals(discoveryConfig.Role, ServerDiscoveryConstants.RoleActiveStandby, StringComparison.OrdinalIgnoreCase);
+                bool acceptingAgents = !isStandbyMode || (clusterStatus == null || clusterStatus.State == ClusterNodeState.Active.ToString());
+
                 var response = new ServerDiscoveryResponse
                 {
                     ServerId = Environment.MachineName,
@@ -168,7 +182,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     RtmpBaseUrl = $"rtmps://{effectiveIp}:{rtmpPort}/live",
                     ServerIps = localIps,
                     ServerUtcTime = DateTime.UtcNow,
-                    AcceptingNewAgents = true,
+                    AcceptingNewAgents = acceptingAgents,
                     VirtualIp = discoveryConfig.EnableVirtualIp ? discoveryConfig.VirtualIp : null,
                     EnableVirtualIp = discoveryConfig.EnableVirtualIp
                 };

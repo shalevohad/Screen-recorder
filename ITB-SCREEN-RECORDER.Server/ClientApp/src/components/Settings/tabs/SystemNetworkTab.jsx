@@ -1,7 +1,7 @@
 // ==========================================
 // File: Client/src/components/Settings/tabs/SystemNetworkTab.jsx
 // ==========================================
-import React from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 
 export default function SystemNetworkTab({ form, activeFeatures = [], updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField, updateAutoDirectorField }) {
@@ -14,6 +14,76 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
         );
     }, [activeFeatures]);
     const { isSystemRoot, hasPermission } = useAuth();
+
+    const [clusterStatus, setClusterStatus] = useState(null);
+    const [clusterLoading, setClusterLoading] = useState(false);
+    const [clusterActionLoading, setClusterActionLoading] = useState(false);
+    const [clusterFeedback, setClusterFeedback] = useState(null);
+
+    const fetchClusterStatus = useCallback(async () => {
+        try {
+            setClusterLoading(true);
+            const res = await fetch('/api/v1/cluster/status');
+            if (res.ok) {
+                const data = await res.json();
+                setClusterStatus(data);
+            }
+        } catch (err) {
+            console.warn('[ClusterUI] Failed to load cluster status:', err);
+        } finally {
+            setClusterLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchClusterStatus();
+        const interval = setInterval(fetchClusterStatus, 6000);
+        return () => clearInterval(interval);
+    }, [fetchClusterStatus]);
+
+    const handleAcquireVip = async () => {
+        try {
+            setClusterActionLoading(true);
+            setClusterFeedback(null);
+            const res = await fetch('/api/v1/cluster/failover/acquire-vip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || 'Virtual IP acquired successfully!' });
+                fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to acquire Virtual IP' });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
+    const handleReleaseVip = async () => {
+        try {
+            setClusterActionLoading(true);
+            setClusterFeedback(null);
+            const res = await fetch('/api/v1/cluster/failover/release-vip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || 'Virtual IP released successfully' });
+                fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to release Virtual IP' });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
 
     if (!form) return null;
 
@@ -349,6 +419,268 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             onChange={e => updateDiscoveryField('enableBroadcastFallback', e.target.checked)}
                         />
                         <span>Enable Subnet Broadcast Fallback (Auto-fallback when multicast packets are blocked by network switches)</span>
+                    </label>
+                </div>
+            </div>
+
+            {/* HIGH AVAILABILITY, MULTI-SERVER CLUSTERING & VIRTUAL IP (VIP) */}
+            <div className="security-subpanel ha-cluster-subpanel" style={{ borderColor: 'rgba(16, 185, 129, 0.3)', background: 'rgba(16, 185, 129, 0.02)' }}>
+                <div className="subpanel-header" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#10B981', color: '#020617', fontWeight: 800 }}>HA CLUSTER</span>
+                            <h4 style={{ margin: 0, color: '#10B981' }}>MULTI-SERVER CLUSTERING & VIRTUAL IP (VIP)</h4>
+                        </div>
+                        <span className="subpanel-desc">Configure Active-Active or Active-Standby redundancy, inter-node heartbeat sync, and OS Virtual IP (VIP) failover routing.</span>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={fetchClusterStatus}
+                        className="btn-sync-cluster"
+                        style={{
+                            background: 'rgba(30, 41, 59, 0.6)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            color: '#34D399',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <span>{clusterLoading ? '🔄 Syncing...' : '🔄 Refresh Live Status'}</span>
+                    </button>
+                </div>
+
+                {/* Live Node Status Card */}
+                {clusterStatus && (
+                    <div style={{
+                        marginTop: '12px',
+                        marginBottom: '16px',
+                        padding: '12px 16px',
+                        background: 'rgba(15, 23, 42, 0.7)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700 }}>NODE STATE:</span>
+                                <span style={{
+                                    padding: '3px 10px',
+                                    borderRadius: '9999px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 800,
+                                    letterSpacing: '0.05em',
+                                    background: clusterStatus.currentState === 'Active' ? 'rgba(16, 185, 129, 0.2)' : clusterStatus.currentState === 'Standby' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(148, 163, 184, 0.2)',
+                                    color: clusterStatus.currentState === 'Active' ? '#10B981' : clusterStatus.currentState === 'Standby' ? '#38BDF8' : '#94A3B8',
+                                    border: `1px solid ${clusterStatus.currentState === 'Active' ? '#10B981' : clusterStatus.currentState === 'Standby' ? '#06B6D4' : '#64748B'}`
+                                }}>
+                                    ● {clusterStatus.currentState?.toUpperCase() || 'UNKNOWN'} ({clusterStatus.nodeRole || 'Node'})
+                                </span>
+
+                                {clusterStatus.virtualIpEnabled && (
+                                    <span style={{
+                                        padding: '3px 10px',
+                                        borderRadius: '9999px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        background: clusterStatus.isVirtualIpBound ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.15)',
+                                        color: clusterStatus.isVirtualIpBound ? '#34D399' : '#FDA4AF',
+                                        border: `1px solid ${clusterStatus.isVirtualIpBound ? 'rgba(16, 185, 129, 0.5)' : 'rgba(244, 63, 94, 0.3)'}`
+                                    }}>
+                                        VIP {clusterStatus.virtualIp}: {clusterStatus.isVirtualIpBound ? 'BOUND (ONLINE)' : 'STANDBY (NOT BOUND)'}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {clusterStatus.virtualIpEnabled && !clusterStatus.isVirtualIpBound && (
+                                    <button
+                                        type="button"
+                                        onClick={handleAcquireVip}
+                                        disabled={clusterActionLoading}
+                                        style={{
+                                            background: 'rgba(16, 185, 129, 0.2)',
+                                            border: '1px solid #10B981',
+                                            color: '#34D399',
+                                            padding: '4px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Claim Virtual IP (Promote)
+                                    </button>
+                                )}
+
+                                {clusterStatus.virtualIpEnabled && clusterStatus.isVirtualIpBound && (
+                                    <button
+                                        type="button"
+                                        onClick={handleReleaseVip}
+                                        disabled={clusterActionLoading}
+                                        style={{
+                                            background: 'rgba(244, 63, 94, 0.2)',
+                                            border: '1px solid #F43F5E',
+                                            color: '#FDA4AF',
+                                            padding: '4px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Release Virtual IP (Demote)
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {clusterStatus.partnerServerUrl && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.72rem', color: '#94A3B8', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
+                                <span>PARTNER NODE: <strong style={{ color: '#E2E8F0' }}>{clusterStatus.partnerServerUrl}</strong></span>
+                                <span style={{ color: clusterStatus.partnerReachable ? '#10B981' : '#F43F5E', fontWeight: 700 }}>
+                                    ● {clusterStatus.partnerReachable ? 'PARTNER HEALTHY' : `PARTNER UNREACHABLE (${clusterStatus.consecutiveMissedHeartbeats} missed)`}
+                                </span>
+                                <span>PRIORITY: <strong style={{ color: '#E2E8F0' }}>{clusterStatus.priority}</strong></span>
+                            </div>
+                        )}
+
+                        {clusterFeedback && (
+                            <div style={{
+                                padding: '6px 10px',
+                                borderRadius: '4px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                background: clusterFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                                color: clusterFeedback.type === 'success' ? '#34D399' : '#FDA4AF',
+                                border: `1px solid ${clusterFeedback.type === 'success' ? '#10B981' : '#F43F5E'}`
+                            }}>
+                                {clusterFeedback.message}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>Cluster Deployment Role</span>
+                        <select
+                            value={discovery.role || 'Active-Active'}
+                            onChange={e => updateDiscoveryField('role', e.target.value)}
+                            className="tactical-select"
+                        >
+                            <option value="Active-Active">Active-Active (Multi-Master Shared Load)</option>
+                            <option value="Active-Standby">Active-Standby (High Availability with Automatic Failover)</option>
+                            <option value="Standalone">Standalone (Single Server)</option>
+                        </select>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Cluster Node Role</span>
+                        <select
+                            value={discovery.nodeRole || 'Primary'}
+                            onChange={e => updateDiscoveryField('nodeRole', e.target.value)}
+                            className="tactical-select"
+                        >
+                            <option value="Primary">Primary (Active Leader Node)</option>
+                            <option value="Secondary">Secondary (Standby Failover Node)</option>
+                        </select>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Node Priority (1-100)</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={discovery.priority ?? 100}
+                            onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
+                        />
+                        <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                            עדיפות גבוהה יותר מכריעה מצבי Split-Brain במקרה של ניתוק הדדי.
+                        </span>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Partner Server URL (C2 Endpoint)</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. http://192.168.1.102:5090"
+                            value={discovery.partnerServerUrl || ''}
+                            onChange={e => updateDiscoveryField('partnerServerUrl', e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>Heartbeat Interval (Seconds)</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={discovery.heartbeatIntervalSeconds ?? 3}
+                            onChange={e => updateDiscoveryField('heartbeatIntervalSeconds', Number(e.target.value))}
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Missed Heartbeats Failover Threshold</span>
+                        <input
+                            type="number"
+                            min="2"
+                            max="10"
+                            value={discovery.heartbeatMissedThreshold ?? 3}
+                            onChange={e => updateDiscoveryField('heartbeatMissedThreshold', Number(e.target.value))}
+                        />
+                    </div>
+
+                    <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                        <span>Virtual IP (VIP) Address</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. 192.168.1.200"
+                            value={discovery.virtualIp || ''}
+                            onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
+                        />
+                    </div>
+
+                    <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                        <span>Virtual IP Subnet Mask</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. 255.255.255.0"
+                            value={discovery.virtualIpSubnetMask || '255.255.255.0'}
+                            onChange={e => updateDiscoveryField('virtualIpSubnetMask', e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap' }}>
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(discovery.enableVirtualIp)}
+                            onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
+                        />
+                        <span>Enable Operating System Virtual IP (VIP) Management (Automated acquisition via netsh / ip addr & Gratuitous ARP)</span>
+                    </label>
+
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(discovery.preemptLowerPriority)}
+                            onChange={e => updateDiscoveryField('preemptLowerPriority', e.target.checked)}
+                        />
+                        <span>Preempt Lower Priority (Automatically reclaim VIP if Primary node recovers)</span>
                     </label>
                 </div>
             </div>

@@ -52,6 +52,8 @@ namespace ITB_SCREEN_RECORDER.Server.Models
 
         public string Role { get; set; } = "Active-Active";
 
+        public string NodeRole { get; set; } = "Primary";
+
         public int Priority { get; set; } = 1;
 
         public string? PartnerServerUrl { get; set; }
@@ -59,6 +61,13 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         public bool AutoFailoverDashboard { get; set; } = true;
 
         public int DashboardFailoverDelaySeconds { get; set; } = 8;
+
+        public int HeartbeatIntervalSeconds { get; set; } = 2;
+
+        public int HeartbeatMissedThreshold { get; set; } = 3;
+
+        public bool PreemptLowerPriority { get; set; } = false;
+
         public bool EnableVirtualIp { get; set; } = false;
         public string? VirtualIp { get; set; }
         public string VirtualIpSubnetMask { get; set; } = "255.255.255.0";

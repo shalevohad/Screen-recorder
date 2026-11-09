@@ -4895,4 +4895,86 @@ In [MulticamViewport.jsx](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extr
 
 ---
 
+## 77. Enterprise Multi-Server High Availability (HA), Active-Active & Active-Standby Clustering & Virtual IP (VIP) Management (2026-11-09)
+
+### 77.1 Operational Architecture & Deployment Topologies
+In mission-critical air-gapped operations, recording server resilience is paramount. Workstations must stream continuously without interruption, and operators must maintain seamless C2 dashboard access regardless of physical server maintenance or unplanned hardware failure. The platform provides native multi-server high availability across three primary deployment topologies:
+
+1. **Active-Standby (High Availability Failover)**:
+   - **Primary Node**: Holds the Virtual IP (VIP), accepts live agent stream registrations (`live/{station}/mon-{idx}`), handles WebRTC WHEP/HLS distribution, and manages recording chunk rotation.
+   - **Secondary Node (Hot Standby)**: Continuously pings the Primary node's heartbeat health endpoint (`GET /api/v1/cluster/partner-health`) at intervals $T_{\text{heartbeat}}$ (default 3 seconds). Its MediaMTX and local C2 services remain hot.
+   - **Agent Registration Gate**: In Active-Standby mode, `ServerDiscoveryHostedService` sets `AcceptingNewAgents = true` exclusively when local node state is `Active`. Standby nodes advertise `AcceptingNewAgents = false` in UDP multicast broadcasts, preventing agent traffic diversion.
+2. **Active-Active (Distributed Scalability & Cross-Redundancy)**:
+   - Both nodes actively ingest workstation streams and serve operator dashboards.
+   - Ideal for dual-site or dual-datacenter environments where load is divided across clusters or where both nodes independently record independent sectors.
+   - Both nodes initialize in `Active` state; heartbeat monitoring provides bi-directional telemetry without preemption.
+3. **Standalone (Default Single Node)**:
+   - Zero inter-node communication overhead. Virtual IP management and background heartbeat loops are completely dormant.
+
+### 77.2 Native OS Cross-Platform Virtual IP (VIP) Lifecycle & Gratuitous ARP
+Managed by [IVirtualIpManager.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/IVirtualIpManager.cs) and [VirtualIpManager.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/VirtualIpManager.cs), the VIP engine dynamically binds and unbinds secondary IPv4 addresses to the active network interface without external clustering software (e.g., keepalived or Windows Failover Cluster):
+
+1. **Deterministic Windows Implementation**:
+   - Primary Command: `netsh interface ipv4 add address name="{interfaceName}" addr={vip} mask={subnetMask}`.
+   - Secondary / Re-probe fallback: PowerShell `New-NetIPAddress -InterfaceAlias '{interfaceName}' -IPAddress '{vip}' -PrefixLength {cidr} -SkipAsSource $false`.
+   - Release: `netsh interface ipv4 delete address name="{interfaceName}" addr={vip}`.
+   - **Gratuitous ARP & Network Flush**: Immediately following address binding, triggers `ipconfig /registerdns` and an ARP refresh ping to flush switch CAM / MAC address tables across local layer-2 switches.
+2. **Deterministic Linux Implementation**:
+   - Acquisition: `ip addr add {vip}/{cidr} dev {interfaceName}`.
+   - Release: `ip addr del {vip}/{cidr} dev {interfaceName}`.
+   - **Gratuitous ARP**: Executes `arping -U -c 3 -I {interfaceName} {vip}` to broadcast unsolicited ARP replies to neighboring switches and routers.
+3. **Dynamic Interface Resolution & Safety Idempotence**:
+   - `ResolveActiveInterfaceName`: Resolves interface aliases or automatically discovers the primary active Ethernet interface (`NetworkInterfaceType.Ethernet` / `Wireless80211` with active default gateway).
+   - `IsVirtualIpBoundLocallyAsync`: Inspects local unicast addresses while explicitly ignoring loopback interfaces (`127.0.0.1`), ensuring zero duplicate binding errors when already bound.
+
+### 77.3 Inter-Node Heartbeat, Split-Brain Arbitration & Automated Failover
+Managed by [ClusterService.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ClusterService.cs):
+
+1. **Heartbeat Health Loop**:
+   - Secondary node issues HTTP `GET /api/v1/cluster/partner-health` with a 2-second strict timeout.
+   - On successful HTTP 200 response, `_consecutiveMissedHeartbeats` is reset to 0, updating `_partnerStatus = "Online (Active)"`.
+2. **Automated Failover Trigger**:
+   - When consecutive missed heartbeats exceed `HeartbeatMissedThreshold` (default 3 cycles, $\approx 9$ seconds):
+   - The Standby node logs a critical warning, enters `PromoteToActiveAsync`, transitions local state to `Active`, increments `FailoverCount`, and invokes `_vipManager.AcquireVirtualIpAsync`.
+   - Workstation recording agents, configured with the Virtual IP, instantly redirect or maintain RTMP streams without needing reconfiguration.
+3. **Deterministic Split-Brain Arbitration & Priority Preemption**:
+   - If network partition heals and both nodes discover each other as `Active`:
+   - Priority is evaluated: The node with higher `Priority` (e.g. Primary = 100, Secondary = 50) retains leadership.
+   - If priorities are identical, ties are deterministically resolved by string ordinal comparison of `Environment.MachineName`.
+   - If `PreemptLowerPriority = true`, a recovering Primary node automatically reclaims leadership and VIP, instructing the Secondary node to demote itself.
+
+### 77.4 Fast Handover Protocol & Graceful Shutdown Surrender (`CedeLeadership`)
+1. **Planned Maintenance / Handover**:
+   - An administrator or orchestration agent triggers `POST /api/v1/cluster/handover` or clicks "Release Virtual IP (Demote)" in the C2 Dashboard.
+   - The active node immediately invokes `CedeLeadershipAsync`:
+     1. Releases local Virtual IP binding via `IVirtualIpManager.ReleaseVirtualIpAsync`.
+     2. Sets local state to `Standby`.
+     3. Dispatches a fire-and-forget notification to partner endpoint `POST /api/v1/cluster/handover`.
+     4. Partner receives the handover call and instantly claims the VIP, achieving sub-second cutover without waiting for heartbeat timeout.
+2. **Graceful Server Shutdown**:
+   - `ClusterService` registers a shutdown callback on `IHostApplicationLifetime.ApplicationStopping`.
+   - When the server process receives SIGTERM or service stop, `CedeLeadershipAsync` is automatically invoked before process termination, guaranteeing zero VIP conflicts upon restart.
+
+### 77.5 REST C2 Endpoints & Tactical Frontend Configuration
+Exposed via [ClusterController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/ClusterController.cs) and [SystemNetworkTab.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/SystemNetworkTab.jsx):
+
+| Endpoint | Method | Permission | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/v1/cluster/status` | `GET` | Authenticated | Retrieves comprehensive cluster topology, node state (`Active`/`Standby`), VIP status, partner health, uptime, and failover metrics. |
+| `/api/v1/cluster/partner-health` | `GET` | Anonymous / Local | Ultra-lightweight endpoint for inter-server health polling. |
+| `/api/v1/cluster/acquire-vip` | `POST` | `settings.cluster` / `settings.write` | Manually acquires and binds the configured Virtual IP. |
+| `/api/v1/cluster/release-vip` | `POST` | `settings.cluster` / `settings.write` | Manually releases and unbinds the Virtual IP. |
+| `/api/v1/cluster/handover` | `POST` | `settings.cluster` / `settings.write` | Initiates or acknowledges fast handover between cluster nodes. |
+
+- **Tactical NOC Subpanel**:
+  - Displays real-time operational status card with state badge (`ACTIVE` green glow, `STANDBY` amber, `STANDALONE` cyan).
+  - Virtual IP status tag with bound indicator (`BOUND` / `NOT BOUND`).
+  - Partner health monitoring with live consecutive missed count badge.
+  - Interactive Action buttons: "Claim Virtual IP (Promote)" and "Release Virtual IP (Demote)".
+  - Configuration inputs for Clustering Mode, Node Role, Priority, Partner Server URL, Virtual IP, Subnet Mask, and Preemption.
+
+---
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

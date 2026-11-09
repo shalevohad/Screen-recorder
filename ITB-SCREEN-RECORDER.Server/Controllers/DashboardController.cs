@@ -24,19 +24,22 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly CustomTabsService _tabsService;
         private readonly ICatalogRepository _catalogRepository;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? _clusterService;
 
         public DashboardController(
             ITelemetryStateService telemetryState,
             StationOverridesService overridesService,
             CustomTabsService tabsService,
             ICatalogRepository catalogRepository,
-            IOptionsMonitor<SystemConfig> configMonitor)
+            IOptionsMonitor<SystemConfig> configMonitor,
+            ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? clusterService = null)
         {
             _telemetryState = telemetryState;
             _overridesService = overridesService;
             _tabsService = tabsService;
             _catalogRepository = catalogRepository;
             _configMonitor = configMonitor;
+            _clusterService = clusterService;
         }
 
         [HttpGet("cluster")]
@@ -46,10 +49,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             var config = _configMonitor.CurrentValue;
             var disc = config.Discovery ?? new DiscoverySettings();
+            var clusterStatus = _clusterService?.GetClusterStatus();
 
             return Ok(new
             {
                 Role = !string.IsNullOrWhiteSpace(disc.Role) ? disc.Role : "Standalone",
+                NodeRole = disc.NodeRole,
+                State = clusterStatus?.State ?? "Standalone",
                 Priority = disc.Priority > 0 ? disc.Priority : 1,
                 ServerName = disc.ServerDisplayName,
                 ServerId = Environment.MachineName,
@@ -57,12 +63,17 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultMulticastAddress,
                 BroadcastAddress = !string.IsNullOrWhiteSpace(disc.BroadcastAddress) ? disc.BroadcastAddress : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultBroadcastAddress,
                 PartnerServerUrl = disc.PartnerServerUrl ?? string.Empty,
+                PartnerStatus = clusterStatus?.PartnerStatus ?? "Unknown",
                 AutoFailoverDashboard = disc.AutoFailoverDashboard,
                 FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8,
-                IsStandalone = true,
-                TotalActiveNodes = 1,
-                ClusterMode = "Standalone",
-                ActiveInterface = disc.NetworkInterfaceName ?? string.Empty
+                IsStandalone = string.Equals(disc.Role, "Standalone", StringComparison.OrdinalIgnoreCase),
+                TotalActiveNodes = clusterStatus != null && (clusterStatus.PartnerStatus == "Healthy" || clusterStatus.PartnerStatus == "Active" || clusterStatus.PartnerStatus == "Standby") ? 2 : 1,
+                ClusterMode = disc.Role,
+                ActiveInterface = clusterStatus?.NetworkInterface ?? string.Empty,
+                EnableVirtualIp = disc.EnableVirtualIp,
+                VirtualIp = disc.VirtualIp,
+                IsVipBoundLocally = clusterStatus?.IsVipBoundLocally ?? false,
+                FailoverCount = clusterStatus.FailoverCount
             });
         }
 

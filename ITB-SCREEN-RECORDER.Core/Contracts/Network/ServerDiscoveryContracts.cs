@@ -26,6 +26,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public const string ResponseMagic = "ITB_DISCOVERY_RESPONSE";
         public const string ProtocolVersion = "1.0";
         public const string RoleActiveActive = "Active-Active";
+        public const string RoleActiveStandby = "Active-Standby";
         public const string RoleStandalone = "Standalone";
         public const string RolePrimary = "Primary";
         public const string RoleSecondary = "Secondary";
@@ -70,6 +71,10 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonIgnore]
         public bool IsActiveActive => string.Equals(Role, ServerDiscoveryConstants.RoleActiveActive, StringComparison.OrdinalIgnoreCase) ||
                                       string.Equals(Role, "Active", StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
+        public bool IsActiveStandby => string.Equals(Role, ServerDiscoveryConstants.RoleActiveStandby, StringComparison.OrdinalIgnoreCase) ||
+                                       string.Equals(Role, "Standby", StringComparison.OrdinalIgnoreCase);
 
         [JsonIgnore]
         public bool IsStandalone => string.Equals(Role, ServerDiscoveryConstants.RoleStandalone, StringComparison.OrdinalIgnoreCase);
@@ -170,5 +175,115 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("keystrokeKeyMaterial")]
         public string? KeystrokeKeyMaterial { get; set; }
+    }
+
+    public enum ClusterNodeState
+    {
+        Standalone,
+        Active,
+        Standby,
+        Promoting,
+        Demoting,
+        Degraded
+    }
+
+    public class ClusterStatusDto
+    {
+        [JsonPropertyName("localNodeId")]
+        public string LocalNodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("serverDisplayName")]
+        public string ServerDisplayName { get; set; } = string.Empty;
+
+        [JsonPropertyName("clusterMode")]
+        public string ClusterMode { get; set; } = ServerDiscoveryConstants.RoleStandalone;
+
+        [JsonPropertyName("nodeRole")]
+        public string NodeRole { get; set; } = ServerDiscoveryConstants.RolePrimary;
+
+        [JsonPropertyName("state")]
+        public string State { get; set; } = ClusterNodeState.Standalone.ToString();
+
+        [JsonPropertyName("priority")]
+        public int Priority { get; set; } = 1;
+
+        [JsonPropertyName("enableVirtualIp")]
+        public bool EnableVirtualIp { get; set; }
+
+        [JsonPropertyName("virtualIp")]
+        public string? VirtualIp { get; set; }
+
+        [JsonPropertyName("virtualIpSubnetMask")]
+        public string VirtualIpSubnetMask { get; set; } = ServerDiscoveryConstants.DefaultSubnetMask;
+
+        [JsonPropertyName("isVipBoundLocally")]
+        public bool IsVipBoundLocally { get; set; }
+
+        [JsonPropertyName("networkInterface")]
+        public string? NetworkInterface { get; set; }
+
+        [JsonPropertyName("partnerServerUrl")]
+        public string? PartnerServerUrl { get; set; }
+
+        [JsonPropertyName("partnerStatus")]
+        public string PartnerStatus { get; set; } = "Unknown"; // "Healthy", "Unreachable", "Standby", "Active", "Unknown"
+
+        [JsonPropertyName("lastHeartbeatUtc")]
+        public DateTime? LastHeartbeatUtc { get; set; }
+
+        [JsonPropertyName("failoverCount")]
+        public int FailoverCount { get; set; }
+
+        [JsonPropertyName("uptimeSeconds")]
+        public double UptimeSeconds { get; set; }
+
+        [JsonPropertyName("preemptLowerPriority")]
+        public bool PreemptLowerPriority { get; set; }
+
+        [JsonIgnore]
+        public bool IsActive => string.Equals(State, ClusterNodeState.Active.ToString(), StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(State, ClusterNodeState.Standalone.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
+        public bool IsStandby => string.Equals(State, ClusterNodeState.Standby.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    public class ClusterPartnerHealthDto
+    {
+        [JsonPropertyName("nodeId")]
+        public string NodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("clusterMode")]
+        public string ClusterMode { get; set; } = string.Empty;
+
+        [JsonPropertyName("nodeRole")]
+        public string NodeRole { get; set; } = string.Empty;
+
+        [JsonPropertyName("state")]
+        public string State { get; set; } = string.Empty;
+
+        [JsonPropertyName("priority")]
+        public int Priority { get; set; }
+
+        [JsonPropertyName("isVipOwner")]
+        public bool IsVipOwner { get; set; }
+
+        [JsonPropertyName("timestampUtc")]
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterFailoverResultDto
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [JsonPropertyName("state")]
+        public string State { get; set; } = string.Empty;
+
+        [JsonPropertyName("isVipBound")]
+        public bool IsVipBound { get; set; }
+
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
     }
 }

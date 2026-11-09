@@ -85,7 +85,9 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string ServiceName { get; set; } = "ITB-SCREEN-RECORDER";
 
-        public string Role { get; set; } = "Active-Active"; // "Active-Active", "Standalone", "Aggregate"
+        public string Role { get; set; } = "Active-Active"; // "Active-Active", "Active-Standby", "Standalone", "Aggregate"
+
+        public string NodeRole { get; set; } = "Primary"; // "Primary", "Secondary", "Peer"
 
         [Range(0, 100)]
         public int Priority { get; set; } = 1;
@@ -96,6 +98,14 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Range(1, 60)]
         public int DashboardFailoverDelaySeconds { get; set; } = 8;
+
+        [Range(1, 30)]
+        public int HeartbeatIntervalSeconds { get; set; } = 2;
+
+        [Range(1, 10)]
+        public int HeartbeatMissedThreshold { get; set; } = 3;
+
+        public bool PreemptLowerPriority { get; set; } = false;
 
         public bool EnableVirtualIp { get; set; } = false;
 
