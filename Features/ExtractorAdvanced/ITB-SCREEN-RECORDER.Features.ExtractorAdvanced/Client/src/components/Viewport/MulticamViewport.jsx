@@ -858,12 +858,12 @@ export default function MulticamViewport({
                     transitionType: 'smooth',
                     utcClockPosition: utcClockPosition,
                     layout: {
-                        width: DEFAULT_VIRTUAL_CANVAS_W,
-                        height: DEFAULT_VIRTUAL_CANVAS_H,
+                        width: virtualW,
+                        height: virtualH,
                         backgroundColor: '#070A10',
                         fps: 30.0,
                         utcClockPosition: utcClockPosition,
-                        placements: generateAutoPackPlacements(defaultStationFeeds, DEFAULT_VIRTUAL_CANVAS_W, DEFAULT_VIRTUAL_CANVAS_H)
+                        placements: generateAutoPackPlacements(defaultStationFeeds, virtualW, virtualH)
                     }
                 }
             ]
@@ -1032,50 +1032,46 @@ export default function MulticamViewport({
     // Auto-populate AUTO-GRID by default when defaultStationFeeds become available and canvas is empty (1 central composite per station)
     useEffect(() => {
         if (defaultStationFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
-            const activePreset = ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
-            const autoPacked = generateAutoPackPlacements(defaultStationFeeds, activePreset.w, activePreset.h);
+            const autoPacked = generateAutoPackPlacements(defaultStationFeeds, virtualW, virtualH);
             if (autoPacked.length > 0) {
                 updateActivePlacements(autoPacked);
                 setSelectedPresetId('auto-grid');
             }
         }
-    }, [defaultStationFeeds, currentPlacements, updateActivePlacements, selectedAspectId]);
+    }, [defaultStationFeeds, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
     // Keep canvas layout synchronized with selected timeline stations:
     // If the operator adds/removes stations from selection, auto-update the grid if in auto-grid mode,
     // or purge unselected stations if custom layout.
     const prevTimelineStationIdsRef = useRef('');
     useEffect(() => {
+        if (!timelineStations || timelineStations.length === 0 || defaultStationFeeds.length === 0) return;
         const currentIdsStr = (timelineStations || []).map(s => s.id).sort().join(',');
-        if (prevTimelineStationIdsRef.current === '') {
-            prevTimelineStationIdsRef.current = currentIdsStr;
-            return;
-        }
-        if (prevTimelineStationIdsRef.current !== currentIdsStr) {
+        const placedStationIds = new Set((currentPlacements || []).map(p => p.stationId));
+        const hasUnplacedStations = timelineStations.some(s => !placedStationIds.has(s.id));
+
+        if (prevTimelineStationIdsRef.current !== currentIdsStr || hasUnplacedStations) {
             prevTimelineStationIdsRef.current = currentIdsStr;
 
-            if (timelineStations && timelineStations.length > 0) {
+            if (selectedPresetId === 'auto-grid' || !hasUserCustomizedRef.current || hasUnplacedStations || !currentPlacements || currentPlacements.length === 0) {
+                const autoPacked = generateAutoPackPlacements(defaultStationFeeds, virtualW, virtualH);
+                if (autoPacked.length > 0) {
+                    updateActivePlacements(autoPacked);
+                }
+            } else if (currentPlacements && currentPlacements.length > 0) {
                 const selectedIds = new Set(timelineStations.map(s => s.id));
-                if (selectedPresetId === 'auto-grid' || !hasUserCustomizedRef.current) {
-                    const activePreset = ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
-                    const autoPacked = generateAutoPackPlacements(defaultStationFeeds, activePreset.w, activePreset.h);
-                    if (autoPacked.length > 0) {
+                const cleaned = currentPlacements.filter(p => selectedIds.has(p.stationId));
+                if (cleaned.length !== currentPlacements.length) {
+                    if (cleaned.length === 0) {
+                        const autoPacked = generateAutoPackPlacements(defaultStationFeeds, virtualW, virtualH);
                         updateActivePlacements(autoPacked);
-                    }
-                } else if (currentPlacements && currentPlacements.length > 0) {
-                    const cleaned = currentPlacements.filter(p => selectedIds.has(p.stationId));
-                    if (cleaned.length !== currentPlacements.length) {
-                        if (cleaned.length === 0) {
-                            const autoPacked = generateAutoPackPlacements(defaultStationFeeds, virtualW, virtualH);
-                            updateActivePlacements(autoPacked);
-                        } else {
-                            updateActivePlacements(cleaned);
-                        }
+                    } else {
+                        updateActivePlacements(cleaned);
                     }
                 }
             }
         }
-    }, [timelineStations, defaultStationFeeds, selectedPresetId, selectedAspectId, currentPlacements, updateActivePlacements, virtualW, virtualH]);
+    }, [timelineStations, defaultStationFeeds, selectedPresetId, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
     // Sync current canvas layout to parent Studio
     useEffect(() => {

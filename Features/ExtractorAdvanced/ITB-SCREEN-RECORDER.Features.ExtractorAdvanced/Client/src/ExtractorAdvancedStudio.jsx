@@ -172,8 +172,8 @@ export default function ExtractorAdvancedStudio() {
 
             const activeKf = currentKfs[activeKfIndex] || currentKfs[0];
             const activeLayout = activeKf?.layout || currentCanvasLayout || {
-                width: 1920,
-                height: 1080,
+                width: currentCanvasLayout?.width || 2560,
+                height: currentCanvasLayout?.height || 1440,
                 backgroundColor: '#070A10',
                 fps: 30.0,
                 placements: []
@@ -553,16 +553,18 @@ export default function ExtractorAdvancedStudio() {
             if (prev?.keyframes && prev.keyframes.length > 0) return prev;
             const inEpoch = timelineBaseEpochMs + (inPointMs || 0);
             const outEpoch = timelineBaseEpochMs + (outPointMs || totalTimelineDurationMs || 3600000);
+            const initialW = currentCanvasLayout?.width || 2560;
+            const initialH = currentCanvasLayout?.height || 1440;
             const initialLayout = currentCanvasLayout || {
-                width: 1920,
-                height: 1080,
+                width: initialW,
+                height: initialH,
                 backgroundColor: "#070A10",
                 fps: 30.0,
                 placements: []
             };
             return {
-                width: 1920,
-                height: 1080,
+                width: initialW,
+                height: initialH,
                 backgroundColor: "#070A10",
                 fps: 30.0,
                 keyframes: [

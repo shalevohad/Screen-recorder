@@ -4775,6 +4775,25 @@ In compliance with enterprise operational security, server capabilities and inst
    - [SettingsView.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/SettingsView.jsx) queries `/api/v1/features/active` on component mount and distributes `activeFeatures` to its tabs.
    - [SystemNetworkTab.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/SystemNetworkTab.jsx) evaluates `hasReplayStudioFeature`. The entire `STEALTH OPS: AUTO-DIRECTOR & REPLAY STUDIO ENGINE` subpanel is strictly suppressed unless both stealth authorization and feature module registration are verified.
 
+### 74.5 Audio Razor Playhead Alignment & Master Bus Split Controls
+To guarantee sub-millisecond precision during audio slicing without visual offsets:
+1. **Sidebar Coordinate Locking**:
+   - In `AudioRoutingTrack.scss`, `.track-sidebar.audio-track-sidebar` is strictly locked to `width: 230px !important; min-width: 230px !important; max-width: 230px !important;`, eliminating earlier layout shifts where the audio surface shifted 88px (~5.5 minutes) to the left.
+   - The surface element (`.track-surface.audio-track-surface`) uses `flex: 1`, perfectly aligning with the `.playhead-overlay-pane` geometry (`left: 230px; right: 58px`).
+2. **Multi-Track Master Bar & Razor Controls**:
+   - Added tactical master header (`.audio-bus-master-bar`) displaying master VU meter, mute status, and a prominent `✂️ SPLIT AT PLAYHEAD` action button.
+   - Added per-track razor split buttons (`.btn-lane-split-razor`) directly in each audio track's sidebar.
+   - Implemented global hotkey `Ctrl+K` / `Cmd+K` to execute immediate razor slicing at the current playhead epoch across active audio clips.
+
+### 74.6 Multi-Screen Virtual Canvas Auto-Packing & Bounds Governance
+In [MulticamViewport.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx) and [ExtractorAdvancedStudio.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx):
+1. **Dynamic Virtual Bounds Packing**:
+   - Replaced static preset dimensions (`activePreset.w = 2560`) with actual canvas bounds (`virtualW, virtualH`), preventing screens from clumping into the top-left quadrant on ultrawide, 4K, and custom aspect canvases.
+2. **Unplaced Workstation Detection & Auto-Grid Sync**:
+   - When multiple workstations are selected on the timeline (e.g. `PCQ401` and `PCQ410`), the auto-pack synchronization hook detects unplaced stations (`hasUnplacedStations`) and packs all default workstation feeds across the full canvas geometry.
+3. **Studio Canvas Resolution Retention**:
+   - Root keyframe layout generation defaults to `currentCanvasLayout?.width || 2560` and `height || 1440` instead of collapsing to standard 1080p.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

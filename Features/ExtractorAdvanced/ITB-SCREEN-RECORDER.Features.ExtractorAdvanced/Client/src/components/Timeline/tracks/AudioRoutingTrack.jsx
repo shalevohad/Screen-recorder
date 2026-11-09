@@ -863,6 +863,20 @@ export default function AudioRoutingTrack({
         handleSplitClipAtPlayhead(null, null);
     }, [handleSplitClipAtPlayhead]);
 
+    // Global hotkey: Ctrl+K / Cmd+K splits audio clips at timeline playhead
+    useEffect(() => {
+        const handleSplitKey = (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+                if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                handleGlobalSplitAtPlayhead();
+            }
+        };
+        window.addEventListener('keydown', handleSplitKey);
+        return () => window.removeEventListener('keydown', handleSplitKey);
+    }, [handleGlobalSplitAtPlayhead]);
+
     // Delete Clip
     const handleDeleteClip = useCallback((laneId, clipId) => {
         setLanes(prev => {
@@ -1190,6 +1204,53 @@ export default function AudioRoutingTrack({
     // -------------------------------------------------------------
     return (
         <div className="audio-routing-tracks-wrapper" ref={containerRef}>
+            {/* Tactical Multi-Track Audio Master Bar */}
+            <div className="audio-bus-master-bar">
+                <div className="master-bar-left">
+                    <span className="audio-icon">{isMasterMuted ? '🔇' : '🔊'}</span>
+                    <span className="audio-master-title">AUDIO MASTER BUS</span>
+                    <span className="badge-lanes-count">{lanes.length} {lanes.length === 1 ? 'TRACK' : 'TRACKS'}</span>
+                    <button
+                        type="button"
+                        className="btn-add-audio-lane"
+                        onClick={handleAddLane}
+                        title="Add New Audio Lane (A2, A3...)"
+                    >
+                        ＋ ADD AUDIO LANE
+                    </button>
+                    <button
+                        type="button"
+                        className="btn-split-playhead"
+                        onClick={handleGlobalSplitAtPlayhead}
+                        title={`Split audio clips at playhead (${formatTimelineClock(playheadEpoch, timeMode, { includeSeconds: true })}) [Ctrl+K]`}
+                    >
+                        ✂️ SPLIT AT PLAYHEAD
+                    </button>
+                </div>
+                <div className="master-bar-right">
+                    <div className="master-vu-readout" title={`Current Master Level: ${liveLevel.db.toFixed(1)} dB`}>
+                        <span className="vu-db-text">{liveLevel.db > -55 ? `${liveLevel.db.toFixed(0)} dB` : '-∞ dB'}</span>
+                        <div className="master-vu-bar-outer">
+                            <div
+                                className="master-vu-bar-inner"
+                                style={{
+                                    width: `${Math.min(100, Math.max(0, (liveLevel.peak || 0) * 100))}%`,
+                                    background: liveLevel.peak > 0.85 ? '#F43F5E' : (liveLevel.peak > 0.65 ? '#F59E0B' : '#10B981')
+                                }}
+                            />
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        className={`btn-master-mute ${isMasterMuted ? 'is-muted' : ''}`}
+                        onClick={() => setIsMasterMuted(prev => !prev)}
+                        title={isMasterMuted ? 'Unmute Master Audio' : 'Mute Master Audio'}
+                    >
+                        {isMasterMuted ? '🔇 MUTED' : '🔊 MUTE'}
+                    </button>
+                </div>
+            </div>
+
             {lanes.map((lane, lIdx) => {
                 const laneColor = LANE_COLORS[lIdx % LANE_COLORS.length];
                 const isDragOver = dragOverLaneId === lane.id;
@@ -1291,6 +1352,19 @@ export default function AudioRoutingTrack({
                                     S
                                 </button>
                             </div>
+
+                            {/* Quick Split Razor Button for this Lane */}
+                            <button
+                                type="button"
+                                className="btn-lane-split-razor"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSplitClipAtPlayhead(lane.id, null);
+                                }}
+                                title={`Split ${lane.id} at playhead (${formatTimelineClock(playheadEpoch, timeMode, { includeSeconds: true })}) [Ctrl+K]`}
+                            >
+                                ✂️
+                            </button>
                         </div>
 
                         {/* Track Timeline Surface with Draggable & Trimmable Audio Cuts */}
