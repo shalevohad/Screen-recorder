@@ -1,6 +1,7 @@
 // ==========================================
 // File: ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/DiscreteStereoSampleProvider.cs
 // ==========================================
+#if WINDOWS
 using System;
 using NAudio.Wave;
 
@@ -68,3 +69,4 @@ namespace ITBRecorderAgent.Providers.Audio
         }
     }
 }
+#endif
