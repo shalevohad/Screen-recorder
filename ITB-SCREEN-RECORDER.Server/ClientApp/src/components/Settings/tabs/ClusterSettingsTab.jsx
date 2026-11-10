@@ -236,11 +236,13 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
     const [nodeCapStreams, setNodeCapStreams] = useState(50);
     const [nodeCapJobs, setNodeCapJobs] = useState(2);
     const [nodeCapMode, setNodeCapMode] = useState('Active');
+    const [nodeCapAuto, setNodeCapAuto] = useState(true);
 
     const handleOpenEditCapacities = (node) => {
         setEditingNodeCapacities(node);
-        setNodeCapStreams(node.maxStreamsCapacity || 50);
-        setNodeCapJobs(node.maxConcurrentJobs || 2);
+        setNodeCapAuto(node.autoHardwareCapacity !== false);
+        setNodeCapStreams(node.maxStreamsCapacity || node.recommendedStreamsCapacity || 50);
+        setNodeCapJobs(node.maxConcurrentJobs || node.recommendedConcurrentJobs || 2);
         setNodeCapMode(node.nodeMode || 'Active');
     };
 
@@ -254,8 +256,9 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    maxStreamsCapacity: Number(nodeCapStreams),
-                    maxConcurrentJobs: Number(nodeCapJobs),
+                    autoHardwareCapacity: Boolean(nodeCapAuto),
+                    maxStreamsCapacity: nodeCapAuto ? 0 : Number(nodeCapStreams),
+                    maxConcurrentJobs: nodeCapAuto ? 0 : Number(nodeCapJobs),
                     nodeMode: nodeCapMode
                 })
             });
@@ -753,7 +756,9 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     {/* Streams Ingestion Load Progress Bar */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem' }}>
-                                            <span style={{ color: '#94A3B8' }}>Streams Load:</span>
+                                            <span style={{ color: '#94A3B8' }}>
+                                                Streams Load {node.autoHardwareCapacity !== false && <span style={{ color: '#38BDF8', fontSize: '0.65rem' }}>[⚡ AUTO HW]</span>}:
+                                            </span>
                                             <strong style={{ color: nodeStreamsPct > 75 ? '#F43F5E' : '#F8FAFC', fontFamily: 'monospace' }}>
                                                 {node.activeStreamsCount} / {node.maxStreamsCapacity} ({nodeStreamsPct}%)
                                             </strong>
@@ -770,7 +775,9 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     {/* Video NLE Render Cuts Load Progress Bar */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem' }}>
-                                            <span style={{ color: '#94A3B8' }}>NLE Render Jobs:</span>
+                                            <span style={{ color: '#94A3B8' }}>
+                                                NLE Render Jobs {node.autoHardwareCapacity !== false && <span style={{ color: '#F472B6', fontSize: '0.65rem' }}>[⚡ AUTO HW]</span>}:
+                                            </span>
                                             <strong style={{ color: '#F472B6', fontFamily: 'monospace' }}>
                                                 {node.activeJobsCount} / {node.maxConcurrentJobs} ({nodeJobsPct}%)
                                             </strong>
@@ -983,7 +990,49 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             </span>
                         </div>
 
-                        <div className="specs-matrix">
+                        {/* Real Cluster Capacity vs Target Comparison Strip */}
+                        {clusterGrid && (
+                            <div className="sizing-comparison-strip" style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                gap: '10px',
+                                background: 'rgba(15, 23, 42, 0.6)',
+                                padding: '10px 14px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                marginTop: '10px'
+                            }}>
+                                <div>
+                                    <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Stream Ingest Load</span>
+                                    <div style={{ fontSize: '0.85rem', color: '#F8FAFC', fontWeight: 800, marginTop: '2px', fontFamily: 'monospace' }}>
+                                        Target: {calcStations} • Cluster: {clusterGrid.totalStreamsCapacity || 0}
+                                    </div>
+                                    <span style={{ fontSize: '0.7rem', color: sizingResult.headroomStreams >= 0 ? '#34D399' : '#F43F5E' }}>
+                                        {sizingResult.headroomStreams >= 0 ? `+${sizingResult.headroomStreams} Channels Headroom` : `${sizingResult.headroomStreams} Channels Deficit`}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>NLE Concurrent Render Cuts</span>
+                                    <div style={{ fontSize: '0.85rem', color: '#F472B6', fontWeight: 800, marginTop: '2px', fontFamily: 'monospace' }}>
+                                        Target: {calcJobs} • Cluster: {clusterGrid.totalConcurrentJobsCapacity || 0}
+                                    </div>
+                                    <span style={{ fontSize: '0.7rem', color: sizingResult.headroomJobs >= 0 ? '#34D399' : '#F43F5E' }}>
+                                        {sizingResult.headroomJobs >= 0 ? `+${sizingResult.headroomJobs} Slots Headroom` : `${sizingResult.headroomJobs} Slots Deficit`}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Active Nodes vs Recommended</span>
+                                    <div style={{ fontSize: '0.85rem', color: '#38BDF8', fontWeight: 800, marginTop: '2px', fontFamily: 'monospace' }}>
+                                        Current: {clusterGrid.onlineNodesCount || 1} • Needed: {sizingResult.recommendedActiveNodes}
+                                    </div>
+                                    <span style={{ fontSize: '0.7rem', color: (clusterGrid.onlineNodesCount || 1) >= sizingResult.recommendedActiveNodes ? '#34D399' : '#F59E0B' }}>
+                                        {(clusterGrid.onlineNodesCount || 1) >= sizingResult.recommendedActiveNodes ? '✓ Node Count Met' : `+${Math.max(1, sizingResult.recommendedActiveNodes - (clusterGrid.onlineNodesCount || 1))} Additional Node(s) Needed`}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="specs-matrix" style={{ marginTop: '10px' }}>
                             <div className="spec-box">
                                 <span className="spec-lbl">Recommended Nodes</span>
                                 <span className="spec-val">
@@ -1317,6 +1366,30 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     Adjust runtime stream ingestion and concurrent NLE transcode limits for this specific cluster node. Changes propagate across the grid immediately.
                                 </p>
 
+                                <div className="form-group" style={{ background: 'rgba(6, 182, 212, 0.1)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={nodeCapAuto}
+                                            onChange={e => {
+                                                const checked = e.target.checked;
+                                                setNodeCapAuto(checked);
+                                                if (checked) {
+                                                    setNodeCapStreams(editingNodeCapacities.recommendedStreamsCapacity || 50);
+                                                    setNodeCapJobs(editingNodeCapacities.recommendedConcurrentJobs || 2);
+                                                }
+                                            }}
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                        />
+                                        <span style={{ fontWeight: 800, color: '#38BDF8', fontSize: '0.85rem' }}>
+                                            ⚡ Dynamic Hardware-Calculated Capacities (Recommended)
+                                        </span>
+                                    </label>
+                                    <span className="field-hint" style={{ marginTop: '4px', display: 'block' }}>
+                                        When enabled, stream ingestion and NLE capacities are dynamically derived from this node's real CPU cores, RAM, and GPU encoder tier ({editingNodeCapacities.recommendedStreamsCapacity || 'Auto'} streams / {editingNodeCapacities.recommendedConcurrentJobs || 'Auto'} NLE cuts).
+                                    </span>
+                                </div>
+
                                 <div className="form-group">
                                     <label>Operating Mode:</label>
                                     <select value={nodeCapMode} onChange={e => setNodeCapMode(e.target.value)}>
@@ -1330,10 +1403,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     <input
                                         type="number"
                                         min="5"
-                                        max="200"
-                                        value={nodeCapStreams}
+                                        max="500"
+                                        value={nodeCapAuto ? (editingNodeCapacities.recommendedStreamsCapacity || 50) : nodeCapStreams}
                                         onChange={e => setNodeCapStreams(Number(e.target.value))}
+                                        disabled={nodeCapAuto}
                                         required
+                                        style={{ opacity: nodeCapAuto ? 0.6 : 1 }}
                                     />
                                     <span className="field-hint">Hardware recommended: {editingNodeCapacities.recommendedStreamsCapacity || 50} streams</span>
                                 </div>
@@ -1343,10 +1418,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     <input
                                         type="number"
                                         min="1"
-                                        max="16"
-                                        value={nodeCapJobs}
+                                        max="32"
+                                        value={nodeCapAuto ? (editingNodeCapacities.recommendedConcurrentJobs || 2) : nodeCapJobs}
                                         onChange={e => setNodeCapJobs(Number(e.target.value))}
+                                        disabled={nodeCapAuto}
                                         required
+                                        style={{ opacity: nodeCapAuto ? 0.6 : 1 }}
                                     />
                                     <span className="field-hint">Hardware recommended: {editingNodeCapacities.recommendedConcurrentJobs || 2} concurrent cuts</span>
                                 </div>

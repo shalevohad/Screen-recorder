@@ -66,9 +66,11 @@ namespace ITB_SCREEN_RECORDER.Server.Models
 
         public List<string> ClusterPeerUrls { get; set; } = new();
 
-        public int MaxIngestStreamsCapacity { get; set; } = 50;
+        public bool AutoHardwareCapacity { get; set; } = true;
 
-        public int MaxConcurrentRenderJobs { get; set; } = 2;
+        public int MaxIngestStreamsCapacity { get; set; } = 0;
+
+        public int MaxConcurrentRenderJobs { get; set; } = 0;
 
         public bool AutoBalanceStreams { get; set; } = true;
 

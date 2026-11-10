@@ -2807,5 +2807,28 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }).ToList();
         }
 
+        public override ExportJobInfo EnqueueExportJob(ExtractionRequestDto request)
+        {
+            var job = base.EnqueueExportJob(request);
+            if (job != null)
+            {
+                SyncJobToCluster(job);
+            }
+            return job;
+        }
+
+        protected override async Task ProcessJobAsync(ExportJobInfo job)
+        {
+            SyncJobToCluster(job);
+            try
+            {
+                await base.ProcessJobAsync(job);
+            }
+            finally
+            {
+                SyncJobToCluster(job);
+            }
+        }
+
     }
 }

@@ -47,8 +47,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 {
                     discoveryDto.ClusterPeerUrls = peerArr.Select(x => x?.ToString() ?? "").Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
                 }
-                discoveryDto.MaxIngestStreamsCapacity = (int)(discovery["MaxIngestStreamsCapacity"] ?? 50);
-                discoveryDto.MaxConcurrentRenderJobs = (int)(discovery["MaxConcurrentRenderJobs"] ?? 2);
+                discoveryDto.AutoHardwareCapacity = (bool)(discovery["AutoHardwareCapacity"] ?? true);
+                discoveryDto.MaxIngestStreamsCapacity = (int)(discovery["MaxIngestStreamsCapacity"] ?? 0);
+                discoveryDto.MaxConcurrentRenderJobs = (int)(discovery["MaxConcurrentRenderJobs"] ?? 0);
                 discoveryDto.AutoBalanceStreams = (bool)(discovery["AutoBalanceStreams"] ?? true);
                 discoveryDto.DistributedVideoProcessingEnabled = (bool)(discovery["DistributedVideoProcessingEnabled"] ?? true);
                 discoveryDto.AutoFailoverDashboard = (bool)(discovery["AutoFailoverDashboard"] ?? true);
@@ -144,6 +145,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                         }
                     }
                     discNode["ClusterPeerUrls"] = peerArray;
+                    discNode["AutoHardwareCapacity"] = dto.Discovery.AutoHardwareCapacity;
                     discNode["MaxIngestStreamsCapacity"] = dto.Discovery.MaxIngestStreamsCapacity;
                     discNode["MaxConcurrentRenderJobs"] = dto.Discovery.MaxConcurrentRenderJobs;
                     discNode["AutoBalanceStreams"] = dto.Discovery.AutoBalanceStreams;

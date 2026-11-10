@@ -117,16 +117,23 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public List<string> ClusterPeerUrls { get; set; } = new();
 
         /// <summary>
-        /// Maximum concurrent ingest streams assigned to this node before load balancing diverts to other nodes.
+        /// When true, node dynamically computes its stream and NLE job capacity from actual hardware specs (CPU, RAM, GPU).
         /// </summary>
-        [Range(1, 200)]
-        public int MaxIngestStreamsCapacity { get; set; } = 50;
+        public bool AutoHardwareCapacity { get; set; } = true;
+
+        /// <summary>
+        /// Maximum concurrent ingest streams assigned to this node before load balancing diverts to other nodes.
+        /// When AutoHardwareCapacity is true or value is 0, dynamically derived from hardware probe.
+        /// </summary>
+        [Range(0, 500)]
+        public int MaxIngestStreamsCapacity { get; set; } = 0;
 
         /// <summary>
         /// Maximum concurrent video export/render jobs allowed on this node.
+        /// When AutoHardwareCapacity is true or value is 0, dynamically derived from hardware probe.
         /// </summary>
-        [Range(1, 16)]
-        public int MaxConcurrentRenderJobs { get; set; } = 2;
+        [Range(0, 32)]
+        public int MaxConcurrentRenderJobs { get; set; } = 0;
 
         /// <summary>
         /// When true, Orchestrator automatically balances incoming agent streams across online cluster nodes.

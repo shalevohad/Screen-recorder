@@ -331,8 +331,11 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("activeStreamsCount")]
         public int ActiveStreamsCount { get; set; }
 
+        [JsonPropertyName("autoHardwareCapacity")]
+        public bool AutoHardwareCapacity { get; set; } = true;
+
         [JsonPropertyName("maxStreamsCapacity")]
-        public int MaxStreamsCapacity { get; set; } = 50;
+        public int MaxStreamsCapacity { get; set; }
 
         [JsonPropertyName("recommendedStreamsCapacity")]
         public int RecommendedStreamsCapacity { get; set; }
@@ -341,7 +344,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public int ActiveJobsCount { get; set; }
 
         [JsonPropertyName("maxConcurrentJobs")]
-        public int MaxConcurrentJobs { get; set; } = 2;
+        public int MaxConcurrentJobs { get; set; }
 
         [JsonPropertyName("recommendedConcurrentJobs")]
         public int RecommendedConcurrentJobs { get; set; }
@@ -473,8 +476,11 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("activeStreamsCount")]
         public int ActiveStreamsCount { get; set; }
 
+        [JsonPropertyName("autoHardwareCapacity")]
+        public bool AutoHardwareCapacity { get; set; } = true;
+
         [JsonPropertyName("maxStreamsCapacity")]
-        public int MaxStreamsCapacity { get; set; } = 50;
+        public int MaxStreamsCapacity { get; set; }
 
         [JsonPropertyName("recommendedStreamsCapacity")]
         public int RecommendedStreamsCapacity { get; set; }
@@ -483,7 +489,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public int ActiveJobsCount { get; set; }
 
         [JsonPropertyName("maxConcurrentJobs")]
-        public int MaxConcurrentJobs { get; set; } = 2;
+        public int MaxConcurrentJobs { get; set; }
 
         [JsonPropertyName("recommendedConcurrentJobs")]
         public int RecommendedConcurrentJobs { get; set; }
@@ -917,6 +923,24 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("currentClusterMaxJobs")]
         public int CurrentClusterMaxJobs { get; set; }
 
+        [JsonPropertyName("currentClusterOnlineNodes")]
+        public int CurrentClusterOnlineNodes { get; set; }
+
+        [JsonPropertyName("clusterStreamsUtilizationPct")]
+        public int ClusterStreamsUtilizationPct { get; set; }
+
+        [JsonPropertyName("clusterJobsUtilizationPct")]
+        public int ClusterJobsUtilizationPct { get; set; }
+
+        [JsonPropertyName("headroomStreams")]
+        public int HeadroomStreams { get; set; }
+
+        [JsonPropertyName("headroomJobs")]
+        public int HeadroomJobs { get; set; }
+
+        [JsonPropertyName("isGpuAccelerationRecommended")]
+        public bool IsGpuAccelerationRecommended { get; set; }
+
         [JsonPropertyName("evaluationSummary")]
         public string EvaluationSummary { get; set; } = string.Empty;
 
@@ -937,36 +961,59 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             string mode = !string.IsNullOrWhiteSpace(req.RedundancyMode) ? req.RedundancyMode : "Active-Active";
             string profile = !string.IsNullOrWhiteSpace(req.HardwareProfile) ? req.HardwareProfile : "Auto";
 
-            // Determine GPU profile
-            bool useNvenc = string.Equals(profile, "NVENC", StringComparison.OrdinalIgnoreCase) ||
-                           (string.Equals(profile, "Auto", StringComparison.OrdinalIgnoreCase) && stations >= 40);
-            bool useQsv = !useNvenc && (string.Equals(profile, "QSV", StringComparison.OrdinalIgnoreCase) ||
-                          (string.Equals(profile, "Auto", StringComparison.OrdinalIgnoreCase) && stations >= 20));
+            // Determine GPU profile based on cluster reality or user preference
+            bool hasClusterGpus = (currentGrid?.ClusterHardwareEncodersCount ?? 0) > 0;
+            bool clusterHasNvidia = currentGrid?.ClusterGpuModels?.Any(m => m.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) ?? false;
+            bool clusterHasIntel = currentGrid?.ClusterGpuModels?.Any(m => m.Contains("Intel", StringComparison.OrdinalIgnoreCase)) ?? false;
 
-            // Node count calculation
-            int activeNodes = 1;
+            bool useNvenc = string.Equals(profile, "NVENC", StringComparison.OrdinalIgnoreCase) ||
+                           (string.Equals(profile, "Auto", StringComparison.OrdinalIgnoreCase) && (clusterHasNvidia || (!hasClusterGpus && stations >= 40)));
+            bool useQsv = !useNvenc && (string.Equals(profile, "QSV", StringComparison.OrdinalIgnoreCase) ||
+                          (string.Equals(profile, "Auto", StringComparison.OrdinalIgnoreCase) && (clusterHasIntel || (!hasClusterGpus && stations >= 20))));
+
+            // Determine nominal single-node capability based on hardware encoder tier:
+            // Derived from ClusterBeaconPacket.CalculateHardwareCapacities with enterprise safety margins
+            int nominalStreamsPerNode;
+            int nominalJobsPerNode;
+
+            if (useNvenc)
+            {
+                // Typical NVENC node (8-16 cores, 32GB RAM, dedicated RTX GPU)
+                nominalStreamsPerNode = 50;
+                nominalJobsPerNode = 2;
+            }
+            else if (useQsv)
+            {
+                // Typical Intel QuickSync node (8-12 cores, 32GB RAM, integrated Iris Xe/UHD GPU)
+                nominalStreamsPerNode = 35;
+                nominalJobsPerNode = 2;
+            }
+            else
+            {
+                // CPU Software (libx264 software only, 8-16 cores, 32GB RAM)
+                nominalStreamsPerNode = 20;
+                nominalJobsPerNode = 1;
+            }
+
+            // Node count calculation based on BOTH streams AND concurrent NLE jobs
+            int neededForStreams = (int)Math.Ceiling((double)stations / nominalStreamsPerNode);
+            int neededForJobs = (int)Math.Ceiling((double)jobs / nominalJobsPerNode);
+            int activeNodes = Math.Max(neededForStreams, neededForJobs);
             int standbyNodes = 0;
 
             if (string.Equals(mode, "Active-Standby", StringComparison.OrdinalIgnoreCase))
             {
-                activeNodes = 1;
+                activeNodes = Math.Max(1, activeNodes);
                 standbyNodes = 1;
             }
             else if (string.Equals(mode, "Active-Active", StringComparison.OrdinalIgnoreCase))
             {
-                if (useNvenc)
+                if (stations > 40 || jobs > 2)
                 {
-                    activeNodes = stations > 100 ? (int)Math.Ceiling(stations / 80.0) : (stations > 50 ? 2 : 1);
+                    activeNodes = Math.Max(2, activeNodes);
                 }
-                else if (useQsv)
-                {
-                    activeNodes = stations > 60 ? (int)Math.Ceiling(stations / 50.0) : (stations > 30 ? 2 : 1);
-                }
-                else
-                {
-                    activeNodes = (int)Math.Ceiling(stations / 25.0);
-                }
-                activeNodes = Math.Clamp(activeNodes, 1, 8);
+                activeNodes = Math.Clamp(activeNodes, 1, 16);
+                standbyNodes = 0;
             }
             else
             {
@@ -978,34 +1025,35 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             int stationsPerNode = (int)Math.Ceiling((double)stations / Math.Max(1, activeNodes));
             int jobsPerNode = (int)Math.Ceiling((double)jobs / Math.Max(1, activeNodes));
 
-            // Minimum Hardware per node
+            // Minimum Hardware per node (derived dynamically from load)
             int minCpuCores;
             int minRamGb;
             string gpuTier;
 
             if (useNvenc)
             {
-                minCpuCores = Math.Clamp((int)Math.Ceiling(stationsPerNode / 15.0) + (jobsPerNode * 2), 4, 32);
-                minRamGb = Math.Clamp((int)Math.Ceiling(stationsPerNode / 4.0) + (jobsPerNode * 4), 16, 128);
-                gpuTier = "NVIDIA NVENC (GeForce RTX 3060/4060 or Quadro/RTX A2000/A4000)";
+                // Ingest: 1 core per 12 streams; NLE: 2 dedicated cores per concurrent cut; Base OS: 2 cores
+                minCpuCores = 2 + (int)Math.Ceiling(stationsPerNode / 12.0) + (jobsPerNode * 2);
+                minRamGb = 4 + (int)Math.Ceiling(stationsPerNode * 0.15) + (jobsPerNode * 4);
+                gpuTier = "NVIDIA NVENC (GeForce RTX 3060/4060 or Quadro/RTX A2000/A4000 6GB+ VRAM)";
             }
             else if (useQsv)
             {
-                minCpuCores = Math.Clamp((int)Math.Ceiling(stationsPerNode / 10.0) + (jobsPerNode * 2), 6, 32);
-                minRamGb = Math.Clamp((int)Math.Ceiling(stationsPerNode / 3.0) + (jobsPerNode * 4), 16, 64);
-                gpuTier = "Intel QuickSync (Core i7/i9 11th Gen+ / Xeon with Intel Iris Xe or UHD GPU)";
+                minCpuCores = 2 + (int)Math.Ceiling(stationsPerNode / 8.0) + (jobsPerNode * 3);
+                minRamGb = 4 + (int)Math.Ceiling(stationsPerNode * 0.20) + (jobsPerNode * 4);
+                gpuTier = "Intel QuickSync (Core i7/i9 11th Gen+ / Xeon E-2300+ with UHD Graphics P750/Iris Xe)";
             }
             else
             {
-                minCpuCores = Math.Clamp((int)Math.Ceiling(stationsPerNode / 4.0) + (jobsPerNode * 4), 8, 64);
-                minRamGb = Math.Clamp((int)Math.Ceiling(stationsPerNode / 2.0) + (jobsPerNode * 6), 32, 256);
+                minCpuCores = 2 + (int)Math.Ceiling(stationsPerNode / 4.0) + (jobsPerNode * 4);
+                minRamGb = 4 + (int)Math.Ceiling(stationsPerNode * 0.35) + (jobsPerNode * 6);
                 gpuTier = "CPU Software Encoding (libx264 - Multi-node Active-Active cluster strongly recommended)";
             }
 
-            // Align CPU cores to standard even core counts (4, 6, 8, 12, 16, 24, 32, 64)
+            minCpuCores = Math.Clamp(minCpuCores, 4, 64);
             if (minCpuCores % 2 != 0) minCpuCores++;
 
-            // Align RAM to standard enterprise memory DIMM configurations
+            // Align RAM to standard enterprise memory DIMMs
             if (minRamGb <= 16) minRamGb = 16;
             else if (minRamGb <= 32) minRamGb = 32;
             else if (minRamGb <= 64) minRamGb = 64;
@@ -1013,20 +1061,21 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             else minRamGb = 256;
 
             // Network throughput calculation
-            // Ingest: ~3.5 Mbps per station, plus WebRTC/HLS live viewing and cluster replication
             double ingestMbps = stations * 3.5;
-            double totalBandwidthMbps = Math.Round(ingestMbps * 1.35, 1);
-            int minNetSpeed = totalBandwidthMbps > 700 ? 10000 : 1000;
-            string netCard = totalBandwidthMbps > 700
-                ? "10 Gbps SFP+ (High-Density Stream Aggregation)"
-                : "1 Gbps Dedicated LAN (Dual-Port LACP recommended)";
+            double liveViewerMbps = (stations * 0.3) * 3.5;
+            double totalBandwidthMbps = Math.Round((ingestMbps + liveViewerMbps) * 1.15, 1);
+            double perNodeBandwidthMbps = Math.Round(totalBandwidthMbps / Math.Max(1, activeNodes), 1);
+            int minNetSpeed = perNodeBandwidthMbps > 700 ? 10000 : 1000;
+            string netCard = perNodeBandwidthMbps > 700
+                ? "10 Gbps SFP+ (High-Density Stream Aggregation & Forensic Bus)"
+                : "1 Gbps Dedicated LAN (Dual-Port LACP Teamed)";
 
             // Storage I/O
-            // 3.5 Mbps = ~440 KB/s per station write rate
             double storageWriteMBps = Math.Round((stations * 0.44) + (jobs * 25.0), 1);
-            string storageText = storageWriteMBps > 50.0
-                ? $"High-Speed NVMe PCIe 4.0 SSD or 10GbE NetApp NAS (Sustained write >= {Math.Ceiling(storageWriteMBps * 1.5)} MB/s)"
-                : $"Enterprise SSD (SATA/NVMe) or Enterprise CIFS/SMB UNC path (Sustained write >= {Math.Ceiling(storageWriteMBps * 1.5)} MB/s)";
+            double perNodeWriteMBps = Math.Round(storageWriteMBps / Math.Max(1, activeNodes), 1);
+            string storageText = perNodeWriteMBps > 50.0
+                ? $"High-Speed NVMe PCIe 4.0 SSD or 10GbE NetApp NAS with SSD caching (Sustained write >= {Math.Ceiling(perNodeWriteMBps * 1.5)} MB/s, >= 15,000 IOPS)"
+                : $"Enterprise SSD (SATA/NVMe) or Enterprise CIFS/SMB UNC path (Sustained write >= {Math.Ceiling(perNodeWriteMBps * 1.5)} MB/s, >= 5,000 IOPS)";
 
             // Current Cluster Evaluation
             bool capable = true;
@@ -1034,33 +1083,39 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             string summary;
             int curStreams = currentGrid?.TotalStreamsCapacity ?? 0;
             int curJobs = currentGrid?.TotalConcurrentJobsCapacity ?? 0;
+            int curOnlineNodes = currentGrid?.OnlineNodesCount ?? 0;
+            int streamUtil = curStreams > 0 ? (int)Math.Round(((double)stations / curStreams) * 100) : 0;
+            int jobsUtil = curJobs > 0 ? (int)Math.Round(((double)jobs / curJobs) * 100) : 0;
+            int headroomStreams = Math.Max(0, curStreams - stations);
+            int headroomJobs = Math.Max(0, curJobs - jobs);
 
             if (currentGrid != null && currentGrid.TotalNodes > 0)
             {
                 if (curStreams >= stations && curJobs >= jobs)
                 {
-                    int streamHeadroom = curStreams - stations;
-                    int jobHeadroom = curJobs - jobs;
                     status = "Ready";
                     capable = true;
-                    summary = $"Current cluster is fully qualified! Capacity: {curStreams} streams (+{streamHeadroom} headroom), {curJobs} NLE jobs (+{jobHeadroom} slots).";
+                    summary = $"Current cluster is fully qualified! Capacity: {curStreams} streams (+{headroomStreams} headroom, {streamUtil}% load) and {curJobs} NLE jobs (+{headroomJobs} slots, {jobsUtil}% load).";
                 }
                 else if (curStreams >= (int)(stations * 0.8) && curJobs >= (int)(jobs * 0.8))
                 {
                     status = "Warning";
                     capable = true;
-                    summary = $"Cluster is near operational threshold ({curStreams}/{stations} streams, {curJobs}/{jobs} jobs). Consider adding 1 Active node for safety margin.";
+                    summary = $"Cluster near operational threshold ({curStreams}/{stations} streams, {curJobs}/{jobs} NLE jobs). Consider adding 1 Active node for safety margin.";
                 }
                 else
                 {
                     status = "Deficit";
                     capable = false;
-                    summary = $"Cluster capacity deficit detected! Current: {curStreams}/{stations} streams, {curJobs}/{jobs} jobs. Add {Math.Max(1, (int)Math.Ceiling((stations - curStreams) / 50.0))} more Active node(s) or upgrade GPU to NVENC.";
+                    int deficitStreams = Math.Max(0, stations - curStreams);
+                    int deficitJobs = Math.Max(0, jobs - curJobs);
+                    int addNodes = Math.Max(1, activeNodes - curOnlineNodes);
+                    summary = $"Cluster capacity deficit detected! Short by {deficitStreams} streams and/or {deficitJobs} NLE jobs. Add {addNodes} more Active node(s) or upgrade GPU to NVENC.";
                 }
             }
             else
             {
-                summary = "Standalone or unclustered host. Sizing recommendations displayed based on target specifications.";
+                summary = "Standalone host or initial deployment. Hardware sizing recommendations computed based on target workloads.";
             }
 
             var reportSb = new System.Text.StringBuilder();
@@ -1079,7 +1134,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             reportSb.AppendLine($"• Processor (CPU):          {minCpuCores} Physical Cores ({minCpuCores * 2} vCPUs) @ 3.0GHz+");
             reportSb.AppendLine($"• System Memory (RAM):       {minRamGb} GB DDR4/DDR5 ECC");
             reportSb.AppendLine($"• Hardware GPU Encoder:     {gpuTier}");
-            reportSb.AppendLine($"• Network Interface (NIC):  {netCard} (Aggregated Peak: {totalBandwidthMbps} Mbps)");
+            reportSb.AppendLine($"• Network Interface (NIC):  {netCard} (Aggregated Peak: {totalBandwidthMbps} Mbps, Per Node: {perNodeBandwidthMbps} Mbps)");
             reportSb.AppendLine($"• Storage Sustained I/O:    {storageText} (Write Rate: {storageWriteMBps} MB/s)");
             reportSb.AppendLine("--------------------------------------------------------------------------------");
             reportSb.AppendLine($"FLEET READINESS STATUS:     [{status.ToUpperInvariant()}] {summary}");
@@ -1103,6 +1158,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
                 CurrentClusterCapable = capable,
                 CurrentClusterMaxStreams = curStreams,
                 CurrentClusterMaxJobs = curJobs,
+                CurrentClusterOnlineNodes = curOnlineNodes,
+                ClusterStreamsUtilizationPct = streamUtil,
+                ClusterJobsUtilizationPct = jobsUtil,
+                HeadroomStreams = headroomStreams,
+                HeadroomJobs = headroomJobs,
+                IsGpuAccelerationRecommended = stations >= 30 || jobs >= 2,
                 EvaluationStatus = status,
                 EvaluationSummary = summary,
                 SizingReport = reportSb.ToString()
@@ -1177,6 +1238,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
     public class ClusterNodeCapacitiesUpdateRequest
     {
+        [JsonPropertyName("autoHardwareCapacity")]
+        public bool? AutoHardwareCapacity { get; set; }
+
         [JsonPropertyName("maxStreamsCapacity")]
         public int? MaxStreamsCapacity { get; set; }
 

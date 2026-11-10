@@ -5329,8 +5329,8 @@ Operators require a **Single Pane of Glass** experience:
 
 4. **Tactical Frontend Grid & One-Click Management Console**:
    - **Unified Station Grid**: Workstations stream and play together in the tactical grid and canvas as part of a single unified super-server.
-   - **One-Click Cluster Console Access (`CommandCenterHeader.jsx`)**:
-     The header `.cluster-nodes-indicator` displays `UNIFIED SYSTEM` and `ONLINE`. Clicking it instantly opens the Cluster Settings tab (`SettingsView.jsx`), giving system administrators direct access to the node topology visualizer, aggregate metrics, sizing calculator, node draining, and remote node lifecycle toolbar.
+   - **Cluster Console Access & Infrastructure Encapsulation**:
+     All cluster configuration, node topology visualization, aggregate metrics, sizing calculator, node draining, and remote node lifecycle controls are cleanly encapsulated in the Cluster Settings tab (`SettingsView.jsx`), keeping the operational command bar minimal and focused on fleet status without redundant system badges.
 
 ---
 

@@ -134,8 +134,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             int cpuCores = Environment.ProcessorCount;
             int hwScore = ClusterBeaconPacket.CalculateHardwareCapabilityScore(cpuCores, totalRamGb, configuredEncoder, gpuModel);
             var (hwStreamsCap, hwJobsCap) = ClusterBeaconPacket.CalculateHardwareCapacities(cpuCores, totalRamGb, configuredEncoder, gpuModel);
-            int effectiveCap = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : hwStreamsCap;
-            int effectiveJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : hwJobsCap;
+            bool autoHwCap = disc.AutoHardwareCapacity || (disc.MaxIngestStreamsCapacity <= 0 && disc.MaxConcurrentRenderJobs <= 0);
+            int effectiveCap = !autoHwCap && disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : hwStreamsCap;
+            int effectiveJobs = !autoHwCap && disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : hwJobsCap;
 
             var localNode = new ClusterNodeDescriptor
             {
@@ -149,6 +150,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 NodeMode = !string.IsNullOrWhiteSpace(disc.NodeMode) ? disc.NodeMode : ServerDiscoveryConstants.NodeModeActive,
                 State = _state.ToString(),
                 Priority = disc.Priority,
+                AutoHardwareCapacity = autoHwCap,
                 MaxStreamsCapacity = effectiveCap,
                 EffectiveStreamsCapacity = effectiveCap,
                 RecommendedStreamsCapacity = hwStreamsCap,
@@ -1114,8 +1116,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 localDesc?.EncoderType ?? "libx264",
                 localDesc?.GpuModel ?? "CPU Software");
 
-            int effectiveStreamsCap = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : (localDesc?.MaxStreamsCapacity > 0 ? localDesc.MaxStreamsCapacity : hwStreamsCap);
-            int effectiveJobsCap = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : (localDesc?.MaxConcurrentJobs > 0 ? localDesc.MaxConcurrentJobs : hwJobsCap);
+            bool autoHwCap = disc.AutoHardwareCapacity || (disc.MaxIngestStreamsCapacity <= 0 && disc.MaxConcurrentRenderJobs <= 0);
+            int effectiveStreamsCap = !autoHwCap && disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : hwStreamsCap;
+            int effectiveJobsCap = !autoHwCap && disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : hwJobsCap;
 
             return new ClusterBeaconPacket
             {
@@ -1131,6 +1134,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 HlsBaseUrl = $"http://{primaryIp}:{hlsPort}/live",
                 WhepPort = 8889,
                 ActiveStreamsCount = localDesc?.ActiveStreamsCount ?? 0,
+                AutoHardwareCapacity = autoHwCap,
                 MaxStreamsCapacity = effectiveStreamsCap,
                 RecommendedStreamsCapacity = hwStreamsCap,
                 ActiveJobsCount = localDesc?.ActiveJobsCount ?? GetActiveJobsCount(),
@@ -1197,11 +1201,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     : ClusterNodeState.Active.ToString());
             node.Priority = beacon.Priority;
             node.ActiveStreamsCount = beacon.ActiveStreamsCount;
-            node.MaxStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : peerHwStreamsCap;
-            node.RecommendedStreamsCapacity = beacon.RecommendedStreamsCapacity > 0 ? beacon.RecommendedStreamsCapacity : peerHwStreamsCap;
+            node.AutoHardwareCapacity = beacon.AutoHardwareCapacity;
+            node.MaxStreamsCapacity = beacon.AutoHardwareCapacity || beacon.MaxStreamsCapacity <= 0 ? peerHwStreamsCap : beacon.MaxStreamsCapacity;
+            node.RecommendedStreamsCapacity = peerHwStreamsCap;
             node.ActiveJobsCount = beacon.ActiveJobsCount;
-            node.MaxConcurrentJobs = beacon.MaxConcurrentJobs > 0 ? beacon.MaxConcurrentJobs : peerHwJobsCap;
-            node.RecommendedConcurrentJobs = beacon.RecommendedConcurrentJobs > 0 ? beacon.RecommendedConcurrentJobs : peerHwJobsCap;
+            node.MaxConcurrentJobs = beacon.AutoHardwareCapacity || beacon.MaxConcurrentJobs <= 0 ? peerHwJobsCap : beacon.MaxConcurrentJobs;
+            node.RecommendedConcurrentJobs = peerHwJobsCap;
             node.HostCpuPct = beacon.HostCpuPct;
             node.HostRamPct = beacon.HostRamPct;
             node.NicTotalTxMbps = beacon.NicTotalTxMbps;
@@ -2008,9 +2013,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     await syncService.UpdateSystemConfigAsync(c =>
                     {
                         c.Discovery ??= new DiscoverySettings();
-                        if (req.MaxStreamsCapacity.HasValue && req.MaxStreamsCapacity.Value > 0)
+                        if (req.AutoHardwareCapacity.HasValue)
+                            c.Discovery.AutoHardwareCapacity = req.AutoHardwareCapacity.Value;
+                        if (req.MaxStreamsCapacity.HasValue)
                             c.Discovery.MaxIngestStreamsCapacity = req.MaxStreamsCapacity.Value;
-                        if (req.MaxConcurrentJobs.HasValue && req.MaxConcurrentJobs.Value > 0)
+                        if (req.MaxConcurrentJobs.HasValue)
                             c.Discovery.MaxConcurrentRenderJobs = req.MaxConcurrentJobs.Value;
                         if (!string.IsNullOrWhiteSpace(req.NodeMode))
                             c.Discovery.NodeMode = req.NodeMode;
@@ -2030,10 +2037,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     var res = await client.PostAsJsonAsync($"{remoteNode.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/nodes/{nodeId}/capacities", req, ct);
                     if (res.IsSuccessStatusCode)
                     {
-                        if (req.MaxStreamsCapacity.HasValue && req.MaxStreamsCapacity.Value > 0)
-                            remoteNode.MaxStreamsCapacity = req.MaxStreamsCapacity.Value;
-                        if (req.MaxConcurrentJobs.HasValue && req.MaxConcurrentJobs.Value > 0)
-                            remoteNode.MaxConcurrentJobs = req.MaxConcurrentJobs.Value;
+                        if (req.AutoHardwareCapacity.HasValue)
+                            remoteNode.AutoHardwareCapacity = req.AutoHardwareCapacity.Value;
+                        if (req.MaxStreamsCapacity.HasValue)
+                            remoteNode.MaxStreamsCapacity = req.AutoHardwareCapacity == true ? remoteNode.RecommendedStreamsCapacity : req.MaxStreamsCapacity.Value;
+                        if (req.MaxConcurrentJobs.HasValue)
+                            remoteNode.MaxConcurrentJobs = req.AutoHardwareCapacity == true ? remoteNode.RecommendedConcurrentJobs : req.MaxConcurrentJobs.Value;
                         if (!string.IsNullOrWhiteSpace(req.NodeMode))
                             remoteNode.NodeMode = req.NodeMode;
 
