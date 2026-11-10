@@ -4,11 +4,12 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Contracts.Jobs;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
 namespace ITB_SCREEN_RECORDER.Server.Services.Network
 {
-    public interface IClusterService
+    public interface IClusterService : IClusterWorkerSelector
     {
         ClusterStatusDto GetClusterStatus();
         ClusterPartnerHealthDto GetPartnerHealthDto();

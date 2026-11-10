@@ -580,5 +580,210 @@ namespace ITB_SCREEN_RECORDER.Tests.Server.Network
         }
 
         #endregion
+
+        #region Hardware-Aware Weighted Balancing & Overload Protection Tests
+
+        [Fact]
+        public async Task HardwareAware_IngestBalancing_HighCapabilityNodeAbsorbsHigherStreamLoad()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Local node is already busy with 20 streams
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = Environment.MachineName,
+                    ActiveStreamsCount = 20,
+                    EffectiveStreamsCapacity = 20,
+                    HostCpuPct = 60.0
+                }
+            });
+
+            // Weak CPU-only node (Score: 50 + 4*25 + 8*5 = 190) with 3 active streams
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-COMMODITY-WEAK",
+                    CpuCores = 4,
+                    TotalRamGb = 8.0,
+                    GpuModel = "CPU Software",
+                    EncoderType = "libx264",
+                    HardwareCapabilityScore = 190,
+                    EffectiveStreamsCapacity = 20,
+                    ActiveStreamsCount = 3,
+                    HostCpuPct = 30.0,
+                    RtmpBaseUrl = "rtmps://weak-node:19350/live"
+                }
+            });
+
+            // High-Performance GPU node (Score: 500 + 16*25 + 32*5 = 1060) with 3 active streams
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-ENTERPRISE-GPU",
+                    CpuCores = 16,
+                    TotalRamGb = 32.0,
+                    GpuModel = "NVIDIA RTX 4070",
+                    EncoderType = "h264_nvenc",
+                    HardwareCapabilityScore = 1060,
+                    EffectiveStreamsCapacity = 100,
+                    ActiveStreamsCount = 3,
+                    HostCpuPct = 30.0,
+                    RtmpBaseUrl = "rtmps://gpu-node:19350/live"
+                }
+            });
+
+            // Request ingest assignment for a new workstation
+            var assignedUrl = await service.ResolveAssignedIngestNodeUrlAsync("WS-ROOM-401", CancellationToken.None);
+
+            // High capability GPU server absorbs the new stream because its IngestPressureScore is significantly lower
+            Assert.Equal("rtmps://gpu-node:19350/live", assignedUrl);
+        }
+
+        [Fact]
+        public async Task HardwareAware_OverloadProtection_NodeWithCpuOver75PercentIsThrottledAndNeverAssigned()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Local node is overloaded with 20 streams and 2 jobs
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = Environment.MachineName,
+                    ActiveStreamsCount = 20,
+                    EffectiveStreamsCapacity = 20,
+                    ActiveJobsCount = 2,
+                    MaxConcurrentJobs = 2,
+                    HostCpuPct = 82.0
+                }
+            });
+
+            // High capability node, but heavily overloaded (CPU at 78% >= 75% threshold)
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-OVERLOADED-GPU",
+                    CpuCores = 16,
+                    TotalRamGb = 32.0,
+                    HardwareCapabilityScore = 1060,
+                    EffectiveStreamsCapacity = 100,
+                    ActiveStreamsCount = 2,
+                    HostCpuPct = 78.0, // Overload threshold exceeded!
+                    RtmpBaseUrl = "rtmps://overloaded-node:19350/live"
+                }
+            });
+
+            // Moderate node, healthy at 22% CPU
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-HEALTHY-MIDTIER",
+                    CpuCores = 8,
+                    TotalRamGb = 16.0,
+                    HardwareCapabilityScore = 530,
+                    EffectiveStreamsCapacity = 50,
+                    ActiveStreamsCount = 2,
+                    HostCpuPct = 22.0,
+                    RtmpBaseUrl = "rtmps://healthy-node:19350/live"
+                }
+            });
+
+            // Ingest assignment must shield the overloaded node and select the healthy node
+            var assignedUrl = await service.ResolveAssignedIngestNodeUrlAsync("WS-ROOM-402", CancellationToken.None);
+            Assert.Equal("rtmps://healthy-node:19350/live", assignedUrl);
+
+            // Compute job dispatcher must also protect the overloaded node
+            var selectedWorker = await service.SelectOptimalWorkerForJobAsync(CancellationToken.None);
+            Assert.NotNull(selectedWorker);
+            Assert.Equal("NODE-HEALTHY-MIDTIER", selectedWorker.NodeId);
+        }
+
+        [Fact]
+        public async Task HardwareAware_ComputeJobSelection_WeakNodeLimitedToOneJobAndPrefersGpuWorker()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Local node is at job capacity (2/2 jobs)
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = Environment.MachineName,
+                    ActiveJobsCount = 2,
+                    MaxConcurrentJobs = 2,
+                    HostCpuPct = 50.0
+                }
+            });
+
+            // Weak CPU-only node with 0 active jobs
+            var weakNode = new ClusterNodeDescriptor
+            {
+                NodeId = "NODE-WEAK-CPU",
+                HardwareCapabilityScore = 180,
+                EncoderType = "libx264",
+                MaxConcurrentJobs = 2,
+                ActiveJobsCount = 0,
+                HostCpuPct = 20.0
+            };
+
+            // High GPU node with 0 active jobs
+            var gpuNode = new ClusterNodeDescriptor
+            {
+                NodeId = "NODE-STRONG-GPU",
+                HardwareCapabilityScore = 900,
+                EncoderType = "h264_nvenc",
+                MaxConcurrentJobs = 3,
+                ActiveJobsCount = 0,
+                HostCpuPct = 20.0
+            };
+
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest { Node = weakNode });
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest { Node = gpuNode });
+
+            // 1. When both are idle, dispatcher picks the powerful GPU worker
+            var worker1 = await service.SelectOptimalWorkerForJobAsync(CancellationToken.None);
+            Assert.NotNull(worker1);
+            Assert.Equal("NODE-STRONG-GPU", worker1.NodeId);
+
+            // 2. If Weak node already has 1 job running, its fitness must drop to -1.0 (strict 1-job ceiling for weak CPU nodes)
+            weakNode.ActiveJobsCount = 1;
+            double weakFitness = ClusterService.CalculateComputeFitness(weakNode);
+            Assert.Equal(-1.0, weakFitness);
+        }
+
+        #endregion
     }
 }

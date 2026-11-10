@@ -12,7 +12,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Jobs;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -112,6 +114,17 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             bool isVipBound = !string.IsNullOrWhiteSpace(cleanVip) &&
                               _vipManager.IsVirtualIpBoundLocallyAsync(cleanVip).GetAwaiter().GetResult();
 
+            var telemetry = HardwareProbe.GetTelemetrySnapshot();
+            var detectedGpus = HardwareProbe.GetDetectedGpus();
+            string gpuModel = detectedGpus.Count > 0 ? detectedGpus[0].Name : "CPU Software";
+            string configuredEncoder = detectedGpus.Any(g => g.Name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) ? "h264_nvenc" :
+                                      (detectedGpus.Any(g => g.Name.Contains("Intel", StringComparison.OrdinalIgnoreCase)) ? "h264_qsv" :
+                                      (detectedGpus.Any(g => g.Name.Contains("AMD", StringComparison.OrdinalIgnoreCase)) ? "h264_amf" : "libx264"));
+            double totalRamGb = telemetry.HostTotalRamMb > 0 ? Math.Round(telemetry.HostTotalRamMb / 1024.0, 1) : 8.0;
+            int cpuCores = Environment.ProcessorCount;
+            int hwScore = ClusterBeaconPacket.CalculateHardwareCapabilityScore(cpuCores, totalRamGb, configuredEncoder, gpuModel);
+            int effectiveCap = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : Math.Clamp(hwScore / 10, 10, 150);
+
             var localNode = new ClusterNodeDescriptor
             {
                 NodeId = localId,
@@ -124,8 +137,17 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 NodeMode = !string.IsNullOrWhiteSpace(disc.NodeMode) ? disc.NodeMode : ServerDiscoveryConstants.NodeModeActive,
                 State = _state.ToString(),
                 Priority = disc.Priority,
-                MaxStreamsCapacity = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : 50,
+                MaxStreamsCapacity = effectiveCap,
+                EffectiveStreamsCapacity = effectiveCap,
                 MaxConcurrentJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2,
+                HostCpuPct = telemetry.HostCpuUsagePct,
+                GpuNvencPct = telemetry.GpuNvencUsagePct,
+                ProcessRamMb = telemetry.ProcessRamMb,
+                CpuCores = cpuCores,
+                TotalRamGb = totalRamGb,
+                GpuModel = gpuModel,
+                EncoderType = configuredEncoder,
+                HardwareCapabilityScore = hwScore,
                 LocalIps = ServerDiscoveryHostedService.GetActiveLocalIps(),
                 IsVipBound = isVipBound,
                 LastSeenUtc = DateTime.UtcNow
@@ -141,6 +163,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     _stationToNodeMap[station] = localId;
                 }
             }
+
+            localNode.IngestPressureScore = CalculateIngestPressure(localNode);
+            localNode.ComputeFitnessScore = CalculateComputeFitness(localNode);
 
             _clusterNodes[localId] = localNode;
             if (isOrchestrator && string.IsNullOrEmpty(_orchestratorNodeId))
@@ -210,6 +235,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             RegisterLocalNodeInRegistry();
 
             var nodesList = _clusterNodes.Values.ToList();
+            foreach (var node in nodesList)
+            {
+                node.IngestPressureScore = CalculateIngestPressure(node);
+                node.ComputeFitnessScore = CalculateComputeFitness(node);
+            }
             bool isLocalOrch = !string.IsNullOrEmpty(_orchestratorNodeId)
                 ? string.Equals(_orchestratorNodeId, localId, StringComparison.OrdinalIgnoreCase)
                 : (string.Equals(disc.NodeRole, ServerDiscoveryConstants.RoleOrchestrator, StringComparison.OrdinalIgnoreCase) ||
@@ -560,6 +590,18 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             var node = request.Node;
             node.LastSeenUtc = DateTime.UtcNow;
             node.State = ClusterNodeState.Active.ToString();
+
+            if (node.HardwareCapabilityScore <= 0)
+            {
+                node.HardwareCapabilityScore = ClusterBeaconPacket.CalculateHardwareCapabilityScore(node.CpuCores, node.TotalRamGb, node.EncoderType, node.GpuModel);
+            }
+            if (node.EffectiveStreamsCapacity <= 0)
+            {
+                node.EffectiveStreamsCapacity = node.MaxStreamsCapacity > 0 ? node.MaxStreamsCapacity : Math.Clamp(node.HardwareCapabilityScore / 10, 10, 150);
+            }
+            node.IngestPressureScore = CalculateIngestPressure(node);
+            node.ComputeFitnessScore = CalculateComputeFitness(node);
+
             _clusterNodes[node.NodeId] = node;
 
             // Map stations reported by this worker node
@@ -591,6 +633,66 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             return Task.FromResult(response);
         }
 
+        public static double CalculateIngestPressure(ClusterNodeDescriptor node)
+        {
+            if (node == null) return 999.0;
+
+            // Hard safety ceiling: if CPU >= 75% or GPU NVENC >= 85%, mark node as heavily pressured
+            if (node.IsOverloaded)
+            {
+                return Math.Round(50.0 + (node.HostCpuPct / 10.0), 2);
+            }
+
+            int cap = node.EffectiveStreamsCapacity > 0 ? node.EffectiveStreamsCapacity : Math.Max(10, node.MaxStreamsCapacity);
+            double streamLoadRatio = (double)node.ActiveStreamsCount / cap;
+            double cpuStrain = Math.Max(0.0, node.HostCpuPct / 100.0);
+            double gpuStrain = Math.Max(0.0, node.GpuNvencPct / 100.0);
+
+            // Weighted pressure: 50% CPU strain, 35% stream load, 15% GPU strain
+            double rawPressure = (cpuStrain * 0.50) + (streamLoadRatio * 0.35) + (gpuStrain * 0.15);
+
+            // Damping factor: Powerful hardware absorbs pressure much better than weak machines
+            int score = Math.Max(100, node.HardwareCapabilityScore);
+            double capabilityDamping = Math.Max(0.35, 500.0 / score);
+
+            return Math.Round(rawPressure * capabilityDamping * 100.0, 2);
+        }
+
+        public static double CalculateComputeFitness(ClusterNodeDescriptor node)
+        {
+            if (node == null) return -1.0;
+
+            // Hard safety ceilings:
+            // 1. If CPU >= 75% or GPU NVENC >= 85%, strictly ineligible for new heavy video jobs
+            if (node.IsOverloaded) return -1.0;
+
+            // 2. Weak CPU-only node (score < 300 or libx264 software encoder):
+            // Strictly capped at max 1 concurrent job, and only permitted if CPU < 60%
+            bool isWeakCpuNode = node.HardwareCapabilityScore < 300 ||
+                                 string.Equals(node.EncoderType, "libx264", StringComparison.OrdinalIgnoreCase);
+            if (isWeakCpuNode)
+            {
+                if (node.ActiveJobsCount >= 1 || node.HostCpuPct >= 60.0)
+                {
+                    return -1.0;
+                }
+            }
+
+            // 3. Normal concurrency limit: cannot exceed node's MaxConcurrentJobs
+            if (node.ActiveJobsCount >= node.MaxConcurrentJobs)
+            {
+                return -1.0;
+            }
+
+            // Available slots and headroom
+            double slotsHeadroom = (double)(node.MaxConcurrentJobs - node.ActiveJobsCount) / Math.Max(1, node.MaxConcurrentJobs);
+            double cpuHeadroom = Math.Max(0.01, (100.0 - node.HostCpuPct) / 100.0);
+            double gpuHeadroom = Math.Max(0.01, (100.0 - node.GpuNvencPct) / 100.0);
+
+            double fitness = node.HardwareCapabilityScore * slotsHeadroom * (cpuHeadroom * 0.6 + gpuHeadroom * 0.4);
+            return Math.Round(fitness, 2);
+        }
+
         public Task<string?> ResolveAssignedIngestNodeUrlAsync(string stationHostname, CancellationToken ct = default)
         {
             var config = _configMonitor.CurrentValue;
@@ -601,10 +703,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 return Task.FromResult<string?>(null);
             }
 
-            // Check existing affinity
+            // Check existing affinity - keep affinity if node is online AND NOT severely overloaded (CPU < 85%)
             if (_stationToNodeMap.TryGetValue(stationHostname, out string? existingNodeId))
             {
-                if (_clusterNodes.TryGetValue(existingNodeId, out var existingNode) && existingNode.IsOnline)
+                if (_clusterNodes.TryGetValue(existingNodeId, out var existingNode) && 
+                    existingNode.IsOnline && 
+                    existingNode.HostCpuPct < 85.0)
                 {
                     return Task.FromResult<string?>(existingNode.RtmpBaseUrl);
                 }
@@ -617,8 +721,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             var candidateNodes = onlineNodes.Where(n => !n.IsStandby).ToList();
             if (candidateNodes.Count == 0) candidateNodes = onlineNodes;
 
-            var chosenNode = candidateNodes
-                .OrderBy(n => n.LoadRatio)
+            // Overload Protection: If any healthy (non-overloaded) nodes exist, filter out overloaded nodes
+            var healthyCandidates = candidateNodes.Where(n => !n.IsOverloaded).ToList();
+            var selectionPool = healthyCandidates.Count > 0 ? healthyCandidates : candidateNodes;
+
+            var chosenNode = selectionPool
+                .OrderBy(n => CalculateIngestPressure(n))
                 .ThenBy(n => n.ActiveStreamsCount)
                 .ThenBy(n => n.HostCpuPct)
                 .First();
@@ -630,8 +738,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 chosenNode.AssignedStations.Add(stationHostname);
             }
 
-            _logger.LogInformation("[CLUSTER BALANCER] Ingest assignment: Workstation '{Station}' -> Node '{NodeId}' ({RtmpUrl}, Load: {Load}%)",
-                stationHostname, chosenNode.NodeId, chosenNode.RtmpBaseUrl, Math.Round(chosenNode.LoadRatio * 100, 1));
+            _logger.LogInformation("[CLUSTER BALANCER] Ingest assignment: Workstation '{Station}' -> Node '{NodeId}' ({RtmpUrl}, HW-Score: {Score}, IngestPressure: {Pressure}, CPU: {Cpu}%)",
+                stationHostname, chosenNode.NodeId, chosenNode.RtmpBaseUrl, chosenNode.HardwareCapabilityScore, CalculateIngestPressure(chosenNode), chosenNode.HostCpuPct);
 
             return Task.FromResult<string?>(chosenNode.RtmpBaseUrl);
         }
@@ -648,27 +756,33 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             var candidateNodes = onlineNodes.Where(n => !n.IsStandby).ToList();
             if (candidateNodes.Count == 0) candidateNodes = onlineNodes;
 
-            // Prefer nodes with spare job capacity (ActiveJobsCount < MaxConcurrentJobs)
-            var availableNodes = candidateNodes.Where(n => n.ActiveJobsCount < n.MaxConcurrentJobs).ToList();
+            // Evaluate hardware fitness for video processing
+            var eligibleNodes = candidateNodes
+                .Select(n => (Node: n, Fitness: CalculateComputeFitness(n)))
+                .Where(x => x.Fitness > 0)
+                .OrderByDescending(x => x.Fitness)
+                .ThenBy(x => x.Node.ActiveJobsCount)
+                .ToList();
+
             ClusterNodeDescriptor selected;
-            if (availableNodes.Count > 0)
+            if (eligibleNodes.Count > 0)
             {
-                selected = availableNodes
-                    .OrderBy(n => n.ActiveJobsCount)
-                    .ThenBy(n => n.GpuNvencPct)
-                    .ThenBy(n => n.HostCpuPct)
-                    .First();
+                selected = eligibleNodes.First().Node;
+                _logger.LogInformation("[CLUSTER JOB BALANCER] Dispatched job to optimal worker '{NodeId}' (HW-Score: {Score}, Fitness: {Fitness}, CPU: {Cpu}%, GPU: {Gpu}%, Active Jobs: {Jobs}/{Max})",
+                    selected.NodeId, selected.HardwareCapabilityScore, eligibleNodes.First().Fitness, selected.HostCpuPct, selected.GpuNvencPct, selected.ActiveJobsCount, selected.MaxConcurrentJobs);
             }
             else
             {
+                // All nodes are either overloaded or at capacity. Fall back to the least pressured candidate node
                 selected = candidateNodes
+                    .Where(n => n.HostCpuPct < 85.0)
                     .OrderBy(n => n.ActiveJobsCount)
-                    .ThenBy(n => n.HostCpuPct)
-                    .First();
-            }
+                    .ThenBy(n => CalculateIngestPressure(n))
+                    .FirstOrDefault() ?? candidateNodes.OrderBy(n => n.ActiveJobsCount).First();
 
-            _logger.LogInformation("[CLUSTER JOB DISPATCHER] Selected worker node '{NodeId}' (Active Jobs: {Jobs}/{Max}, CPU: {Cpu}%, GPU: {Gpu}%)",
-                selected.NodeId, selected.ActiveJobsCount, selected.MaxConcurrentJobs, selected.HostCpuPct, selected.GpuNvencPct);
+                _logger.LogWarning("[CLUSTER JOB BALANCER] All nodes saturated; falling back to candidate '{NodeId}' (Active Jobs: {Jobs}/{Max}, CPU: {Cpu}%)",
+                    selected.NodeId, selected.ActiveJobsCount, selected.MaxConcurrentJobs, selected.HostCpuPct);
+            }
 
             return Task.FromResult<ClusterNodeDescriptor?>(selected);
         }
@@ -867,6 +981,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 MaxConcurrentJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2,
                 HostCpuPct = localDesc?.HostCpuPct ?? 0,
                 GpuNvencPct = localDesc?.GpuNvencPct ?? 0,
+                CpuCores = localDesc?.CpuCores ?? Environment.ProcessorCount,
+                TotalRamGb = localDesc?.TotalRamGb ?? 8.0,
+                GpuModel = localDesc?.GpuModel ?? "CPU Software",
+                EncoderType = localDesc?.EncoderType ?? "libx264",
+                HardwareCapabilityScore = localDesc?.HardwareCapabilityScore ?? 200,
                 IsVipBound = isVipBound,
                 LocalIps = localIps,
                 AssignedStations = localDesc?.AssignedStations ?? new List<string>(),
@@ -911,6 +1030,16 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             node.MaxConcurrentJobs = beacon.MaxConcurrentJobs > 0 ? beacon.MaxConcurrentJobs : 2;
             node.HostCpuPct = beacon.HostCpuPct;
             node.GpuNvencPct = beacon.GpuNvencPct;
+            node.CpuCores = beacon.CpuCores;
+            node.TotalRamGb = beacon.TotalRamGb;
+            node.GpuModel = !string.IsNullOrWhiteSpace(beacon.GpuModel) ? beacon.GpuModel : "CPU Software";
+            node.EncoderType = !string.IsNullOrWhiteSpace(beacon.EncoderType) ? beacon.EncoderType : "libx264";
+            node.HardwareCapabilityScore = beacon.HardwareCapabilityScore > 0
+                ? beacon.HardwareCapabilityScore
+                : ClusterBeaconPacket.CalculateHardwareCapabilityScore(beacon.CpuCores, beacon.TotalRamGb, beacon.EncoderType, beacon.GpuModel);
+            node.EffectiveStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : Math.Clamp(node.HardwareCapabilityScore / 10, 10, 150);
+            node.IngestPressureScore = CalculateIngestPressure(node);
+            node.ComputeFitnessScore = CalculateComputeFitness(node);
             node.IsVipBound = beacon.IsVipBound;
             node.LocalIps = beacon.LocalIps ?? new List<string>();
             node.LastSeenUtc = DateTime.UtcNow;

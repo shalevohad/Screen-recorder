@@ -713,9 +713,72 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                                     </div>
 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
-                                        <span>CPU: <strong style={{ color: node.hostCpuPct > 80 ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong></span>
+                                        <span>CPU: <strong style={{ color: node.hostCpuPct > 75 ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong></span>
                                         <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
                                         <span>Priority: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
+                                    </div>
+
+                                    {/* Hardware Specifications & Horsepower Index */}
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        background: 'rgba(15, 23, 42, 0.6)',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(56, 189, 248, 0.15)',
+                                        fontSize: '0.66rem'
+                                    }}>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <span style={{ color: '#38BDF8', fontWeight: 700 }}>
+                                                {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`}
+                                            </span>
+                                            <span style={{ color: '#64748B' }}>•</span>
+                                            <span style={{ color: '#94A3B8' }}>{node.encoderType || 'libx264'}</span>
+                                        </div>
+                                        <span style={{
+                                            padding: '1px 5px',
+                                            borderRadius: '3px',
+                                            fontWeight: 800,
+                                            fontSize: '0.62rem',
+                                            background: (node.hardwareCapabilityScore || 200) >= 600 ? 'rgba(16, 185, 129, 0.2)' : ((node.hardwareCapabilityScore || 200) >= 300 ? 'rgba(6, 182, 212, 0.2)' : 'rgba(148, 163, 184, 0.2)'),
+                                            color: (node.hardwareCapabilityScore || 200) >= 600 ? '#34D399' : ((node.hardwareCapabilityScore || 200) >= 300 ? '#38BDF8' : '#CBD5E1')
+                                        }}>
+                                            ⚡ PWR {node.hardwareCapabilityScore || 200}
+                                        </span>
+                                    </div>
+
+                                    {/* Ingest Pressure & Overload Guard Bar */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.64rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94A3B8' }}>
+                                            <span>
+                                                Ingest Pressure: <strong style={{ color: (node.hostCpuPct >= 75 || node.isOverloaded) ? '#F43F5E' : '#38BDF8' }}>
+                                                    {Math.round(node.ingestPressureScore || 0)} pts
+                                                </strong>
+                                                {(node.hostCpuPct >= 75 || node.isOverloaded) && (
+                                                    <span style={{ color: '#F43F5E', fontWeight: 800, marginLeft: '4px' }}>[THROTTLED]</span>
+                                                )}
+                                            </span>
+                                            <span>
+                                                Compute Fit: <strong style={{ color: (node.computeFitnessScore || 0) > 0 ? '#34D399' : '#64748B' }}>
+                                                    {(node.computeFitnessScore || 0) > 0 ? Math.round(node.computeFitnessScore) : 'Resting'}
+                                                </strong>
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            width: '100%',
+                                            height: '4px',
+                                            background: 'rgba(255, 255, 255, 0.08)',
+                                            borderRadius: '2px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{
+                                                width: `${Math.min(100, Math.max(4, Math.round(node.ingestPressureScore || 0)))}%`,
+                                                height: '100%',
+                                                background: (node.hostCpuPct >= 75 || node.isOverloaded) ? '#F43F5E' : ((node.ingestPressureScore || 0) > 50 ? '#F59E0B' : '#10B981'),
+                                                transition: 'width 0.4s ease'
+                                            }} />
+                                        </div>
                                     </div>
 
                                     {clusterGrid.isLocalNodeOrchestrator && !node.isOrchestrator && node.isOnline && (

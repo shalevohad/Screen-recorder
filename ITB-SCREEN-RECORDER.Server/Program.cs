@@ -359,6 +359,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<IVirtualIpManager, VirtualIpManager>();
                 builder.Services.AddSingleton<ClusterService>();
                 builder.Services.AddSingleton<IClusterService>(sp => sp.GetRequiredService<ClusterService>());
+                builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Contracts.Jobs.IClusterWorkerSelector>(sp => sp.GetRequiredService<ClusterService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<ClusterService>());
 
                 builder.Services.AddHostedService<ServerDiscoveryHostedService>();

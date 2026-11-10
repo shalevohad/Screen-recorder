@@ -359,6 +359,33 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("isVipBound")]
         public bool IsVipBound { get; set; }
 
+        [JsonPropertyName("cpuCores")]
+        public int CpuCores { get; set; } = 4;
+
+        [JsonPropertyName("totalRamGb")]
+        public double TotalRamGb { get; set; } = 8.0;
+
+        [JsonPropertyName("gpuModel")]
+        public string GpuModel { get; set; } = "CPU Software";
+
+        [JsonPropertyName("encoderType")]
+        public string EncoderType { get; set; } = "libx264";
+
+        [JsonPropertyName("hardwareCapabilityScore")]
+        public int HardwareCapabilityScore { get; set; } = 200;
+
+        [JsonPropertyName("effectiveStreamsCapacity")]
+        public int EffectiveStreamsCapacity { get; set; } = 50;
+
+        [JsonPropertyName("ingestPressureScore")]
+        public double IngestPressureScore { get; set; }
+
+        [JsonPropertyName("computeFitnessScore")]
+        public double ComputeFitnessScore { get; set; }
+
+        [JsonIgnore]
+        public bool IsOverloaded => HostCpuPct >= 75.0 || GpuNvencPct >= 85.0;
+
         [JsonIgnore]
         public bool IsOnline => (DateTime.UtcNow - LastSeenUtc).TotalSeconds <= 12;
 
@@ -438,11 +465,63 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("localIps")]
         public List<string> LocalIps { get; set; } = new();
 
+        [JsonPropertyName("cpuCores")]
+        public int CpuCores { get; set; } = 4;
+
+        [JsonPropertyName("totalRamGb")]
+        public double TotalRamGb { get; set; } = 8.0;
+
+        [JsonPropertyName("gpuModel")]
+        public string GpuModel { get; set; } = "CPU Software";
+
+        [JsonPropertyName("encoderType")]
+        public string EncoderType { get; set; } = "libx264";
+
+        [JsonPropertyName("hardwareCapabilityScore")]
+        public int HardwareCapabilityScore { get; set; } = 200;
+
         [JsonPropertyName("assignedStations")]
         public List<string> AssignedStations { get; set; } = new();
 
         [JsonPropertyName("timestampUtc")]
         public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Calculates a composite hardware horsepower score based on GPU encoder tier, CPU core count, and RAM.
+        /// </summary>
+        public static int CalculateHardwareCapabilityScore(int cpuCores, double totalRamGb, string encoderType, string? gpuModel)
+        {
+            int score = 0;
+
+            // 1. GPU Encoder tier
+            if (string.Equals(encoderType, "h264_nvenc", StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrEmpty(gpuModel) && gpuModel.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)))
+            {
+                score += 500; // Tier 1: Dedicated NVENC HW encoder
+            }
+            else if (string.Equals(encoderType, "h264_qsv", StringComparison.OrdinalIgnoreCase) ||
+                     (!string.IsNullOrEmpty(gpuModel) && gpuModel.Contains("Intel", StringComparison.OrdinalIgnoreCase)))
+            {
+                score += 250; // Tier 2: Intel QuickSync
+            }
+            else if (string.Equals(encoderType, "h264_amf", StringComparison.OrdinalIgnoreCase) ||
+                     (!string.IsNullOrEmpty(gpuModel) && gpuModel.Contains("AMD", StringComparison.OrdinalIgnoreCase)))
+            {
+                score += 250; // Tier 2: AMD AMF
+            }
+            else
+            {
+                score += 50;  // Tier 4: CPU Software encoder (libx264)
+            }
+
+            // 2. CPU cores: 25 points per core
+            score += Math.Clamp(cpuCores, 1, 64) * 25;
+
+            // 3. RAM: 5 points per GB
+            score += (int)Math.Clamp(totalRamGb, 1.0, 128.0) * 5;
+
+            return score;
+        }
     }
 
     public class ClusterHeartbeatRequest

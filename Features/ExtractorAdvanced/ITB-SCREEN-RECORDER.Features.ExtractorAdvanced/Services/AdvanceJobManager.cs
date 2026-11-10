@@ -41,6 +41,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
         private readonly ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? _stationRoleProvider;
         private readonly ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.IKeystrokeRepository? _keystrokeRepository;
+        private readonly ITB_SCREEN_RECORDER.Core.Contracts.Jobs.IClusterWorkerSelector? _clusterWorkerSelector;
         private readonly IOptionsMonitor<SystemConfig>? _systemConfig;
 
         public AdvanceJobManager(
@@ -55,7 +56,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             ILogger<AdvanceJobManager> advLogger,
             ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? stationRoleProvider = null,
             IOptionsMonitor<SystemConfig>? systemConfig = null,
-            ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.IKeystrokeRepository? keystrokeRepository = null)
+            ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.IKeystrokeRepository? keystrokeRepository = null,
+            ITB_SCREEN_RECORDER.Core.Contracts.Jobs.IClusterWorkerSelector? clusterWorkerSelector = null)
             : base(extractorService, exportJobRepository, options, baseLogger)
         {
             _advancedExtractorService = advancedExtractorService;
@@ -66,6 +68,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _stationRoleProvider = stationRoleProvider;
             _systemConfig = systemConfig;
             _keystrokeRepository = keystrokeRepository;
+            _clusterWorkerSelector = clusterWorkerSelector;
 
             _ = LoadAndRecoverAdvanceJobsAsync();
         }
@@ -455,7 +458,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _ = _advanceRepository.UpsertJobAsync(job);
 
             // Distributed Cluster Job Dispatching:
-            // If running in Active-Active and local capacity is saturated, dispatch to remote compute node
+            // Hardware-aware worker selection: Route heavy compute to optimal nodes (NVENC/QSV/Cores) and protect overloaded nodes.
             bool dispatchedRemotely = false;
             var disc = _systemConfig?.CurrentValue?.Discovery;
             if (!request.DispatchedFromCluster &&
@@ -463,42 +466,81 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 string.Equals(disc.Role, "Active-Active", StringComparison.OrdinalIgnoreCase) &&
                 disc.DistributedVideoProcessingEnabled)
             {
-                int maxLocalJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2;
-                int currentLocalJobs = _jobs.Values.Count(j => (j.Status == "Processing" || j.Status == "Queued") && j.JobId != job.JobId);
-
-                if (currentLocalJobs >= maxLocalJobs)
+                try
                 {
-                    var peers = disc.ClusterPeerUrls?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList() ?? new List<string>();
-                    if (!string.IsNullOrWhiteSpace(disc.PartnerServerUrl)) peers.Add(disc.PartnerServerUrl);
-
-                    foreach (var peer in peers)
+                    var optimalWorker = _clusterWorkerSelector?.SelectOptimalWorkerForJobAsync().GetAwaiter().GetResult();
+                    if (optimalWorker != null && 
+                        !string.Equals(optimalWorker.NodeId, Environment.MachineName, StringComparison.OrdinalIgnoreCase) && 
+                        !string.IsNullOrWhiteSpace(optimalWorker.ApiBaseUrl))
                     {
-                        try
+                        job.StatusMessage = $"Offloading to optimal compute node: {optimalWorker.DisplayName} ({optimalWorker.ApiBaseUrl})...";
+                        var dispatchReq = new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobDispatchRequest
                         {
-                            job.StatusMessage = $"Offloading to compute peer: {peer}...";
-                            var dispatchReq = new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobDispatchRequest
-                            {
-                                JobId = job.JobId,
-                                RequestPayloadJson = JsonSerializer.Serialize(request),
-                                SubmittedBy = job.CreatedBy
-                            };
+                            JobId = job.JobId,
+                            RequestPayloadJson = JsonSerializer.Serialize(request),
+                            SubmittedBy = job.CreatedBy
+                        };
 
-                            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-                            var jsonContent = new StringContent(JsonSerializer.Serialize(dispatchReq), Encoding.UTF8, "application/json");
-                            var res = client.PostAsync($"{peer.TrimEnd('/')}/api/v1/cluster/jobs/execute", jsonContent).GetAwaiter().GetResult();
-                            if (res.IsSuccessStatusCode)
-                            {
-                                dispatchedRemotely = true;
-                                job.Status = "Processing";
-                                job.StatusMessage = $"Processing on compute peer: {peer}";
-                                job.ExecutingNodeName = peer;
-                                _advLogger.LogInformation("[CLUSTER DISPATCH] Successfully offloaded job '{JobId}' to remote peer '{Peer}'", job.JobId, peer);
-                                break;
-                            }
-                        }
-                        catch (Exception ex)
+                        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+                        var jsonContent = new StringContent(JsonSerializer.Serialize(dispatchReq), Encoding.UTF8, "application/json");
+                        var res = client.PostAsync($"{optimalWorker.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/jobs/execute", jsonContent).GetAwaiter().GetResult();
+                        if (res.IsSuccessStatusCode)
                         {
-                            _advLogger.LogWarning(ex, "[CLUSTER DISPATCH] Could not offload job to {Peer}, attempting next peer or local fallback.", peer);
+                            dispatchedRemotely = true;
+                            job.Status = "Processing";
+                            job.StatusMessage = $"Processing on compute node: {optimalWorker.DisplayName}";
+                            job.ExecutingNodeId = optimalWorker.NodeId;
+                            job.ExecutingNodeName = optimalWorker.DisplayName;
+                            _advLogger.LogInformation("[CLUSTER DISPATCH] Successfully offloaded job '{JobId}' to optimal node '{NodeId}' ({Url}, HW-Score: {Score})",
+                                job.JobId, optimalWorker.NodeId, optimalWorker.ApiBaseUrl, optimalWorker.HardwareCapabilityScore);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _advLogger.LogWarning(ex, "[CLUSTER DISPATCH] Error querying or dispatching to optimal cluster worker; attempting standard peer fallback.");
+                }
+
+                // If not dispatched to optimal worker, check if local capacity is saturated and try configured peers
+                if (!dispatchedRemotely)
+                {
+                    int maxLocalJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2;
+                    int currentLocalJobs = _jobs.Values.Count(j => (j.Status == "Processing" || j.Status == "Queued") && j.JobId != job.JobId);
+
+                    if (currentLocalJobs >= maxLocalJobs)
+                    {
+                        var peers = disc.ClusterPeerUrls?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList() ?? new List<string>();
+                        if (!string.IsNullOrWhiteSpace(disc.PartnerServerUrl)) peers.Add(disc.PartnerServerUrl);
+
+                        foreach (var peer in peers)
+                        {
+                            try
+                            {
+                                job.StatusMessage = $"Offloading to compute peer: {peer}...";
+                                var dispatchReq = new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobDispatchRequest
+                                {
+                                    JobId = job.JobId,
+                                    RequestPayloadJson = JsonSerializer.Serialize(request),
+                                    SubmittedBy = job.CreatedBy
+                                };
+
+                                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                                var jsonContent = new StringContent(JsonSerializer.Serialize(dispatchReq), Encoding.UTF8, "application/json");
+                                var res = client.PostAsync($"{peer.TrimEnd('/')}/api/v1/cluster/jobs/execute", jsonContent).GetAwaiter().GetResult();
+                                if (res.IsSuccessStatusCode)
+                                {
+                                    dispatchedRemotely = true;
+                                    job.Status = "Processing";
+                                    job.StatusMessage = $"Processing on compute peer: {peer}";
+                                    job.ExecutingNodeName = peer;
+                                    _advLogger.LogInformation("[CLUSTER DISPATCH] Successfully offloaded job '{JobId}' to fallback peer '{Peer}'", job.JobId, peer);
+                                    break;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _advLogger.LogWarning(ex, "[CLUSTER DISPATCH] Could not offload job to {Peer}, attempting next peer or local fallback.", peer);
+                            }
                         }
                     }
                 }

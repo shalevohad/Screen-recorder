@@ -4972,32 +4972,48 @@ Exposed via [ClusterController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRec
 | `/api/v1/cluster/jobs/execute` | `POST` | Anonymous / Local | Executes an offloaded video cut/extraction job dispatched by the Orchestrator. |
 | `/api/v1/cluster/jobs/status-update` | `POST` | Anonymous / Local | Reports worker node job execution progress back to Orchestrator. |
 
-### 77.6 Active-Active Distributed Compute Grid & Commodity Hardware Clustering
+### 77.6 Active-Active Distributed Compute Grid & Heterogeneous Hardware Balancing
 1. **The Commodity Edge Scaling Philosophy**:
    - Rather than relying on a single, expensive enterprise mainframe to capture and process 70-100+ multi-monitor workstations, the Active-Active architecture clusters multiple low-cost commodity servers together (e.g. Intel Core i5/i7 workstations with QuickSync QSV or entry-level NVIDIA GTX/RTX GPUs).
    - The nodes pool their GPU encoders, CPU cores, and network interfaces into a unified, horizontally scalable recording and video processing engine.
-2. **Dynamic Ingestion Workload Balancing**:
+2. **Hardware Capability Scoring Index (Horsepower Rating)**:
+   - Evaluated by `ClusterBeaconPacket.CalculateHardwareCapabilityScore`:
+     $$\text{CapabilityScore} = \text{EncoderTier} + (\text{CpuCores} \times 25) + (\text{TotalRamGb} \times 5)$$
+     Where $\text{EncoderTier}$ awards:
+     - $+500$ points for NVIDIA NVENC dedicated hardware ASIC encoder (`h264_nvenc`)
+     - $+250$ points for Intel QuickSync (`h264_qsv`) or AMD AMF (`h264_amf`)
+     - $+50$ points for CPU Software encoder (`libx264`)
+   - High-end workstations with NVENC and 16 cores achieve scores $\ge 1000$, whereas weak commodity quad-core machines without hardware acceleration score $< 250$.
+3. **Dynamic Ingestion Pressure Balancing**:
    - Managed by [ClusterService.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ClusterService.cs) via `ResolveAssignedIngestNodeUrlAsync`.
-   - When workstations register via [AgentController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs), the Orchestrator evaluates the live stream load ratio across all online nodes:
-     $$\text{LoadRatio} = \frac{\text{ActiveStreamsCount}}{\text{MaxStreamsCapacity}}$$
-   - Stations are routed to the node with the lowest load ratio. Once assigned, stream affinity is maintained. If a node fails, orphaned stations automatically rebalance to surviving nodes on their next registration heartbeat.
-3. **Distributed Video Processing & Render Offloading**:
-   - Managed by [AdvanceJobManager.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/AdvanceJobManager.cs) and [IClusterJobRunner.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Jobs/IClusterJobRunner.cs).
+   - Replaces naïve round-robin with live **Ingest Pressure Scoring**:
+     $$\text{IngestPressure} = \left(\frac{\text{HostCpuPct}}{100} \times 0.50 + \frac{\text{ActiveStreams}}{\text{EffectiveCapacity}} \times 0.35 + \frac{\text{GpuNvencPct}}{100} \times 0.15\right) \times \text{Damping} \times 100$$
+     Where $\text{Damping} = \max\left(0.35, \frac{500}{\text{CapabilityScore}}\right)$.
+   - Powerful GPU servers have low damping factors ($\sim 0.35 - 0.50$), absorbing significantly more concurrent streams with lower perceived pressure. Weak nodes experience high damping, protecting them from stream saturation.
+4. **Safety Ceilings & Overload Protection (Rule of 75% CPU)**:
+   - **Ingest Overload Guard**: If any node exceeds $\text{HostCpuPct} \ge 75\%$ or $\text{GpuNvencPct} \ge 85\%$, it is marked `IsOverloaded`. Overloaded nodes receive an immediate $+50.0$ penalty and are excluded from taking new streams whenever healthier nodes are online.
+   - **Compute Job Overload Guard**: Overloaded nodes strictly return a compute fitness of $-1.0$ (ineligible for new cut jobs).
+   - **Weak Node Shield**: Software-only CPU nodes (`libx264` or $\text{Score} < 300$) are strictly capped at at most 1 concurrent rendering job, and are rejected if $\text{HostCpuPct} \ge 60\%$.
+5. **Distributed Video Processing & Compute Fitness Offloading**:
+   - Managed by [AdvanceJobManager.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/AdvanceJobManager.cs) and [IClusterWorkerSelector.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Jobs/IClusterWorkerSelector.cs).
    - Video export and forensic cutting (FFmpeg compositing, canvas keyframe synthesis, keystroke burn-in) is computationally demanding.
-   - When local render capacity reaches `MaxConcurrentRenderJobs`, subsequent export jobs are automatically dispatched over HTTP to an idle compute peer (`POST /api/v1/cluster/jobs/execute`).
+   - Each online node's compute fitness is evaluated in real time:
+     $$\text{ComputeFitness} = \text{CapabilityScore} \times \frac{\text{MaxJobs} - \text{ActiveJobs}}{\text{MaxJobs}} \times \left(\frac{100 - \text{HostCpuPct}}{100} \times 0.6 + \frac{100 - \text{GpuNvencPct}}{100} \times 0.4\right)$$
+   - Subsequent export jobs are automatically dispatched over HTTP to the worker with the highest fitness (`POST /api/v1/cluster/jobs/execute`).
    - Because all nodes share access to the NetApp UNC recording paths (Rule 2 & 10), any compute node can extract chunks, render the video using its local hardware encoder, and output the final MP4 to the shared exports storage.
-4. **Dynamic Orchestrator & Automated Leader Election**:
+6. **Dynamic Orchestrator & Automated Leader Election**:
    - One active node acts as the **Cluster Orchestrator** (Leader).
    - Worker nodes send periodic telemetry pulses (`POST /api/v1/cluster/nodes/heartbeat`).
    - If the Orchestrator node crashes or is disconnected, worker nodes detect the failure within $K_{\text{threshold}}$ missed cycles.
    - **Deterministic Leader Election**: Alive nodes evaluate candidate priority ($\text{Priority}$) and machine name string tie-breakers. The winning node promotes itself to Orchestrator, claims the Virtual IP (VIP), broadcasts Gratuitous ARP, and assumes cluster dispatch duties without operator intervention.
    - Operators can also manually trigger leadership handover anytime via `POST /api/v1/cluster/orchestrator/transfer` or the C2 Settings Dashboard.
-5. **Unified Centralized NOC Experience (Single Pane of Glass)**:
+7. **Unified Centralized NOC Experience (Single Pane of Glass)**:
    - Regardless of which physical node records a station or executes a cut job:
      - `DashboardController.GetStationsSummary()` aggregates stations from all active nodes into a single unified grid.
      - Each card displays a tactical hosting badge (e.g. `[● NODE-01]`, `[● NODE-02]`).
      - [WhepProxyController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs) inspects the target station and transparently proxies WebRTC WHEP streams to the specific node hosting that stream, giving operators sub-second live viewing from a single VIP endpoint.
      - The Global Jobs Queue displays all rendering jobs across the entire cluster.
+     - The Cluster Grid in Settings displays live Power Index (`⚡ PWR 1060`), CPU/RAM/GPU telemetry, and Ingest Pressure / Headroom progress bars for each server.
 
 ### 77.7 Zero-Configuration Autonomous Multicast/Broadcast Peer Discovery & Hybrid Clustering
 1. **Zero-Configuration Autonomous Discovery**:
