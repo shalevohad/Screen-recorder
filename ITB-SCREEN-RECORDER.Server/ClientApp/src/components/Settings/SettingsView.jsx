@@ -10,6 +10,7 @@ import StationsRolesTab from './tabs/StationsRolesTab';
 import SecurityAccessTab from './tabs/SecurityAccessTab';
 import MaintenanceTab from './tabs/MaintenanceTab';
 import SystemNetworkTab from './tabs/SystemNetworkTab';
+import ClusterSettingsTab from './tabs/ClusterSettingsTab';
 import ServerRestartModal from './ServerRestartModal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -42,6 +43,9 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
         }
         if (isSystemRoot || hasPermission('settings.view')) {
             list.push({ id: 'system', label: 'System & Network', icon: 'system' });
+        }
+        if (isSystemRoot || hasPermission('settings.cluster') || hasPermission('settings.view')) {
+            list.push({ id: 'cluster', label: 'Cluster & Nodes', icon: 'cluster' });
         }
         if (isSystemRoot || hasPermission('security.roles.manage') || hasPermission('security.users.manage')) {
             list.push({ id: 'security', label: 'Security & Access', icon: 'security' });
@@ -315,6 +319,15 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                                 </svg>
                             )}
+                            {tab.id === 'cluster' && (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-glyph">
+                                    <rect x="2" y="3" width="7" height="6" rx="1.5" />
+                                    <rect x="15" y="3" width="7" height="6" rx="1.5" />
+                                    <rect x="8.5" y="15" width="7" height="6" rx="1.5" />
+                                    <path d="M5.5 9v2.5a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V9" />
+                                    <line x1="12" y1="13" x2="12" y2="15" />
+                                </svg>
+                            )}
                             {tab.id === 'security' && (
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-glyph">
                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -408,6 +421,20 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
                                         {status.saving ? 'Saving Changes�' : 'Save System & Engine Configuration'}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+
+                        {activeTab === 'cluster' && form && (
+                            <form id="globalSettingsForm" onSubmit={handleSaveGlobalConfig}>
+                                <ClusterSettingsTab
+                                    form={form}
+                                    updateDiscoveryField={updateDiscoveryField}
+                                />
+                                <div className="hub-footer-actions">
+                                    <button type="submit" className="btn-save-global" disabled={status.saving}>
+                                        {status.saving ? 'Saving Changes...' : 'Save Cluster Configuration'}
                                     </button>
                                 </div>
                             </form>

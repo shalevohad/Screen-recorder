@@ -235,6 +235,7 @@ export default function SystemOverviewTab({
 }) {
     const [liveStorage, setLiveStorage] = useState(null);
     const [serverTelemetry, setServerTelemetry] = useState(null);
+    const [clusterGrid, setClusterGrid] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // Rolling Telemetry Buffer for Visual Graphs (20-point historical window)
@@ -259,9 +260,10 @@ export default function SystemOverviewTab({
     const fetchTelemetry = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [storageRes, serverRes] = await Promise.allSettled([
+            const [storageRes, serverRes, gridRes] = await Promise.allSettled([
                 fetch('/api/v1/settings/storage-status'),
-                fetch('/api/monitoring/server')
+                fetch('/api/monitoring/server'),
+                fetch('/api/v1/cluster/grid')
             ]);
 
             let sData = null;
@@ -274,6 +276,10 @@ export default function SystemOverviewTab({
             if (serverRes.status === 'fulfilled' && serverRes.value.ok) {
                 tData = await serverRes.value.json();
                 setServerTelemetry(tData);
+            }
+            if (gridRes.status === 'fulfilled' && gridRes.value.ok) {
+                const gData = await gridRes.value.json();
+                setClusterGrid(gData);
             }
 
             // Append live point to rolling chart history
@@ -646,6 +652,220 @@ export default function SystemOverviewTab({
                     decimals={0}
                 />
             </div>
+
+            {/* DISTRIBUTED CLUSTER GRID & HORIZONTAL CAPACITY (ACTIVE-ACTIVE / HA) */}
+            {clusterGrid && form?.discovery?.role !== 'Standalone' && (
+                <div className="cluster-health-card" style={{
+                    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(11, 17, 32, 0.98) 100%)',
+                    border: '1px solid rgba(6, 182, 212, 0.35)',
+                    borderRadius: '12px',
+                    padding: '20px 24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)'
+                }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '1.4rem' }}>🌐</span>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                        fontSize: '0.68rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        background: form?.discovery?.role === 'Active-Standby' ? '#EAB308' : '#06B6D4',
+                                        color: '#0F172A',
+                                        fontWeight: 900
+                                    }}>
+                                        {form?.discovery?.role === 'Active-Standby' ? 'HA ACTIVE-STANDBY CLUSTER' : 'ACTIVE-ACTIVE DISTRIBUTED GRID'}
+                                    </span>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#F8FAFC' }}>
+                                        טופולוגיית אשכול וקיבולת עיבוד מבוזרת
+                                    </h3>
+                                </div>
+                                <span style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '3px', display: 'block' }}>
+                                    ניטור חי של שרתי האשכול, חלוקת עומס קליטת שידורים ועיבוד וידאו (נוכחי מול מקסימלי), ומנגנון יתירות VIP
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={() => onSelectTab && onSelectTab('cluster')}
+                                style={{
+                                    background: 'rgba(6, 182, 212, 0.15)',
+                                    border: '1px solid rgba(6, 182, 212, 0.4)',
+                                    color: '#38BDF8',
+                                    padding: '6px 14px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                <span>⚙️ מעבר להגדרות אשכול (Cluster Settings)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Cluster Dual Load Progress Bars (Current vs Maximum Capacity) */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '14px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                        borderRadius: '8px',
+                        padding: '14px 18px'
+                    }}>
+                        {/* Stream Ingest Capacity Meter */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+                                <span style={{ color: '#E2E8F0', fontWeight: 700 }}>
+                                    📹 קיבולת שידורי וידאו באשכול (Ingest Channels)
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: (clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) > 0.75 ? '#F43F5E' : '#34D399' }}>
+                                    {clusterGrid.totalIngestedStreams} / {clusterGrid.totalStreamsCapacity} ערוצים ({Math.round((clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) * 100)}%)
+                                </span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.max(4, Math.round((clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) * 100)))}%`,
+                                    height: '100%',
+                                    background: (clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) > 0.75 ? '#F43F5E' : '#10B981',
+                                    transition: 'width 0.4s ease'
+                                }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                <span>עומס נוכחי: {clusterGrid.totalIngestedStreams} תחנות מקליטות</span>
+                                <span>יתרת קיבולת פנויה: {Math.max(0, clusterGrid.totalStreamsCapacity - clusterGrid.totalIngestedStreams)} ערוצים</span>
+                            </div>
+                        </div>
+
+                        {/* Video Processing (Render Jobs) Meter */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+                                <span style={{ color: '#E2E8F0', fontWeight: 700 }}>
+                                    ⚡ קיבולת משימות עיבוד וידאו מקביליות (NLE Render Jobs)
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#F472B6' }}>
+                                    {clusterGrid.totalActiveRenderJobs} / {clusterGrid.totalConcurrentJobsCapacity} משימות ({Math.round((clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) * 100)}%)
+                                </span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.max(4, Math.round((clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) * 100)))}%`,
+                                    height: '100%',
+                                    background: (clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) > 0.8 ? '#F43F5E' : '#F472B6',
+                                    transition: 'width 0.4s ease'
+                                }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                <span>משימות פעילות ברשת: {clusterGrid.totalActiveRenderJobs}</span>
+                                <span>סלוטים פנויים באשכול: {Math.max(0, clusterGrid.totalConcurrentJobsCapacity - clusterGrid.totalActiveRenderJobs)} משימות</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Nodes Matrix Blades */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '12px' }}>
+                        {clusterGrid.nodes?.map(node => {
+                            const isStandby = node.nodeMode === 'Standby' || node.role === 'Secondary';
+                            const isOverloaded = node.isOverloaded || (node.hostCpuPct || 0) >= 75.0;
+
+                            return (
+                                <div key={node.nodeId} style={{
+                                    background: 'rgba(30, 41, 59, 0.5)',
+                                    border: `1px solid ${node.isOnline ? (node.isOrchestrator ? '#F59E0B' : (isStandby ? '#EAB308' : '#06B6D4')) : '#EF4444'}`,
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#F8FAFC' }}>
+                                                {node.displayName || node.nodeId}
+                                            </span>
+                                            {node.nodeId === clusterGrid.localNodeId && (
+                                                <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '3px', background: 'rgba(148, 163, 184, 0.2)', color: '#CBD5E1', fontWeight: 700 }}>
+                                                    LOCAL
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <span style={{
+                                                fontSize: '0.62rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '3px',
+                                                background: node.isOrchestrator ? 'rgba(245, 158, 11, 0.25)' : (isStandby ? 'rgba(234, 179, 8, 0.2)' : 'rgba(6, 182, 212, 0.2)'),
+                                                color: node.isOrchestrator ? '#FCD34D' : (isStandby ? '#FDE047' : '#38BDF8'),
+                                                fontWeight: 800
+                                            }}>
+                                                {node.isOrchestrator ? '👑 ORCHESTRATOR' : (isStandby ? '🟡 STANDBY' : '⚡ WORKER')}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.62rem',
+                                                color: node.isOnline ? '#10B981' : '#F43F5E',
+                                                fontWeight: 800
+                                            }}>
+                                                ● {node.isOnline ? 'ONLINE' : 'DOWN'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Specs & Power Index */}
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        background: 'rgba(15, 23, 42, 0.6)',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(56, 189, 248, 0.15)',
+                                        fontSize: '0.66rem'
+                                    }}>
+                                        <span style={{ color: '#38BDF8', fontWeight: 700 }}>
+                                            {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`}
+                                        </span>
+                                        <span style={{
+                                            padding: '1px 5px',
+                                            borderRadius: '3px',
+                                            fontWeight: 900,
+                                            fontSize: '0.62rem',
+                                            background: (node.hardwareCapabilityScore || 200) >= 600 ? 'rgba(16, 185, 129, 0.25)' : ((node.hardwareCapabilityScore || 200) >= 300 ? 'rgba(6, 182, 212, 0.25)' : 'rgba(148, 163, 184, 0.2)'),
+                                            color: (node.hardwareCapabilityScore || 200) >= 600 ? '#34D399' : ((node.hardwareCapabilityScore || 200) >= 300 ? '#38BDF8' : '#CBD5E1')
+                                        }}>
+                                            ⚡ PWR {node.hardwareCapabilityScore || 200}
+                                        </span>
+                                    </div>
+
+                                    {/* Load Metrics */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
+                                        <span>שידורים: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
+                                        <span>משימות NLE: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                    </div>
+
+                                    {/* Telemetry Bar */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                        <span>CPU: <strong style={{ color: isOverloaded ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong> {isOverloaded && <span style={{ color: '#F43F5E', fontWeight: 800 }}>[THROTTLED]</span>}</span>
+                                        <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
+                                        <span>לחץ: <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>{Math.round(node.ingestPressureScore || 0)} pts</strong></span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Hardware Encoder Invariant Process Flow Graph (Rule 8) */}
             <div className="encoder-pipeline-card">

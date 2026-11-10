@@ -5031,6 +5031,35 @@ Exposed via [ClusterController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRec
      2. Node Mode (`Active 🟢` vs `Standby 🟡`)
    - All complex networking (VIP, Priority, timeouts, manual peer seeds) is relegated to an expandable Advanced Options panel, allowing zero-touch deployment in air-gapped environments.
 
+### 77.8 Dedicated Tactical C2 Dashboard: Cluster Settings Hub & Server Health Capacity Visualization
+1. **Dedicated Cluster & Nodes Settings Hub (`ClusterSettingsTab.jsx`)**:
+   - Located in [ClusterSettingsTab.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/ClusterSettingsTab.jsx) and integrated into [SettingsView.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/SettingsView.jsx).
+   - Cleanly separated from [SystemNetworkTab.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/SystemNetworkTab.jsx), leaving Network settings focused purely on MediaMTX ports, stream bitrates, and AutoDirector. A tactical banner in the Network tab directs operators directly to Cluster & Nodes.
+   - Authorized via enterprise RBAC (`settings.cluster` / `settings.view` or System Root).
+   - Features:
+     - **Live Topology & Health Banner**: Real-time indication of node status (`Active Orchestrator 👑`, `Worker ⚡`, `Standby 🟡`), node heartbeat, and VIP address status (`ACQUIRED 🟢` vs `RELEASED ⚪`).
+     - **Manual VIP Operations**: On-demand manual acquire (`POST /api/v1/cluster/acquire-vip`), release (`POST /api/v1/cluster/release-vip`), and leadership handover (`POST /api/v1/cluster/handover`).
+     - **Active Distributed Compute Grid**: Full tactical cards for all participating cluster nodes, detailing hostname, IP, hardware capability score (`⚡ PWR`), CPU/RAM/GPU usage, active streams, and active NLE render jobs. Includes an interactive button to cede Orchestrator leadership to any online peer (`POST /api/v1/cluster/orchestrator/transfer`).
+     - **Core Topology Controls**: Rapid toggle between `Active-Active (Distributed Grid)`, `Active-Standby (High Availability Failover)`, and `Standalone (Single Server)`.
+     - **Node Operating Mode**: Direct selector between `Active Node 🟢 (Process Ingest & Video Render)` and `Standby Node 🟡 (Hot Backup Reserve)`.
+     - **Hardware Weighting Sliders**: Ingest stream target capacity ($5 - 120$ streams) and concurrent NLE render jobs capacity ($1 - 10$ jobs).
+     - **Advanced High-Availability & VIP Panel**: Expandable accordion containing Virtual IP, Subnet Mask, Network Interface name, Node Priority ($1 - 250$), Heartbeat interval ($500 - 10000$ ms), and manual seed peer URLs for isolated subnets where multicast is disabled.
+
+2. **Graphical Cluster Grid & Horizontal Capacity in Server Health (`SystemOverviewTab.jsx`)**:
+   - Located in [SystemOverviewTab.jsx](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/SystemOverviewTab.jsx).
+   - Activates automatically whenever clustering is enabled (`role !== 'Standalone'`).
+   - Polls `/api/v1/cluster/grid` alongside storage and host telemetry to provide a unified health and throughput overview:
+     - **Dual Horizontal Load Meters (Current Load vs. Maximum System Capacity)**:
+       - *Stream Ingestion Load*: Compares active ingested streams against total aggregate cluster capacity $\left(\frac{\text{TotalStreams}}{\text{TotalStreamsCapacity}} \times 100\right)$. Displays active channels, total capacity, remaining headroom, and a color-coded bar (cyan $\to$ amber $\to$ rose at $> 75\%$).
+       - *Video Render Jobs Load*: Compares active background render/cut jobs against cluster-wide concurrent worker capacity $\left(\frac{\text{TotalJobs}}{\text{TotalJobsCapacity}} \times 100\right)$ with real-time slot occupancy and overload warning at $> 80\%$.
+     - **Tactical Node Blades Grid**: Visual cards for each cluster node displaying:
+       - Role badge (`👑 ORCHESTRATOR`, `⚡ WORKER`, `🟡 STANDBY SPARE`).
+       - Hardware Capability Rating (`⚡ PWR 1060`, `⚡ PWR 500`, etc.).
+       - CPU Usage with **75% Overload Guard Alert** (`[THROTTLED]` badge with pulsed amber/rose warning).
+       - GPU NVENC Hardware acceleration status (`● NVENC 32%` or `○ CPU`).
+       - Stream and render job allocation bars per node.
+     - **One-Click Navigation**: Includes a quick-action button in the header (`Manage Cluster Grid ⚙️`) that seamlessly switches the settings view directly to the dedicated `ClusterSettingsTab`.
+
 ---
 
 ---
