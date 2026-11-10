@@ -193,9 +193,6 @@ export default function DashboardGrid(props) {
                         setMonitoredSubFilter={logic.setMonitoredSubFilterForTab}
                         monitoredCounts={logic.monitoredCounts}
                         resultCount={logic.processedStations.length}
-                        clusterNodes={logic.clusterNodes}
-                        selectedNodeFilter={logic.selectedNodeFilter}
-                        setSelectedNodeFilter={logic.setSelectedNodeFilter}
                     />
 
                     {!isFeatureMode && (

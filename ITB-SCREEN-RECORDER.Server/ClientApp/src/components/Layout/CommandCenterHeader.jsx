@@ -132,7 +132,7 @@ export default function CommandCenterHeader({
                         <div
                             className="cluster-nodes-indicator is-clickable"
                             onClick={() => window.dispatchEvent(new CustomEvent('itb-navigate-settings', { detail: { tab: 'cluster' } }))}
-                            title={`Cluster Topology: ${cluster.clusterMode || 'Active-Active'} | ${cluster.onlineNodesCount || cluster.totalNodes}/${cluster.totalNodes} Nodes Online (${cluster.activeNodesCount || cluster.totalNodes} Active, ${cluster.standbyNodesCount || 0} Standby)\nOrchestrator: ${cluster.orchestratorNodeId || 'Self'} ${cluster.isLocalNodeOrchestrator ? '(This Node)' : ''}\nVirtual IP: ${cluster.enableVirtualIp ? (cluster.virtualIp || 'Enabled') : 'Off'} ${cluster.isVipBoundLocally ? '(Held Locally)' : ''}\n\nClick to open Cluster & Nodes Control Console`}
+                            title={`Unified High-Availability Grid (${cluster.clusterMode || 'Active-Active'} Topology)\nVirtual IP: ${cluster.enableVirtualIp ? (cluster.virtualIp || 'Enabled') : 'Off'} ${cluster.isVipBoundLocally ? '(Held Locally)' : ''}\n\nClick to open Cluster Settings`}
                         >
                             <div className="indicator-icon">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -146,11 +146,10 @@ export default function CommandCenterHeader({
                             </div>
 
                             <div className="indicator-data">
-                                <div className="data-title">CLUSTER NODES</div>
+                                <div className="data-title">UNIFIED SYSTEM</div>
                                 <div className="data-values">
                                     <span className="stat-segment online-segment">
-                                        <span className="count-active">{cluster.onlineNodesCount || cluster.totalNodes}</span>
-                                        <span className="stat-unit">/{cluster.totalNodes} NODES</span>
+                                        <span className="count-active">ONLINE</span>
                                     </span>
                                     <span className="cluster-mode-badge">{cluster.clusterMode === 'Active-Active' ? 'ACT-ACT' : (cluster.clusterMode === 'Active-Standby' ? 'ACT-STBY' : 'GRID')}</span>
                                     {cluster.isVipBoundLocally && <span className="cluster-vip-badge" title="This host currently holds the Virtual IP">VIP</span>}

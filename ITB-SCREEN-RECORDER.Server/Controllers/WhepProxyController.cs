@@ -118,7 +118,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
                     if (!string.IsNullOrEmpty(fallbackSubPath))
                     {
-                        string fallbackUrl = $"http://127.0.0.1:{webrtcPort}/{fallbackSubPath}";
+                        string fallbackUrl = $"http://{targetHost}:{webrtcPort}/{fallbackSubPath}";
                         using var fallbackReq = new HttpRequestMessage(method, fallbackUrl);
                         if (!string.IsNullOrWhiteSpace(bodyContent))
                         {

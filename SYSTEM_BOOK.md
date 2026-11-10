@@ -5329,13 +5329,56 @@ Operators require a **Single Pane of Glass** experience:
      - **Remote Node & Fleet Restart (`POST /api/v1/cluster/nodes/{nodeId}/restart` & `POST /api/v1/cluster/restart-all`)**:
        Gracefully restarts the ITB Server service on a specific target node or orchestrates a rolling restart across all cluster members.
 
-4. **Tactical Frontend Grid & Search Shelf Integration**:
-   - **Node Filter Chips (`SearchShelf.jsx` & `SearchShelf.scss`)**:
-     The search and filtering shelf dynamically injects interactive node filter chips (`[ ALL NODES ]`, `[ SVR-01 (12) ]`, `[ SVR-02 (15) ]`). Operators can filter the 100+ station grid by hosting server with a single click.
-   - **Station Card Node Badges (`StationThumbnail.jsx` & `StationInspectorDrawer.jsx`)**:
-     Each workstation card and inspector drawer displays the host node identity badge (e.g. `🖥️ SVR-01`) alongside resolution, FPS, and encoder telemetry.
+4. **Tactical Frontend Grid & One-Click Management Console**:
+   - **Unified Station Grid**: Workstations stream and play together in the tactical grid and canvas as part of a single unified super-server.
    - **One-Click Cluster Console Access (`CommandCenterHeader.jsx`)**:
-     The header `.cluster-nodes-indicator` is interactive (`is-clickable`). Clicking it instantly opens the Cluster Settings tab (`SettingsView.jsx`), giving operators direct access to the node topology visualizer, aggregate metrics, sizing calculator, and remote node lifecycle toolbar.
+     The header `.cluster-nodes-indicator` displays `UNIFIED SYSTEM` and `ONLINE`. Clicking it instantly opens the Cluster Settings tab (`SettingsView.jsx`), giving system administrators direct access to the node topology visualizer, aggregate metrics, sizing calculator, node draining, and remote node lifecycle toolbar.
+
+---
+
+### 78.10 Complete Cluster Node Abstraction, Single Unified Super-Server Perception, and Transparent Playback Grid
+
+#### Operational Background & User Experience Mission
+In tactical military and air-gapped security operations centers (SOC/NOC), duty operators and surveillance analysts must not be burdened with underlying distributed infrastructure details. The fact that the recording platform is distributed across multiple physical or virtual machines (e.g. `SVR-01`, `SVR-02`) to balance CPU, GPU, and network loads is strictly an architectural mechanism—**not an operator concern**.
+
+From the user's perspective, all servers have merged into **one single giant server**. All workstations across all nodes play together seamlessly in the grid, audio solo operates across any stream, and telemetry reflects the total computing power of the unified system without requiring the operator to switch scopes or think about physical servers.
+
+```
+       OPERATIONAL CONSOLE VIEW (Single Big Unified Server)
+┌─────────────────────────────────────────────────────────────┐
+│ UNIFIED SYSTEM [ACTIVE-ACTIVE]  │  FLEET: 100 STATIONS REC  │
+├─────────────────────────────────────────────────────────────┤
+│ CPU: 24.2%  │ RAM: 48G/128G  │ NET: 480M / 20G LINK │ STOR  │
+├─────────────────────────────────────────────────────────────┤
+│ [WS-01]  [WS-02]  [WS-03]  [WS-04]  [WS-05]  [WS-06] ...    │
+│  All 100+ stations playing seamlessly in unified grid       │
+│  Zero server node badges • Zero physical host clutter        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Architectural Solution & Invariants
+
+1. **Zero-Clutter Workstation Cards & Inspector (`StationThumbnail.jsx` & `StationInspectorDrawer.jsx`)**:
+   - Physical ingest server badges (e.g. `🖥️ SVR-01`) and node pills are omitted from workstation cards, virtual topology canvases, and the Station Inspector drawer.
+   - Every workstation card presents its operational identity, resolution, FPS, encoder status, and live video stream as a native component of the unified system.
+   - The Search Shelf retains pure operational filters (`ALL`, `ONLINE`, `RECORDING`, `MONITORED`, `OFFLINE`, and unrecorded alert tags) without exposing internal server node filter chips.
+
+2. **Unified System Telemetry (`ServerTelemetryWidget.jsx`)**:
+   - The main tactical C2 dashboard eliminates scope toggles (`[ CLUSTER ] [ LOCAL ]`). The dashboard IS the unified system's console.
+   - **Unified CPU Load**: Displays mean aggregate CPU load across all active compute nodes with application process overhead (`CPU LOAD: X% | App Y%`).
+   - **Unified Memory Pool**: Displays total allocated vs. combined physical memory across all nodes (`SYSTEM RAM: 48.2G / 128G`).
+   - **Unified Network Bandwidth**: Displays total aggregate ingress and egress throughput across all network interfaces (`SYSTEM NETWORK: 480M | 20G LINK`).
+   - **Unified Storage Pool**: Reflects the shared NetApp UNC or enterprise storage target.
+
+3. **Transparent Distributed WHEP Playback Mesh (`WhepProxyController.cs`)**:
+   - Browser WebRTC players connect to the reverse proxy endpoint `/api/v1/whep/live/{hostname}/mon-0/whep` on the virtual or local server address.
+   - [`WhepProxyController.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs) queries `_clusterService.ResolveStreamNodeHost(stationHostname)`.
+   - If the station is being captured by a peer node, the WHEP handshake is routed directly to `http://{targetHost}:8889/...` with automatic multi-monitor fallback (`live/{hostname}/mon-0` ↔ `live/{hostname}`).
+   - WebRTC candidate negotiation connects the browser directly to the streaming node via local LAN UDP, ensuring sub-second latency across all stations regardless of which node captures the video.
+
+4. **Infrastructure Governance Segregation**:
+   - Hardware topology cards, individual node health metrics, sizing requirements calculators, node drain controls, and remote reboot triggers are strictly encapsulated in **Settings → Cluster**.
+   - System administrators retain complete visibility and control over cluster hardware without leaking infrastructure complexity into the operational monitoring workspace.
 
 ---
 

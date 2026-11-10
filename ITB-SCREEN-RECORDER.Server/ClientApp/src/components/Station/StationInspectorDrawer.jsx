@@ -114,11 +114,6 @@ export default function StationInspectorDrawer({
                                     HOST: {station.hostname}
                                 </span>
                             )}
-                            {(station.hostingNodeName || station.hostingNodeId) && (
-                                <span className="physical-host-pill cluster-node-pill" title={`Cluster Ingest Node: ${station.hostingNodeName || station.hostingNodeId}`}>
-                                    NODE: {station.hostingNodeName || station.hostingNodeId}
-                                </span>
-                            )}
                             <Badge
                                 variant={!station.isOnline ? 'critical' : isLive ? 'info' : 'success'}
                                 pulse={isLive}
