@@ -570,22 +570,31 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             await _overridesService.SetOverrideAsync(hostname, stationConfig);
 
+            // Synchronize tuning override across all cluster nodes
+            if (_clusterService != null)
+            {
+                _ = _clusterService.BroadcastStationOverrideAsync(hostname, stationConfig.VideoBitrate, stationConfig.TargetFps, false);
+            }
+
             return Ok(new
             {
                 Hostname = hostname,
                 TargetFps = stationConfig.TargetFps,
                 VideoBitrate = stationConfig.VideoBitrate,
-                Message = "Tuning saved to SQLite. Policy updated for next heartbeat.",
+                Message = "Tuning saved to SQLite and synchronized across cluster. Policy updated for next heartbeat.",
                 TimestampUtc = DateTime.UtcNow
             });
         }
 
         [HttpPost("command/{hostname}")]
         [AuthorizePermission(PermissionKeys.StationsControl)]
-        public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
+        public async Task<IActionResult> EnforceStreamingPolicy(string hostname, [FromQuery] bool enable, CancellationToken ct)
         {
             _telemetryState.SetAgentStreamState(hostname, enable);
-            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var allAgents = _clusterService != null
+                ? await _clusterService.GetClusterStationsAsync(ct)
+                : _telemetryState.GetAllAgents().ToList();
+
             var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
             if (match != null)
             {
@@ -598,6 +607,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
                 _ = _broadcastService.BroadcastAgentUpdateAsync(match);
             }
+
+            // Cluster C2 command propagation: ensure all nodes know this station must record
+            if (_clusterService != null)
+            {
+                await _clusterService.BroadcastStationStreamPolicyAsync(hostname, enable, ct);
+            }
+
             return Ok(new { Hostname = hostname, RecordingRequested = enable, StreamingActive = match?.IsStreaming ?? true });
         }
 
@@ -610,12 +626,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
         [HttpPost("fleet-streaming-policy")]
         [AuthorizePermission(PermissionKeys.StationsControl)]
-        public IActionResult EnforceFleetWideStreamingPolicy(
+        public async Task<IActionResult> EnforceFleetWideStreamingPolicy(
             [FromBody] FleetStreamingPolicyRequest? request,
-            [FromQuery] bool? enable)
+            [FromQuery] bool? enable,
+            CancellationToken ct)
         {
             bool targetEnable = request?.Enable ?? enable ?? false;
-            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var allAgents = _clusterService != null
+                ? await _clusterService.GetClusterStationsAsync(ct)
+                : _telemetryState.GetAllAgents().ToList();
+
             var targetedHostnames = new List<string>();
 
             if (request?.Hostnames != null && request.Hostnames.Any())
@@ -657,6 +677,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     }
                     _ = _broadcastService.BroadcastAgentUpdateAsync(match);
                 }
+            }
+
+            // Propagate across the cluster to all peer nodes
+            if (_clusterService != null && targetedHostnames.Any())
+            {
+                await _clusterService.BroadcastFleetStreamPolicyAsync(targetedHostnames, targetEnable, ct);
             }
 
             return Ok(new

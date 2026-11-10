@@ -130,8 +130,9 @@ export default function CommandCenterHeader({
 
                     {isClusterAvailable && (
                         <div
-                            className="cluster-nodes-indicator"
-                            title={`Cluster Topology: ${cluster.clusterMode || 'Active-Active'} | ${cluster.onlineNodesCount || cluster.totalNodes}/${cluster.totalNodes} Nodes Online (${cluster.activeNodesCount || cluster.totalNodes} Active, ${cluster.standbyNodesCount || 0} Standby)\nOrchestrator: ${cluster.orchestratorNodeId || 'Self'} ${cluster.isLocalNodeOrchestrator ? '(This Node)' : ''}\nVirtual IP: ${cluster.enableVirtualIp ? (cluster.virtualIp || 'Enabled') : 'Off'} ${cluster.isVipBoundLocally ? '(Held Locally)' : ''}`}
+                            className="cluster-nodes-indicator is-clickable"
+                            onClick={() => window.dispatchEvent(new CustomEvent('itb-navigate-settings', { detail: { tab: 'cluster' } }))}
+                            title={`Cluster Topology: ${cluster.clusterMode || 'Active-Active'} | ${cluster.onlineNodesCount || cluster.totalNodes}/${cluster.totalNodes} Nodes Online (${cluster.activeNodesCount || cluster.totalNodes} Active, ${cluster.standbyNodesCount || 0} Standby)\nOrchestrator: ${cluster.orchestratorNodeId || 'Self'} ${cluster.isLocalNodeOrchestrator ? '(This Node)' : ''}\nVirtual IP: ${cluster.enableVirtualIp ? (cluster.virtualIp || 'Enabled') : 'Off'} ${cluster.isVipBoundLocally ? '(Held Locally)' : ''}\n\nClick to open Cluster & Nodes Control Console`}
                         >
                             <div className="indicator-icon">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">

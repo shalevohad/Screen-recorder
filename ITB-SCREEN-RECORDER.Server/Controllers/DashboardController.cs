@@ -234,6 +234,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             }
 
             await _overridesService.SetOverrideAsync(hostname, request);
+            if (_clusterService != null)
+            {
+                _ = _clusterService.BroadcastStationOverrideAsync(hostname, request.VideoBitrate, request.TargetFps, false);
+            }
             return Ok(new { Message = $"Configuration for station '{hostname}' updated successfully." });
         }
 
@@ -247,6 +251,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             }
 
             await _overridesService.RemoveOverrideAsync(hostname);
+            if (_clusterService != null)
+            {
+                _ = _clusterService.BroadcastStationOverrideAsync(hostname, null, null, true);
+            }
             return Ok(new { Message = $"Override for station '{hostname}' removed successfully." });
         }
 

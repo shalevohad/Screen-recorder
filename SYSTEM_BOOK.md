@@ -5273,6 +5273,72 @@ In distributed multi-server environments (Active-Active Compute Grids or Active-
 
 ---
 
+### 78.9 Centralized Single-Pane-of-Glass Cluster Command & Control (C2), Inter-Node State Synchronization, and Fleet Node Lifecycle Management
+
+#### Operational Background
+In distributed multi-server environments (Active-Active Compute Grids or Active-Standby Failover clusters), having operators manually navigate to different server IP addresses or dashboards to configure stations, start/stop recordings, or manage individual servers creates operational friction and violates the core mission of an air-gapped tactical command and control (C2) center.
+
+Operators require a **Single Pane of Glass** experience:
+1. Regardless of which physical server IP or Virtual IP (VIP) is currently serving the operator's browser, the Dashboard must display the full fleet of workstations across all nodes.
+2. Any operational action (such as starting/stopping recording for a single station, issuing fleet-wide "Start All" / "Stop All", modifying station bitrate/FPS overrides, or altering server settings) executed from **any** dashboard must instantly propagate across all nodes in the cluster mesh.
+3. Operators must have full administrative governance over any server node directly from the unified UI: Promoting a node to Orchestrator/Leader, Draining a node for scheduled maintenance, adjusting runtime stream/render job capacity limits, or triggering safe remote service restarts.
+
+```
+       OPERATOR CONSOLE (Browser at VIP / Any Node)
+                          │
+            [ Single Pane of Glass C2 ]
+                          │
+         ┌────────────────┴────────────────┐
+         ▼                                 ▼
+   NODE A (Local Host)              NODE B (Peer Node)
+   ┌───────────────────────┐        ┌───────────────────────┐
+   │ • HTTP API / SignalR  │        │ • HTTP API / SignalR  │
+   │ • Local Workstations  │◄──────►│ • Local Workstations  │
+   │ • Inter-Node Dispatch │  C2    │ • Inter-Node Dispatch │
+   │ • Authoritative Sync  │  MESH  │ • Authoritative Sync  │
+   └───────────────────────┘        └───────────────────────┘
+```
+
+#### Architectural Components & Implementation
+
+1. **Inter-Node Command & Control (C2) Dispatch Mesh**:
+   - Implemented in [`ClusterService.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ClusterService.cs) and surfaced via [`IClusterService.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/IClusterService.cs):
+     - **`BroadcastStationStreamPolicyAsync(hostname, isStreaming)`**:
+       When an operator toggles recording for a station from any connected dashboard, [`AgentController.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs) applies the command locally and immediately calls `BroadcastStationStreamPolicyAsync`. The local node fires parallel `POST /api/v1/cluster/c2/stream-policy` requests to all peer nodes. The specific node hosting that workstation applies the policy immediately via its local `ITelemetryStateService` and updates connected agents.
+     - **`BroadcastFleetStreamPolicyAsync(isStreaming)`**:
+       When "Start All Recording" or "Stop All Recording" is clicked, [`AgentController.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs) propagates the fleet-wide directive to all cluster nodes via `POST /api/v1/cluster/c2/fleet-policy`, enforcing lockstep recording across the entire multi-server fleet.
+     - **`BroadcastStationOverrideAsync(overrideDto)`**:
+       When station tuning parameters (FPS, bitrate, resolution) are updated from Station Inspector or Grid cards, `BroadcastStationOverrideAsync` dispatches `POST /api/v1/cluster/c2/station-override` to all nodes, persisting the override in the local SQLite database and in-memory cache of every cluster member.
+     - **`PropagateClusterConfigAsync(settingsDto)`**:
+       When global settings are modified in [`SettingsController.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/SettingsController.cs), the updated configuration is dispatched via `POST /api/v1/cluster/c2/sync-config` to all peers. The receiver safely updates operational settings while preserving local node identity (`LocalNodeId`, local IP bindings, storage paths).
+
+2. **Authoritative State Synchronization & Convergence**:
+   - To guarantee eventual consistency in the face of transient network hiccups or packet drops:
+     - The cluster Orchestrator node tracks desired stream states in `DesiredStreamPolicies` (`Dictionary<string, bool>`).
+     - Every 2 seconds, when worker nodes send their heartbeat to the orchestrator, the orchestrator returns `DesiredStreamPolicies` inside [`ClusterHeartbeatResponse`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Network/ServerDiscoveryContracts.cs).
+     - Worker nodes compare their active station stream states against the orchestrator's authoritative dictionary and automatically reconcile any drift without operator intervention.
+
+3. **Fleet Node Lifecycle Management**:
+   - Surfaced via [`ClusterController.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/ClusterController.cs):
+     - **Drain Mode (`POST /api/v1/cluster/nodes/{nodeId}/drain`)**:
+       Allows operators to mark any node as `Draining` (`ClusterNodeState.Draining`). Ingest pressure calculations immediately treat the node as having maximum penalty (+9999 pts), and compute fitness is zeroed (-1.0). Active streams and jobs continue uninterrupted, but new workstations and forensic export jobs are gracefully steered to surviving nodes. When maintenance is complete, operators click "Resume Ingest" to undrain the node.
+     - **Remote Node Promotion (`POST /api/v1/cluster/promote/{nodeId}`)**:
+       Enables operators to dynamically transfer Orchestrator/Leader duties to any online worker node without service restarts.
+     - **Capacity Limit Tuning (`POST /api/v1/cluster/nodes/{nodeId}/capacities`)**:
+       Provides an interactive modal to fine-tune `MaxStreamsCapacity` and `MaxJobsCapacity` on any individual node, overriding hardware automatic derivation when custom operational limits are required.
+     - **Remote Node & Fleet Restart (`POST /api/v1/cluster/nodes/{nodeId}/restart` & `POST /api/v1/cluster/restart-all`)**:
+       Gracefully restarts the ITB Server service on a specific target node or orchestrates a rolling restart across all cluster members.
+
+4. **Tactical Frontend Grid & Search Shelf Integration**:
+   - **Node Filter Chips (`SearchShelf.jsx` & `SearchShelf.scss`)**:
+     The search and filtering shelf dynamically injects interactive node filter chips (`[ ALL NODES ]`, `[ SVR-01 (12) ]`, `[ SVR-02 (15) ]`). Operators can filter the 100+ station grid by hosting server with a single click.
+   - **Station Card Node Badges (`StationThumbnail.jsx` & `StationInspectorDrawer.jsx`)**:
+     Each workstation card and inspector drawer displays the host node identity badge (e.g. `🖥️ SVR-01`) alongside resolution, FPS, and encoder telemetry.
+   - **One-Click Cluster Console Access (`CommandCenterHeader.jsx`)**:
+     The header `.cluster-nodes-indicator` is interactive (`is-clickable`). Clicking it instantly opens the Cluster Settings tab (`SettingsView.jsx`), giving operators direct access to the node topology visualizer, aggregate metrics, sizing calculator, and remote node lifecycle toolbar.
+
+---
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

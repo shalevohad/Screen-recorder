@@ -37,7 +37,49 @@ export function useDashboardLogic({
     const currentTabFilter = tabFilters[activeTabId] || 'ALL';
     const [monitoredSubFilters, setMonitoredSubFilters] = useState({});
     const currentMonitoredSubFilter = monitoredSubFilters[activeTabId] || 'ALL'; // 'ALL' | 'NOT_SNOOZED' | 'SNOOZED'
+    const [selectedNodeFilter, setSelectedNodeFilter] = useState('ALL');
+    const [clusterNodes, setClusterNodes] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
+
+    // Fetch cluster grid nodes for centralized cluster filtering
+    useEffect(() => {
+        let isMounted = true;
+        const fetchClusterNodes = async () => {
+            try {
+                const res = await fetch('/api/v1/cluster/grid');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isMounted && data?.nodes) {
+                        setClusterNodes(data.nodes);
+                        return;
+                    }
+                }
+            } catch {}
+
+            // Fallback: derive from stations
+            if (isMounted && stations.length > 0) {
+                const nodeMap = new Map();
+                stations.forEach(s => {
+                    const id = s.hostingNodeId;
+                    const name = s.hostingNodeName || id;
+                    if (id && !nodeMap.has(id.toLowerCase())) {
+                        nodeMap.set(id.toLowerCase(), { nodeId: id, displayName: name, activeStreamsCount: 0 });
+                    }
+                    if (id && nodeMap.has(id.toLowerCase())) {
+                        nodeMap.get(id.toLowerCase()).activeStreamsCount++;
+                    }
+                });
+                setClusterNodes(Array.from(nodeMap.values()));
+            }
+        };
+
+        fetchClusterNodes();
+        const interval = setInterval(fetchClusterNodes, 5000);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [stations]);
 
     // Fetch operational tab definitions directly from SQLite
     const [fleetTabsList, setFleetTabsList] = useState([]);
@@ -194,9 +236,10 @@ export function useDashboardLogic({
         return Boolean(
             searchQuery.trim() ||
             (currentTabFilter && currentTabFilter !== 'ALL') ||
+            (selectedNodeFilter && selectedNodeFilter !== 'ALL') ||
             ((currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE') && currentMonitoredSubFilter !== 'ALL')
         );
-    }, [searchQuery, currentTabFilter, currentMonitoredSubFilter]);
+    }, [searchQuery, currentTabFilter, currentMonitoredSubFilter, selectedNodeFilter]);
 
     const handleClearFilter = () => { setSearchQuery(''); searchInputRef.current?.focus(); };
     const setFilterForTab = (val) => {
@@ -211,6 +254,7 @@ export function useDashboardLogic({
         setSearchQuery('');
         setFilterForTab('ALL');
         setMonitoredSubFilterForTab('ALL');
+        setSelectedNodeFilter('ALL');
         searchInputRef.current?.focus();
     };
 
@@ -378,6 +422,11 @@ export function useDashboardLogic({
             list = list.filter(s => s.isOnline);
         }
 
+        if (selectedNodeFilter && selectedNodeFilter !== 'ALL') {
+            const targetNode = selectedNodeFilter.toLowerCase();
+            list = list.filter(s => (s.hostingNodeId || '').toLowerCase() === targetNode);
+        }
+
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
             list = list.filter(s =>
@@ -420,7 +469,7 @@ export function useDashboardLogic({
         });
 
         return list;
-    }, [tabFilteredStations, isFaultFilterActive, currentTabFilter, currentMonitoredSubFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
+    }, [tabFilteredStations, isFaultFilterActive, currentTabFilter, currentMonitoredSubFilter, selectedNodeFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
 
     const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, monitoredSubFilters, activeTabId, viewMode });
     if (
@@ -629,6 +678,7 @@ export function useDashboardLogic({
         activeTabId, setActiveTabId,
         tabFilters, setFilterForTab, currentTabFilter,
         monitoredSubFilters, setMonitoredSubFilterForTab, currentMonitoredSubFilter, monitoredCounts,
+        clusterNodes, selectedNodeFilter, setSelectedNodeFilter,
         currentPage, setCurrentPage, itemsPerPage, totalPages,
         viewMode, setViewMode,
         isSearchOpen, setIsSearchOpen,

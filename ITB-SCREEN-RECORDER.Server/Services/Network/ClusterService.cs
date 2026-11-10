@@ -46,7 +46,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         private readonly ConcurrentDictionary<string, string> _stationToNodeMap = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, ClusterJobStatusDto> _clusterJobs = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, AgentTelemetryReport> _remoteStationTelemetry = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, bool> _clusterDesiredStreamPolicies = new(StringComparer.OrdinalIgnoreCase);
         private string _orchestratorNodeId = string.Empty;
+        private readonly IServiceProvider? _serviceProvider;
 
         public ClusterService(
             IOptionsMonitor<SystemConfig> configMonitor,
@@ -56,7 +58,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             ILogger<ClusterService> logger,
             ITelemetryStateService? telemetryState = null,
             TelemetryBroadcastService? broadcastService = null,
-            NetworkTelemetry? networkTelemetry = null)
+            NetworkTelemetry? networkTelemetry = null,
+            IServiceProvider? serviceProvider = null)
         {
             _configMonitor = configMonitor;
             _vipManager = vipManager;
@@ -65,6 +68,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
             _networkTelemetry = networkTelemetry;
+            _serviceProvider = serviceProvider;
 
             var config = _configMonitor.CurrentValue;
             var disc = config?.Discovery ?? new DiscoverySettings();
@@ -542,6 +546,16 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                                         }
                                     }
                                 }
+
+                                // Sync authoritative stream policies from orchestrator
+                                if (hbResp.DesiredStreamPolicies != null)
+                                {
+                                    foreach (var kvp in hbResp.DesiredStreamPolicies)
+                                    {
+                                        _clusterDesiredStreamPolicies[kvp.Key] = kvp.Value;
+                                        _telemetryState?.SetAgentStreamState(kvp.Key, kvp.Value);
+                                    }
+                                }
                             }
                         }
                     }
@@ -700,6 +714,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 ActiveNodes = _clusterNodes.Values.Where(n => n.IsOnline).ToList(),
                 AssignedStations = node.AssignedStations ?? new List<string>(),
                 ClusterStations = allStations,
+                DesiredStreamPolicies = new Dictionary<string, bool>(_clusterDesiredStreamPolicies, StringComparer.OrdinalIgnoreCase),
                 ServerUtcTime = DateTime.UtcNow
             };
 
@@ -709,6 +724,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         public static double CalculateIngestPressure(ClusterNodeDescriptor node)
         {
             if (node == null) return 999.0;
+            if (node.IsStandby || node.IsDraining) return 9999.0;
 
             // Hard safety ceiling: if CPU >= 75% or GPU NVENC >= 85%, mark node as heavily pressured
             if (node.IsOverloaded)
@@ -733,7 +749,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
         public static double CalculateComputeFitness(ClusterNodeDescriptor node)
         {
-            if (node == null) return -1.0;
+            if (node == null || node.IsStandby || node.IsDraining) return -1.0;
 
             // Hard safety ceilings:
             // 1. If CPU >= 75% or GPU NVENC >= 85%, strictly ineligible for new heavy video jobs
@@ -791,7 +807,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             var onlineNodes = _clusterNodes.Values.Where(n => n.IsOnline).ToList();
             if (onlineNodes.Count == 0) return Task.FromResult<string?>(null);
 
-            var candidateNodes = onlineNodes.Where(n => !n.IsStandby).ToList();
+            var candidateNodes = onlineNodes.Where(n => !n.IsStandby && !n.IsDraining).ToList();
             if (candidateNodes.Count == 0) candidateNodes = onlineNodes;
 
             // Overload Protection: If any healthy (non-overloaded) nodes exist, filter out overloaded nodes
@@ -826,7 +842,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 return Task.FromResult(localNode);
             }
 
-            var candidateNodes = onlineNodes.Where(n => !n.IsStandby).ToList();
+            var candidateNodes = onlineNodes.Where(n => !n.IsStandby && !n.IsDraining).ToList();
             if (candidateNodes.Count == 0) candidateNodes = onlineNodes;
 
             // Evaluate hardware fitness for video processing
@@ -1103,6 +1119,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 IsVipBound = isVipBound,
                 LocalIps = localIps,
                 AssignedStations = localDesc?.AssignedStations ?? new List<string>(),
+                IsDraining = _state == ClusterNodeState.Draining,
                 TimestampUtc = DateTime.UtcNow
             };
         }
@@ -1140,9 +1157,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             node.WhepPort = beacon.WhepPort;
             node.Role = beacon.NodeRole;
             node.NodeMode = beacon.NodeMode;
-            node.State = string.Equals(beacon.NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase)
-                ? ClusterNodeState.Standby.ToString()
-                : ClusterNodeState.Active.ToString();
+            node.State = beacon.IsDraining
+                ? ClusterNodeState.Draining.ToString()
+                : (string.Equals(beacon.NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase)
+                    ? ClusterNodeState.Standby.ToString()
+                    : ClusterNodeState.Active.ToString());
             node.Priority = beacon.Priority;
             node.ActiveStreamsCount = beacon.ActiveStreamsCount;
             node.MaxStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : peerHwStreamsCap;
@@ -1531,6 +1550,470 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
 
             _state = ClusterNodeState.Standby;
+        }
+
+        #endregion
+
+        #region Dependency Helpers
+
+        private StationOverridesService? GetOverridesService() => _serviceProvider?.GetService(typeof(StationOverridesService)) as StationOverridesService;
+        private ISystemConfigDbSyncService? GetSyncService() => _serviceProvider?.GetService(typeof(ISystemConfigDbSyncService)) as ISystemConfigDbSyncService;
+        private IServerRestartService? GetRestartService() => _serviceProvider?.GetService(typeof(IServerRestartService)) as IServerRestartService;
+
+        #endregion
+
+        #region Inter-Node C2 Coordination & Configuration Synchronization
+
+        public async Task BroadcastStationStreamPolicyAsync(string hostname, bool enable, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return;
+
+            string localId = Environment.MachineName;
+            _clusterDesiredStreamPolicies[hostname] = enable;
+
+            // If remote station exists in local cache, update it immediately
+            if (_remoteStationTelemetry.TryGetValue(hostname, out var remoteStation))
+            {
+                remoteStation.IsRecording = enable;
+                if (_broadcastService != null)
+                {
+                    _ = _broadcastService.BroadcastAgentUpdateAsync(remoteStation);
+                }
+            }
+
+            var payload = new ClusterStreamPolicyRequest
+            {
+                Hostname = hostname,
+                Enable = enable,
+                SourceNodeId = localId,
+                TimestampUtc = DateTime.UtcNow
+            };
+
+            var peerNodes = _clusterNodes.Values
+                .Where(n => n.IsOnline && !string.IsNullOrWhiteSpace(n.ApiBaseUrl) && !n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (peerNodes.Count == 0) return;
+
+            using var client = CreateClusterHttpClient();
+            var tasks = peerNodes.Select(async node =>
+            {
+                try
+                {
+                    await client.PostAsJsonAsync($"{node.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/c2/stream-policy", payload, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[CLUSTER C2] Failed forwarding stream policy for {Host} to peer {Peer}", hostname, node.NodeId);
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task BroadcastFleetStreamPolicyAsync(IEnumerable<string> hostnames, bool enable, CancellationToken ct = default)
+        {
+            var list = hostnames.Where(h => !string.IsNullOrWhiteSpace(h)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (list.Count == 0) return;
+
+            string localId = Environment.MachineName;
+            foreach (var h in list)
+            {
+                _clusterDesiredStreamPolicies[h] = enable;
+                if (_remoteStationTelemetry.TryGetValue(h, out var remoteStation))
+                {
+                    remoteStation.IsRecording = enable;
+                    if (_broadcastService != null)
+                    {
+                        _ = _broadcastService.BroadcastAgentUpdateAsync(remoteStation);
+                    }
+                }
+            }
+
+            var payload = new ClusterFleetStreamPolicyRequest
+            {
+                Hostnames = list,
+                Enable = enable,
+                SourceNodeId = localId,
+                TimestampUtc = DateTime.UtcNow
+            };
+
+            var peerNodes = _clusterNodes.Values
+                .Where(n => n.IsOnline && !string.IsNullOrWhiteSpace(n.ApiBaseUrl) && !n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (peerNodes.Count == 0) return;
+
+            using var client = CreateClusterHttpClient();
+            var tasks = peerNodes.Select(async node =>
+            {
+                try
+                {
+                    await client.PostAsJsonAsync($"{node.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/c2/fleet-policy", payload, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[CLUSTER C2] Failed forwarding fleet policy to peer {Peer}", node.NodeId);
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        public void ApplyInterNodeStreamPolicy(ClusterStreamPolicyRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.Hostname)) return;
+
+            _clusterDesiredStreamPolicies[req.Hostname] = req.Enable;
+            _telemetryState?.SetAgentStreamState(req.Hostname, req.Enable);
+
+            // If locally hosted station, update and broadcast
+            var localAgent = _telemetryState?.GetAllAgents().FirstOrDefault(a => string.Equals(a.Hostname, req.Hostname, StringComparison.OrdinalIgnoreCase));
+            if (localAgent != null)
+            {
+                localAgent.IsRecording = req.Enable;
+                if (_broadcastService != null)
+                {
+                    _ = _broadcastService.BroadcastAgentUpdateAsync(localAgent);
+                }
+            }
+            else if (_remoteStationTelemetry.TryGetValue(req.Hostname, out var remoteStation))
+            {
+                remoteStation.IsRecording = req.Enable;
+                if (_broadcastService != null)
+                {
+                    _ = _broadcastService.BroadcastAgentUpdateAsync(remoteStation);
+                }
+            }
+        }
+
+        public void ApplyInterNodeFleetStreamPolicy(ClusterFleetStreamPolicyRequest req)
+        {
+            if (req == null || req.Hostnames == null) return;
+            foreach (var h in req.Hostnames)
+            {
+                ApplyInterNodeStreamPolicy(new ClusterStreamPolicyRequest
+                {
+                    Hostname = h,
+                    Enable = req.Enable,
+                    SourceNodeId = req.SourceNodeId
+                });
+            }
+        }
+
+        public async Task BroadcastStationOverrideAsync(string hostname, string? videoBitrate, int? targetFps, bool isDelete = false, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return;
+
+            string localId = Environment.MachineName;
+            var payload = new ClusterStationOverrideRequest
+            {
+                Hostname = hostname,
+                VideoBitrate = videoBitrate,
+                TargetFps = targetFps,
+                IsDelete = isDelete,
+                SourceNodeId = localId,
+                TimestampUtc = DateTime.UtcNow
+            };
+
+            var peerNodes = _clusterNodes.Values
+                .Where(n => n.IsOnline && !string.IsNullOrWhiteSpace(n.ApiBaseUrl) && !n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (peerNodes.Count == 0) return;
+
+            using var client = CreateClusterHttpClient();
+            var tasks = peerNodes.Select(async node =>
+            {
+                try
+                {
+                    await client.PostAsJsonAsync($"{node.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/c2/station-override", payload, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[CLUSTER C2] Failed forwarding station override for {Host} to peer {Peer}", hostname, node.NodeId);
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task ApplyInterNodeStationOverrideAsync(ClusterStationOverrideRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.Hostname)) return;
+
+            var overridesService = GetOverridesService();
+            if (overridesService != null)
+            {
+                if (req.IsDelete)
+                {
+                    await overridesService.RemoveOverrideAsync(req.Hostname);
+                }
+                else
+                {
+                    await overridesService.SetOverrideAsync(req.Hostname, new StationOverride
+                    {
+                        VideoBitrate = req.VideoBitrate,
+                        TargetFps = req.TargetFps
+                    });
+                }
+            }
+        }
+
+        public async Task PropagateClusterConfigAsync(SystemConfig config, CancellationToken ct = default)
+        {
+            if (config == null) return;
+            string localId = Environment.MachineName;
+
+            var payload = new ClusterConfigSyncRequest
+            {
+                SourceNodeId = localId,
+                SystemConfig = config,
+                TimestampUtc = DateTime.UtcNow
+            };
+
+            var peerNodes = _clusterNodes.Values
+                .Where(n => n.IsOnline && !string.IsNullOrWhiteSpace(n.ApiBaseUrl) && !n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (peerNodes.Count == 0) return;
+
+            using var client = CreateClusterHttpClient();
+            var tasks = peerNodes.Select(async node =>
+            {
+                try
+                {
+                    await client.PostAsJsonAsync($"{node.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/c2/sync-config", payload, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[CLUSTER C2] Failed propagating config to peer {Peer}", node.NodeId);
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        public async Task ApplyInterNodeConfigSyncAsync(ClusterConfigSyncRequest req)
+        {
+            if (req == null || req.SystemConfig == null) return;
+            var syncService = GetSyncService();
+            if (syncService != null)
+            {
+                await syncService.UpdateSystemConfigAsync(c =>
+                {
+                    c.RecordingRetentionDays = req.SystemConfig.RecordingRetentionDays;
+                    c.MaxStorageQuotaGb = req.SystemConfig.MaxStorageQuotaGb;
+                    c.DefaultTargetFps = req.SystemConfig.DefaultTargetFps;
+                    c.DefaultVideoBitrate = req.SystemConfig.DefaultVideoBitrate;
+                    c.DisplayTimezone = req.SystemConfig.DisplayTimezone;
+                    c.DisplayLocale = req.SystemConfig.DisplayLocale;
+
+                    if (req.SystemConfig.Storage != null)
+                    {
+                        c.Storage ??= new StorageSettings();
+                        c.Storage.NetAppUncPath = req.SystemConfig.Storage.NetAppUncPath;
+                        c.Storage.LocalFallbackPath = req.SystemConfig.Storage.LocalFallbackPath;
+                        c.Storage.ChunkIntervalMinutes = req.SystemConfig.Storage.ChunkIntervalMinutes;
+                        c.Storage.RetentionDays = req.SystemConfig.Storage.RetentionDays;
+                        c.Storage.RecordFormat = req.SystemConfig.Storage.RecordFormat;
+                    }
+
+                    if (req.SystemConfig.MediaMtx != null)
+                    {
+                        c.MediaMtx ??= new MediaMtxSettings();
+                        c.MediaMtx.RtmpPort = req.SystemConfig.MediaMtx.RtmpPort;
+                        c.MediaMtx.HlsPort = req.SystemConfig.MediaMtx.HlsPort;
+                        c.MediaMtx.ApiPort = req.SystemConfig.MediaMtx.ApiPort;
+                        c.MediaMtx.HlsSegmentDuration = req.SystemConfig.MediaMtx.HlsSegmentDuration;
+                    }
+
+                    if (req.SystemConfig.Discovery != null)
+                    {
+                        c.Discovery ??= new DiscoverySettings();
+                        c.Discovery.Role = req.SystemConfig.Discovery.Role;
+                        c.Discovery.ClusterGroup = req.SystemConfig.Discovery.ClusterGroup;
+                        c.Discovery.VirtualIp = req.SystemConfig.Discovery.VirtualIp;
+                        c.Discovery.VirtualIpSubnetMask = req.SystemConfig.Discovery.VirtualIpSubnetMask;
+                        c.Discovery.EnableVirtualIp = req.SystemConfig.Discovery.EnableVirtualIp;
+                    }
+                });
+            }
+        }
+
+        #endregion
+
+        #region Remote Node Lifecycle & Maintenance Operations
+
+        public async Task<ClusterActionResultDto> SetNodeDrainingAsync(string nodeId, bool enableDraining, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(nodeId)) return new ClusterActionResultDto { Success = false, Message = "NodeId is required." };
+
+            string localId = Environment.MachineName;
+            string targetState = enableDraining ? ClusterNodeState.Draining.ToString() : ClusterNodeState.Active.ToString();
+
+            if (nodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+            {
+                _state = enableDraining ? ClusterNodeState.Draining : ClusterNodeState.Active;
+                if (_clusterNodes.TryGetValue(localId, out var localDesc))
+                {
+                    localDesc.State = targetState;
+                }
+
+                // If local node was orchestrator and is now draining, gracefully transfer leadership to next active node
+                if (enableDraining && string.Equals(_orchestratorNodeId, localId, StringComparison.OrdinalIgnoreCase))
+                {
+                    var nextCandidate = _clusterNodes.Values
+                        .Where(n => n.IsOnline && !n.IsDraining && !n.IsStandby && !n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(n => n.Priority)
+                        .ThenByDescending(n => n.HardwareCapabilityScore)
+                        .FirstOrDefault();
+
+                    if (nextCandidate != null)
+                    {
+                        _logger.LogWarning("[CLUSTER DRAIN] Orchestrator is draining. Transferring leadership to '{NextNode}'...", nextCandidate.NodeId);
+                        _ = TransferOrchestratorRoleAsync(nextCandidate.NodeId, ct);
+                    }
+                }
+
+                _logger.LogWarning("[CLUSTER NODE] Local node {LocalId} state set to {State}", localId, targetState);
+                return new ClusterActionResultDto { Success = true, Message = $"Node '{localId}' state changed to {targetState}.", TargetNodeId = localId, State = targetState };
+            }
+
+            // Remote node
+            if (_clusterNodes.TryGetValue(nodeId, out var remoteNode) && !string.IsNullOrWhiteSpace(remoteNode.ApiBaseUrl))
+            {
+                try
+                {
+                    using var client = CreateClusterHttpClient();
+                    var res = await client.PostAsync($"{remoteNode.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/nodes/{nodeId}/drain?enable={enableDraining}", null, ct);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        remoteNode.State = targetState;
+                        return new ClusterActionResultDto { Success = true, Message = $"Remote node '{nodeId}' set to {targetState}.", TargetNodeId = nodeId, State = targetState };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[CLUSTER NODE] Failed to set draining on remote node {NodeId}", nodeId);
+                    return new ClusterActionResultDto { Success = false, Message = $"Failed contacting remote node '{nodeId}': {ex.Message}", TargetNodeId = nodeId };
+                }
+            }
+
+            return new ClusterActionResultDto { Success = false, Message = $"Node '{nodeId}' not found in cluster registry.", TargetNodeId = nodeId };
+        }
+
+        public async Task<ClusterActionResultDto> RestartNodeAsync(string nodeId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(nodeId)) return new ClusterActionResultDto { Success = false, Message = "NodeId is required." };
+
+            string localId = Environment.MachineName;
+
+            if (nodeId.Equals(localId, StringComparison.OrdinalIgnoreCase) || nodeId.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("[CLUSTER NODE] Restart scheduled for local node {LocalId}", localId);
+                var restartSvc = GetRestartService();
+                restartSvc?.ScheduleRestart(1500);
+
+                if (!nodeId.Equals("all", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new ClusterActionResultDto { Success = true, Message = $"Restart sequence scheduled for node '{localId}'.", TargetNodeId = localId };
+                }
+            }
+
+            if (nodeId.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                var peers = _clusterNodes.Values
+                    .Where(n => n.IsOnline && !string.IsNullOrWhiteSpace(n.ApiBaseUrl) && !n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                using var client = CreateClusterHttpClient();
+                foreach (var p in peers)
+                {
+                    try
+                    {
+                        _ = client.PostAsync($"{p.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/nodes/{p.NodeId}/restart", null, ct);
+                    }
+                    catch { }
+                }
+
+                return new ClusterActionResultDto { Success = true, Message = "Cluster-wide restart sequence initiated.", TargetNodeId = "all" };
+            }
+
+            // Remote node
+            if (_clusterNodes.TryGetValue(nodeId, out var remoteNode) && !string.IsNullOrWhiteSpace(remoteNode.ApiBaseUrl))
+            {
+                try
+                {
+                    using var client = CreateClusterHttpClient();
+                    var res = await client.PostAsync($"{remoteNode.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/nodes/{nodeId}/restart", null, ct);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        return new ClusterActionResultDto { Success = true, Message = $"Restart command sent successfully to remote node '{nodeId}'.", TargetNodeId = nodeId };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new ClusterActionResultDto { Success = false, Message = $"Failed contacting node '{nodeId}': {ex.Message}", TargetNodeId = nodeId };
+                }
+            }
+
+            return new ClusterActionResultDto { Success = false, Message = $"Node '{nodeId}' not found.", TargetNodeId = nodeId };
+        }
+
+        public async Task<ClusterActionResultDto> UpdateNodeCapacitiesAsync(string nodeId, ClusterNodeCapacitiesUpdateRequest req, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(nodeId) || req == null) return new ClusterActionResultDto { Success = false, Message = "Invalid request." };
+
+            string localId = Environment.MachineName;
+
+            if (nodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+            {
+                var syncService = GetSyncService();
+                if (syncService != null)
+                {
+                    await syncService.UpdateSystemConfigAsync(c =>
+                    {
+                        c.Discovery ??= new DiscoverySettings();
+                        if (req.MaxStreamsCapacity.HasValue && req.MaxStreamsCapacity.Value > 0)
+                            c.Discovery.MaxIngestStreamsCapacity = req.MaxStreamsCapacity.Value;
+                        if (req.MaxConcurrentJobs.HasValue && req.MaxConcurrentJobs.Value > 0)
+                            c.Discovery.MaxConcurrentRenderJobs = req.MaxConcurrentJobs.Value;
+                        if (!string.IsNullOrWhiteSpace(req.NodeMode))
+                            c.Discovery.NodeMode = req.NodeMode;
+                    });
+                }
+
+                RegisterLocalNodeInRegistry();
+                return new ClusterActionResultDto { Success = true, Message = $"Capacities updated for local node '{localId}'.", TargetNodeId = localId };
+            }
+
+            // Remote node
+            if (_clusterNodes.TryGetValue(nodeId, out var remoteNode) && !string.IsNullOrWhiteSpace(remoteNode.ApiBaseUrl))
+            {
+                try
+                {
+                    using var client = CreateClusterHttpClient();
+                    var res = await client.PostAsJsonAsync($"{remoteNode.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/nodes/{nodeId}/capacities", req, ct);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        if (req.MaxStreamsCapacity.HasValue && req.MaxStreamsCapacity.Value > 0)
+                            remoteNode.MaxStreamsCapacity = req.MaxStreamsCapacity.Value;
+                        if (req.MaxConcurrentJobs.HasValue && req.MaxConcurrentJobs.Value > 0)
+                            remoteNode.MaxConcurrentJobs = req.MaxConcurrentJobs.Value;
+                        if (!string.IsNullOrWhiteSpace(req.NodeMode))
+                            remoteNode.NodeMode = req.NodeMode;
+
+                        return new ClusterActionResultDto { Success = true, Message = $"Capacities updated for remote node '{nodeId}'.", TargetNodeId = nodeId };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new ClusterActionResultDto { Success = false, Message = $"Failed contacting node '{nodeId}': {ex.Message}", TargetNodeId = nodeId };
+                }
+            }
+
+            return new ClusterActionResultDto { Success = false, Message = $"Node '{nodeId}' not found.", TargetNodeId = nodeId };
         }
 
         #endregion

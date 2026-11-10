@@ -159,6 +159,100 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         }
     };
 
+    const handleToggleDrain = async (nodeId, enable) => {
+        const actionText = enable ? 'Drain (Enter Maintenance Mode)' : 'Undrain (Resume Active Service)';
+        if (!window.confirm(`${actionText} for node '${nodeId}'?`)) return;
+
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
+        try {
+            const res = await fetch(`/api/v1/cluster/nodes/${encodeURIComponent(nodeId)}/drain?enable=${enable}`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || `Node '${nodeId}' state updated.` });
+                await fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || `Failed to update node '${nodeId}'.` });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message || 'Drain request failed.' });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
+    const handleRestartNode = async (nodeId) => {
+        const isAll = nodeId === 'all';
+        const msg = isAll
+            ? 'Are you sure you want to RESTART ALL SERVERS across the entire cluster? All active streams will reconnect via watchdog.'
+            : `Are you sure you want to RESTART the Screen Recorder server service on node '${nodeId}'?`;
+
+        if (!window.confirm(msg)) return;
+
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
+        try {
+            const res = await fetch(`/api/v1/cluster/nodes/${encodeURIComponent(nodeId)}/restart`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || `Restart initiated for '${nodeId}'.` });
+                setTimeout(fetchClusterStatus, 2500);
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || `Failed restarting node '${nodeId}'.` });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message || 'Restart request failed.' });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
+    const [editingNodeCapacities, setEditingNodeCapacities] = useState(null);
+    const [nodeCapStreams, setNodeCapStreams] = useState(50);
+    const [nodeCapJobs, setNodeCapJobs] = useState(2);
+    const [nodeCapMode, setNodeCapMode] = useState('Active');
+
+    const handleOpenEditCapacities = (node) => {
+        setEditingNodeCapacities(node);
+        setNodeCapStreams(node.maxStreamsCapacity || 50);
+        setNodeCapJobs(node.maxConcurrentJobs || 2);
+        setNodeCapMode(node.nodeMode || 'Active');
+    };
+
+    const handleSaveNodeCapacities = async (e) => {
+        e.preventDefault();
+        if (!editingNodeCapacities) return;
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
+        try {
+            const res = await fetch(`/api/v1/cluster/nodes/${encodeURIComponent(editingNodeCapacities.nodeId)}/capacities`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    maxStreamsCapacity: Number(nodeCapStreams),
+                    maxConcurrentJobs: Number(nodeCapJobs),
+                    nodeMode: nodeCapMode
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || `Capacities updated for '${editingNodeCapacities.nodeId}'.` });
+                setEditingNodeCapacities(null);
+                await fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to update capacities.' });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message || 'Capacities update failed.' });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
     // Range Sliders Scale Tick Marks
     const streamCapacityTicks = [
         { val: 10, label: '10' },
@@ -457,9 +551,20 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 Live node telemetry, cross-platform operating system, hardware horsepower rating (PWR), stream load, and compute fitness.
                             </span>
                         </div>
-                        <span style={{ fontSize: '0.72rem', color: '#34D399', fontWeight: 700 }}>
-                            📡 Autonomous Peer Discovery Active on LAN (Group: {discovery.clusterGroup || 'Production'})
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={() => handleRestartNode('all')}
+                                disabled={clusterActionLoading}
+                                className="btn-restart-cluster"
+                                title="Safely trigger server service restart across the entire cluster"
+                            >
+                                🔄 Restart All Cluster Nodes
+                            </button>
+                            <span style={{ fontSize: '0.72rem', color: '#34D399', fontWeight: 700 }}>
+                                📡 Autonomous Peer Discovery Active on LAN (Group: {discovery.clusterGroup || 'Production'})
+                            </span>
+                        </div>
                     </div>
 
                     <div className="cluster-nodes-grid">
@@ -470,6 +575,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
 
                             let nodeClass = 'worker';
                             if (!node.isOnline) nodeClass = 'offline';
+                            else if (node.isDraining) nodeClass = 'draining';
                             else if (node.isOrchestrator) nodeClass = 'orchestrator';
                             else if (isStandbyNode) nodeClass = 'standby';
 
@@ -493,12 +599,22 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                         </div>
 
                                         <div className="node-status-badges">
-                                            <span className="role-badge" style={{
-                                                background: isStandbyNode ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                                color: isStandbyNode ? '#FDE047' : '#34D399'
-                                            }}>
-                                                {isStandbyNode ? 'STANDBY' : 'ACTIVE'}
-                                            </span>
+                                            {node.isDraining ? (
+                                                <span className="role-badge draining-badge" style={{
+                                                    background: 'rgba(245, 158, 11, 0.25)',
+                                                    color: '#FCD34D',
+                                                    border: '1px solid rgba(245, 158, 11, 0.4)'
+                                                }}>
+                                                    ⚠️ DRAINING
+                                                </span>
+                                            ) : (
+                                                <span className="role-badge" style={{
+                                                    background: isStandbyNode ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                                                    color: isStandbyNode ? '#FDE047' : '#34D399'
+                                                }}>
+                                                    {isStandbyNode ? 'STANDBY' : 'ACTIVE'}
+                                                </span>
+                                            )}
                                             <span className="role-badge" style={{
                                                 background: node.isOrchestrator ? 'rgba(245, 158, 11, 0.25)' : 'rgba(6, 182, 212, 0.2)',
                                                 color: node.isOrchestrator ? '#FCD34D' : '#38BDF8'
@@ -576,17 +692,52 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                         </div>
                                     </div>
 
-                                    {/* Orchestrator Transfer Action */}
-                                    {clusterGrid.isLocalNodeOrchestrator && !node.isOrchestrator && node.isOnline && (
+                                    {/* Centralized Node Command & Control Toolbar */}
+                                    <div className="node-command-toolbar">
+                                        {clusterGrid.isLocalNodeOrchestrator && !node.isOrchestrator && node.isOnline && !node.isDraining && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTransferOrchestrator(node.nodeId)}
+                                                disabled={clusterActionLoading}
+                                                className="btn-transfer-leader"
+                                                title="Promote this node to Cluster Orchestrator"
+                                            >
+                                                👑 Promote Leader
+                                            </button>
+                                        )}
+
+                                        {node.isOnline && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleDrain(node.nodeId, !node.isDraining)}
+                                                disabled={clusterActionLoading}
+                                                className={`btn-node-action ${node.isDraining ? 'btn-undrain' : 'btn-drain'}`}
+                                                title={node.isDraining ? "Resume active service on this node" : "Drain node: stop routing new streams/jobs for maintenance"}
+                                            >
+                                                {node.isDraining ? '✅ Resume' : '🛑 Drain'}
+                                            </button>
+                                        )}
+
                                         <button
                                             type="button"
-                                            onClick={() => handleTransferOrchestrator(node.nodeId)}
+                                            onClick={() => handleOpenEditCapacities(node)}
                                             disabled={clusterActionLoading}
-                                            className="btn-transfer-leader"
+                                            className="btn-node-action btn-tune-cap"
+                                            title="Edit stream and transcode capacity limits"
                                         >
-                                            Transfer Orchestrator Leadership to this Node
+                                            ⚙️ Limits
                                         </button>
-                                    )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRestartNode(node.nodeId)}
+                                            disabled={clusterActionLoading}
+                                            className="btn-node-action btn-restart-node"
+                                            title="Restart Screen Recorder service on this node"
+                                        >
+                                            🔄 Restart
+                                        </button>
+                                    </div>
                                 </div>
                             );
                         })}
@@ -1010,6 +1161,66 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Node Capacity Tuning Modal */}
+            {editingNodeCapacities && (
+                <div className="cluster-modal-backdrop" onClick={() => setEditingNodeCapacities(null)}>
+                    <div className="cluster-modal-panel" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>TUNE NODE LIMITS: {editingNodeCapacities.displayName || editingNodeCapacities.nodeId}</h3>
+                            <button type="button" className="close-btn" onClick={() => setEditingNodeCapacities(null)}>✕</button>
+                        </div>
+                        <form onSubmit={handleSaveNodeCapacities}>
+                            <div className="modal-body">
+                                <p className="modal-subtitle">
+                                    Adjust runtime stream ingestion and concurrent NLE transcode limits for this specific cluster node. Changes propagate across the grid immediately.
+                                </p>
+
+                                <div className="form-group">
+                                    <label>Operating Mode:</label>
+                                    <select value={nodeCapMode} onChange={e => setNodeCapMode(e.target.value)}>
+                                        <option value="Active">Active (Ingest &amp; Compute Processing)</option>
+                                        <option value="Standby">Standby (Warm Hot-Spare)</option>
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Max Ingest Streams Capacity:</label>
+                                    <input
+                                        type="number"
+                                        min="5"
+                                        max="200"
+                                        value={nodeCapStreams}
+                                        onChange={e => setNodeCapStreams(Number(e.target.value))}
+                                        required
+                                    />
+                                    <span className="field-hint">Hardware recommended: {editingNodeCapacities.recommendedStreamsCapacity || 50} streams</span>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Max Concurrent NLE Video Cuts Capacity:</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="16"
+                                        value={nodeCapJobs}
+                                        onChange={e => setNodeCapJobs(Number(e.target.value))}
+                                        required
+                                    />
+                                    <span className="field-hint">Hardware recommended: {editingNodeCapacities.recommendedConcurrentJobs || 2} concurrent cuts</span>
+                                </div>
+                            </div>
+
+                            <div className="modal-footer">
+                                <button type="button" className="btn-cancel" onClick={() => setEditingNodeCapacities(null)}>Cancel</button>
+                                <button type="submit" className="btn-submit" disabled={clusterActionLoading}>
+                                    {clusterActionLoading ? 'Saving...' : 'Apply Node Limits'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
         </fieldset>

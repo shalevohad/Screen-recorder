@@ -251,6 +251,94 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return StatusCode(501, new { error = "No local video job runner registered on this node." });
         }
 
+        #region Inter-Node C2 Coordination Endpoints
+
+        /// <summary>
+        /// Inter-node C2 endpoint: enforces station stream/recording policy forwarded from another cluster node.
+        /// </summary>
+        [HttpPost("c2/stream-policy")]
+        [AllowAnonymous]
+        public IActionResult ApplyStreamPolicy([FromBody] ClusterStreamPolicyRequest req)
+        {
+            _clusterService.ApplyInterNodeStreamPolicy(req);
+            return Ok(new { success = true });
+        }
+
+        /// <summary>
+        /// Inter-node C2 endpoint: enforces fleet-wide stream/recording policy forwarded from another cluster node.
+        /// </summary>
+        [HttpPost("c2/fleet-policy")]
+        [AllowAnonymous]
+        public IActionResult ApplyFleetPolicy([FromBody] ClusterFleetStreamPolicyRequest req)
+        {
+            _clusterService.ApplyInterNodeFleetStreamPolicy(req);
+            return Ok(new { success = true });
+        }
+
+        /// <summary>
+        /// Inter-node C2 endpoint: synchronizes station overrides and tuning across all nodes.
+        /// </summary>
+        [HttpPost("c2/station-override")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ApplyStationOverride([FromBody] ClusterStationOverrideRequest req)
+        {
+            await _clusterService.ApplyInterNodeStationOverrideAsync(req);
+            return Ok(new { success = true });
+        }
+
+        /// <summary>
+        /// Inter-node C2 endpoint: synchronizes global system configuration across all cluster nodes.
+        /// </summary>
+        [HttpPost("c2/sync-config")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ApplyConfigSync([FromBody] ClusterConfigSyncRequest req)
+        {
+            await _clusterService.ApplyInterNodeConfigSyncAsync(req);
+            return Ok(new { success = true });
+        }
+
+        #endregion
+
+        #region Node Administrative Lifecycle Operations
+
+        /// <summary>
+        /// Sets a cluster node into Draining (maintenance) or Active mode.
+        /// </summary>
+        [HttpPost("nodes/{nodeId}/drain")]
+        [AuthorizePermission(PermissionKeys.SettingsCluster)]
+        public async Task<IActionResult> SetNodeDraining(string nodeId, [FromQuery] bool enable, CancellationToken ct)
+        {
+            _logger.LogWarning("[CLUSTER API] Set draining={Enable} for node '{Node}' requested by {User}", enable, nodeId, User.Identity?.Name ?? "Admin");
+            var result = await _clusterService.SetNodeDrainingAsync(nodeId, enable, ct);
+            return result.Success ? Ok(result) : StatusCode(400, result);
+        }
+
+        /// <summary>
+        /// Initiates a safe server service restart sequence for a specific node or all cluster nodes.
+        /// </summary>
+        [HttpPost("nodes/{nodeId}/restart")]
+        [AuthorizePermission(PermissionKeys.SettingsCluster)]
+        public async Task<IActionResult> RestartNode(string nodeId, CancellationToken ct)
+        {
+            _logger.LogWarning("[CLUSTER API] Restart for node '{Node}' requested by {User}", nodeId, User.Identity?.Name ?? "Admin");
+            var result = await _clusterService.RestartNodeAsync(nodeId, ct);
+            return result.Success ? Ok(result) : StatusCode(400, result);
+        }
+
+        /// <summary>
+        /// Updates capacity limits (max ingest streams, max concurrent render jobs, node mode) for any cluster node.
+        /// </summary>
+        [HttpPost("nodes/{nodeId}/capacities")]
+        [AuthorizePermission(PermissionKeys.SettingsCluster)]
+        public async Task<IActionResult> UpdateNodeCapacities(string nodeId, [FromBody] ClusterNodeCapacitiesUpdateRequest req, CancellationToken ct)
+        {
+            _logger.LogInformation("[CLUSTER API] Capacities update for node '{Node}' requested by {User}", nodeId, User.Identity?.Name ?? "Admin");
+            var result = await _clusterService.UpdateNodeCapacitiesAsync(nodeId, req, ct);
+            return result.Success ? Ok(result) : StatusCode(400, result);
+        }
+
+        #endregion
+
         public class HandoverPayload
         {
             public string SourceNodeId { get; set; } = string.Empty;

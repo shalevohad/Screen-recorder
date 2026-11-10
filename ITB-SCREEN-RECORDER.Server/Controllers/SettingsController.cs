@@ -49,6 +49,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly IStorageRetentionCoordinator? _retentionCoordinator;
         private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
         private readonly IEnumerable<IFeatureModule> _features;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? _clusterService;
 
         public SettingsController(
             ISystemConfigDbSyncService syncService,
@@ -62,7 +63,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             Microsoft.Extensions.Logging.ILogger<SettingsController> logger,
             IServerRestartService? restartService = null,
             IEnumerable<IFeatureModule>? features = null,
-            IStorageRetentionCoordinator? retentionCoordinator = null)
+            IStorageRetentionCoordinator? retentionCoordinator = null,
+            ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? clusterService = null)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
@@ -76,6 +78,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _restartService = restartService;
             _features = features ?? Enumerable.Empty<IFeatureModule>();
             _retentionCoordinator = retentionCoordinator;
+            _clusterService = clusterService;
         }
 
         private bool HasFeature(string featureIdOrKeyword)
@@ -288,6 +291,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting updated system config.");
+                }
+
+                // 4. Propagate updated global configuration across all cluster nodes
+                if (_clusterService != null)
+                {
+                    try
+                    {
+                        await _clusterService.PropagateClusterConfigAsync(currentConfig, HttpContext?.RequestAborted ?? default);
+                        _logger.LogInformation("[SETTINGS] Propagated updated system configuration to all cluster nodes.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[SETTINGS] Failed propagating configuration update across cluster nodes.");
+                    }
                 }
 
                 if (portChanged)

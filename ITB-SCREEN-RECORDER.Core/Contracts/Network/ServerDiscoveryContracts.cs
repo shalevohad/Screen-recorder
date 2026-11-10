@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 {
@@ -191,7 +192,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         Promoting,
         Demoting,
         Degraded,
-        Unreachable
+        Unreachable,
+        Draining
     }
 
     public class ClusterStatusDto
@@ -423,6 +425,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
                                  string.Equals(State, ClusterNodeState.Standby.ToString(), StringComparison.OrdinalIgnoreCase);
 
         [JsonIgnore]
+        public bool IsDraining => string.Equals(State, ClusterNodeState.Draining.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
         public double LoadRatio => MaxStreamsCapacity > 0 ? (double)ActiveStreamsCount / MaxStreamsCapacity : 1.0;
     }
 
@@ -530,6 +535,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("assignedStations")]
         public List<string> AssignedStations { get; set; } = new();
+
+        [JsonPropertyName("isDraining")]
+        public bool IsDraining { get; set; }
 
         [JsonPropertyName("timestampUtc")]
         public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
@@ -665,6 +673,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("clusterStations")]
         public List<AgentTelemetryReport>? ClusterStations { get; set; }
+
+        [JsonPropertyName("desiredStreamPolicies")]
+        public Dictionary<string, bool> DesiredStreamPolicies { get; set; } = new();
 
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
@@ -1077,4 +1088,98 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             };
         }
     }
+
+    #region Inter-Node C2 Coordination Contracts
+
+    public class ClusterStreamPolicyRequest
+    {
+        [JsonPropertyName("hostname")]
+        public string Hostname { get; set; } = string.Empty;
+
+        [JsonPropertyName("enable")]
+        public bool Enable { get; set; }
+
+        [JsonPropertyName("sourceNodeId")]
+        public string SourceNodeId { get; set; } = Environment.MachineName;
+
+        [JsonPropertyName("timestampUtc")]
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterFleetStreamPolicyRequest
+    {
+        [JsonPropertyName("hostnames")]
+        public List<string> Hostnames { get; set; } = new();
+
+        [JsonPropertyName("enable")]
+        public bool Enable { get; set; }
+
+        [JsonPropertyName("sourceNodeId")]
+        public string SourceNodeId { get; set; } = Environment.MachineName;
+
+        [JsonPropertyName("timestampUtc")]
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterStationOverrideRequest
+    {
+        [JsonPropertyName("hostname")]
+        public string Hostname { get; set; } = string.Empty;
+
+        [JsonPropertyName("videoBitrate")]
+        public string? VideoBitrate { get; set; }
+
+        [JsonPropertyName("targetFps")]
+        public int? TargetFps { get; set; }
+
+        [JsonPropertyName("isDelete")]
+        public bool IsDelete { get; set; }
+
+        [JsonPropertyName("sourceNodeId")]
+        public string SourceNodeId { get; set; } = Environment.MachineName;
+
+        [JsonPropertyName("timestampUtc")]
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterConfigSyncRequest
+    {
+        [JsonPropertyName("sourceNodeId")]
+        public string SourceNodeId { get; set; } = Environment.MachineName;
+
+        [JsonPropertyName("systemConfig")]
+        public SystemConfig SystemConfig { get; set; } = new();
+
+        [JsonPropertyName("timestampUtc")]
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterNodeCapacitiesUpdateRequest
+    {
+        [JsonPropertyName("maxStreamsCapacity")]
+        public int? MaxStreamsCapacity { get; set; }
+
+        [JsonPropertyName("maxConcurrentJobs")]
+        public int? MaxConcurrentJobs { get; set; }
+
+        [JsonPropertyName("nodeMode")]
+        public string? NodeMode { get; set; }
+    }
+
+    public class ClusterActionResultDto
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
+
+        [JsonPropertyName("targetNodeId")]
+        public string TargetNodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("state")]
+        public string? State { get; set; }
+    }
+
+    #endregion
 }

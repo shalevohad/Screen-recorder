@@ -12,7 +12,10 @@ export default function SearchShelf({
     monitoredSubFilter = 'ALL',
     setMonitoredSubFilter,
     monitoredCounts,
-    resultCount
+    resultCount,
+    clusterNodes = [],
+    selectedNodeFilter = 'ALL',
+    setSelectedNodeFilter
 }) {
     const isMonitoredActive = currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE';
 
@@ -82,6 +85,34 @@ export default function SearchShelf({
                             ⏱ SNOOZED
                             {monitoredCounts?.snoozed > 0 && <span className="sub-badge snooze">{monitoredCounts.snoozed}</span>}
                         </button>
+                    </div>
+                )}
+
+                {clusterNodes && clusterNodes.length > 1 && (
+                    <div className="cluster-node-filters">
+                        <span className="sub-filter-divider">|</span>
+                        <span className="node-filter-label">NODE:</span>
+                        <button
+                            type="button"
+                            className={`node-filter-btn ${selectedNodeFilter === 'ALL' ? 'active' : ''}`}
+                            onClick={() => setSelectedNodeFilter?.('ALL')}
+                        >
+                            ALL
+                        </button>
+                        {clusterNodes.map(node => {
+                            const isMatch = selectedNodeFilter.toLowerCase() === (node.nodeId || '').toLowerCase();
+                            return (
+                                <button
+                                    key={node.nodeId}
+                                    type="button"
+                                    className={`node-filter-btn ${isMatch ? 'active' : ''}`}
+                                    onClick={() => setSelectedNodeFilter?.(node.nodeId)}
+                                    title={`Filter stations hosted on node ${node.displayName || node.nodeId} (${node.activeStreamsCount || 0} streams)`}
+                                >
+                                    🖥️ {node.displayName || node.nodeId}
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
 

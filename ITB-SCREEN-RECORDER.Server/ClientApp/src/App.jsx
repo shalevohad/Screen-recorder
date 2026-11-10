@@ -45,6 +45,17 @@ function CommandCenterApp() {
 
     // Navigation subsystem modes: 'portal' (System launcher gateway), 'recording' (C2 Monitoring Dashboard), 'settings' (System Management Console)
     const [currentSubsystem, setCurrentSubsystem] = useState('portal');
+    const [settingsInitialTab, setSettingsInitialTab] = useState('overview');
+
+    useEffect(() => {
+        const handleSettingsNav = (e) => {
+            const targetTab = e?.detail?.tab || 'cluster';
+            setSettingsInitialTab(targetTab);
+            setCurrentSubsystem('settings');
+        };
+        window.addEventListener('itb-navigate-settings', handleSettingsNav);
+        return () => window.removeEventListener('itb-navigate-settings', handleSettingsNav);
+    }, []);
 
     const [stations, setStations] = useState([]);
 
@@ -786,6 +797,7 @@ function CommandCenterApp() {
                 {/* 2. System Settings & Management (SYSTEM SETTINGS) */}
                 {currentSubsystem === 'settings' ? (
                     <SettingsView
+                        initialTab={settingsInitialTab}
                         onReturnToPortal={() => setCurrentSubsystem('portal')}
                         onSettingsSaved={(savedConfig) => {
                             if (savedConfig) setSystemConfig(savedConfig);

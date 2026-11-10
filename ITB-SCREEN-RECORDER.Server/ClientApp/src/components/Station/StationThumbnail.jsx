@@ -219,6 +219,11 @@ export default function StationThumbnail(props) {
                                 {hostname}
                             </span>
                         )}
+                        {(props.hostingNodeName || props.hostingNodeId) && (
+                            <span className="station-node-badge" title={`Cluster Ingest Node: ${props.hostingNodeName || props.hostingNodeId}`}>
+                                🖥️ {props.hostingNodeName || props.hostingNodeId}
+                            </span>
+                        )}
                     </div>
                     <span className="station-ip">{ipAddress}</span>
                 </div>

@@ -24,7 +24,7 @@ import './styles/_stationsRolesTab.scss';
 import './styles/_securityAccessTab.scss';
 import './styles/_clusterSettings.scss';
 
-export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
+export default function SettingsView({ onReturnToPortal, onSettingsSaved, initialTab = 'overview' }) {
     const { isSystemRoot, hasPermission } = useAuth();
 
     // Define permitted tabs list based on user RBAC permissions
@@ -57,7 +57,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
         return list;
     }, [isSystemRoot, hasPermission]);
 
-    const [activeTab, setActiveTab] = useState(() => 'overview');
+    const [activeTab, setActiveTab] = useState(() => initialTab || 'overview');
     const [form, setForm] = useState(null);
     const [stations, setStations] = useState([]);
     const [overrides, setOverrides] = useState({});

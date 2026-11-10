@@ -35,5 +35,22 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         List<ClusterJobStatusDto> GetAllClusterJobs();
         Task<List<AgentTelemetryReport>> GetClusterStationsAsync(CancellationToken ct = default);
         string? ResolveStreamNodeHost(string stationHostname);
+
+        // Inter-Node C2 Coordination & Configuration Synchronization
+        Task BroadcastStationStreamPolicyAsync(string hostname, bool enable, CancellationToken ct = default);
+        Task BroadcastFleetStreamPolicyAsync(IEnumerable<string> hostnames, bool enable, CancellationToken ct = default);
+        void ApplyInterNodeStreamPolicy(ClusterStreamPolicyRequest req);
+        void ApplyInterNodeFleetStreamPolicy(ClusterFleetStreamPolicyRequest req);
+
+        Task BroadcastStationOverrideAsync(string hostname, string? videoBitrate, int? targetFps, bool isDelete = false, CancellationToken ct = default);
+        Task ApplyInterNodeStationOverrideAsync(ClusterStationOverrideRequest req);
+
+        Task PropagateClusterConfigAsync(ITB_SCREEN_RECORDER.Core.Configuration.SystemConfig config, CancellationToken ct = default);
+        Task ApplyInterNodeConfigSyncAsync(ClusterConfigSyncRequest req);
+
+        // Remote Node Lifecycle & Maintenance Operations
+        Task<ClusterActionResultDto> SetNodeDrainingAsync(string nodeId, bool enableDraining, CancellationToken ct = default);
+        Task<ClusterActionResultDto> RestartNodeAsync(string nodeId, CancellationToken ct = default);
+        Task<ClusterActionResultDto> UpdateNodeCapacitiesAsync(string nodeId, ClusterNodeCapacitiesUpdateRequest req, CancellationToken ct = default);
     }
 }
