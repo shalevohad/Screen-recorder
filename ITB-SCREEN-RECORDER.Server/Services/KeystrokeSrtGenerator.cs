@@ -140,95 +140,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return result;
         }
 
-        public Task<string?> CreateSrtFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default)
-        {
-            return CreateSrtFileForSegmentsAsync(stationId, new[] { (inEpochMs, outEpochMs) }, ct);
-        }
-
         public Task<string?> CreateAssKeycapsFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default)
         {
             return CreateAssKeycapsFileForSegmentsAsync(stationId, new[] { (inEpochMs, outEpochMs) }, ct);
-        }
-
-        public async Task<string?> CreateSrtFileForSegmentsAsync(
-            string stationId,
-            IReadOnlyList<(long StartEpochMs, long EndEpochMs)> activeSegments,
-            CancellationToken ct = default)
-        {
-            if (activeSegments == null || activeSegments.Count == 0) return null;
-
-            long globalStart = activeSegments.Min(s => s.StartEpochMs);
-            long globalEnd = activeSegments.Max(s => s.EndEpochMs);
-
-            var keys = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, globalStart, globalEnd);
-            if (keys == null || keys.Count == 0) return null;
-
-            var sortedKeys = keys.OrderBy(k => k.EpochMs).ToList();
-            long totalActiveMs = activeSegments.Sum(s => Math.Max(0, s.EndEpochMs - s.StartEpochMs));
-
-            // Map keystrokes to active timeline segments and compute relative offsets after gap trimming
-            var activeKeys = new List<(long StartRelMs, long EpochMs, List<string> Parsed)>();
-            foreach (var k in sortedKeys)
-            {
-                long prevActiveMs = 0;
-                for (int i = 0; i < activeSegments.Count; i++)
-                {
-                    var seg = activeSegments[i];
-                    if (k.EpochMs >= seg.StartEpochMs && k.EpochMs <= seg.EndEpochMs)
-                    {
-                        var parsed = ParseKeyCombination(k.KeyCombination);
-                        if (parsed.Count > 0)
-                        {
-                            long startRelMs = prevActiveMs + (k.EpochMs - seg.StartEpochMs);
-                            activeKeys.Add((startRelMs, k.EpochMs, parsed));
-                        }
-                        break;
-                    }
-                    prevActiveMs += Math.Max(0, seg.EndEpochMs - seg.StartEpochMs);
-                }
-            }
-
-            if (activeKeys.Count == 0) return null;
-
-            string srtPath = Path.Combine(Path.GetTempPath(), $"sub_{stationId}_{Guid.NewGuid():N}.srt");
-            var sb = new StringBuilder();
-            int index = 1;
-
-            for (int i = 0; i < activeKeys.Count; i++)
-            {
-                var current = activeKeys[i];
-
-                // Skip consecutive keystroke events within less than 50ms
-                if (i + 1 < activeKeys.Count && (activeKeys[i + 1].EpochMs - current.EpochMs) < 50)
-                {
-                    continue;
-                }
-
-                long startRelMs = Math.Max(0, current.StartRelMs);
-                long nextStartRelMs = (i + 1 < activeKeys.Count)
-                    ? Math.Max(0, activeKeys[i + 1].StartRelMs)
-                    : totalActiveMs;
-
-                long endRelMs = Math.Min(startRelMs + 2000, nextStartRelMs);
-                if (endRelMs <= startRelMs)
-                {
-                    endRelMs = startRelMs + 200;
-                }
-                endRelMs = Math.Min(totalActiveMs, endRelMs);
-
-                string comboText = string.Join(" + ", current.Parsed);
-
-                sb.AppendLine(index.ToString());
-                sb.AppendLine($"{FormatSrtTimestamp(startRelMs)} --> {FormatSrtTimestamp(endRelMs)}");
-                sb.AppendLine($"[ {comboText} ]");
-                sb.AppendLine();
-                index++;
-            }
-
-            if (index == 1) return null;
-
-            await File.WriteAllTextAsync(srtPath, sb.ToString(), Encoding.UTF8, ct);
-            return srtPath;
         }
 
         /// <summary>
@@ -372,12 +286,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             await File.WriteAllTextAsync(assPath, sb.ToString(), new UTF8Encoding(false), ct);
             return assPath;
-        }
-
-        internal static string FormatSrtTimestamp(long ms)
-        {
-            var ts = TimeSpan.FromMilliseconds(ms);
-            return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2},{ts.Milliseconds:D3}";
         }
 
         internal static string FormatAssTimestamp(long ms)

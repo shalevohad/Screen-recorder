@@ -63,3 +63,4 @@ scratch/
 .dotnet_temp*
 
 /ITB-SCREEN-RECORDER.Server/Tools/Linux/ffmpeg
+/Tools/ITB-SCREEN-RECORDER.Player/Properties/PublishProfiles/FolderProfile.pubxml

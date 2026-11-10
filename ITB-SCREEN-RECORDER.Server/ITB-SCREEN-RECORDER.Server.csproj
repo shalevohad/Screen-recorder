@@ -35,9 +35,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.89" />
-		<!-- 💡 חבילות SQLite מנוהלות ו-Native Bundle ישיר מ-NuGet -->
-		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
-		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
+		<!-- 💡 חבילות SQLite מנוהלות ו-Native Bundle ישיר מ-NuGet (Secured against GHSA-2m69-gcr7-jv3q) -->
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.33" />
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
@@ -198,12 +198,25 @@
 		<Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
+	<Target Name="SyncBrandingToClientApp" BeforeTargets="CompileFrontend">
+		<PropertyGroup>
+			<CoreBrandingDir>$(SolutionRoot)\ITB-SCREEN-RECORDER.Core\Assets\Branding</CoreBrandingDir>
+		</PropertyGroup>
+		<ItemGroup>
+			<CoreFavicon Include="$(CoreBrandingDir)\favicon.ico" />
+			<CoreLogos Include="$(CoreBrandingDir)\Logo*.png" />
+		</ItemGroup>
+		<Copy SourceFiles="@(CoreFavicon)" DestinationFolder="ClientApp\public" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(CoreLogos)" DestinationFolder="ClientApp\public\images" SkipUnchangedFiles="true" />
+	</Target>
+
 	<Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp/package.json')">
-		<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies, linting, testing, and building ClientApp..." />
+		<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies, auditing security, linting, testing, and building ClientApp..." />
 		<Exec Command="npm install" WorkingDirectory="ClientApp" Condition="!Exists('ClientApp/node_modules')" />
+		<Exec Command="npm audit --audit-level=critical" WorkingDirectory="ClientApp" />
 		<Exec Command="npm run lint" WorkingDirectory="ClientApp" />
 		<Exec Command="npm test" WorkingDirectory="ClientApp" />
-		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
+		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="false" />
 	</Target>
 
 

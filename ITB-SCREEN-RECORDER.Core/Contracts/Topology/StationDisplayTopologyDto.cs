@@ -15,6 +15,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Topology
     public class DisplayMetadataDto
     {
         public string DisplayId { get; set; } = "mon-0";          // "mon-0", "mon-1", "mon-2"
+        public int DisplayNumber { get; set; } = 1;               // 1-based index: 1, 2, ...
         public string DisplayName { get; set; } = string.Empty;     // @"\\.\DISPLAY1"
         public string AdapterName { get; set; } = string.Empty;     // e.g. "NVIDIA GeForce RTX 4070"
         public string AdapterLuid { get; set; } = string.Empty;     // e.g. "0x0001004A"

@@ -180,8 +180,24 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         {
             if (OperatingSystem.IsWindows())
             {
-                string winFont = "C:/Windows/Fonts/arial.ttf";
-                if (File.Exists(winFont)) return $":fontfile='{winFont.Replace(":", "\\\\:")}'";
+                string fontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                string[] winCandidates = {
+                    Path.Combine(fontsDir, "arial.ttf"),
+                    Path.Combine(fontsDir, "segoeui.ttf"),
+                    Path.Combine(fontsDir, "tahoma.ttf"),
+                    Path.Combine(fontsDir, "consola.ttf"),
+                    "C:/Windows/Fonts/arial.ttf"
+                };
+                foreach (var font in winCandidates)
+                {
+                    if (File.Exists(font))
+                    {
+                        string normalized = font.Replace("\\", "/").Replace(":", "\\\\:");
+                        return $":fontfile='{normalized}'";
+                    }
+                }
+
+
             }
             else if (OperatingSystem.IsLinux())
             {

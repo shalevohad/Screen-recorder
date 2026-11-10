@@ -28,7 +28,7 @@ const resolveTimeOfDay = () => {
     return 'night';
 };
 
-const DISCONNECT_GRACE_PERIOD_MS = 8000;
+const DISCONNECT_GRACE_PERIOD_MS = 15000;
 
 export default function App() {
     return (
@@ -45,6 +45,17 @@ function CommandCenterApp() {
 
     // Navigation subsystem modes: 'portal' (System launcher gateway), 'recording' (C2 Monitoring Dashboard), 'settings' (System Management Console)
     const [currentSubsystem, setCurrentSubsystem] = useState('portal');
+    const [settingsInitialTab, setSettingsInitialTab] = useState('overview');
+
+    useEffect(() => {
+        const handleSettingsNav = (e) => {
+            const targetTab = e?.detail?.tab || 'cluster';
+            setSettingsInitialTab(targetTab);
+            setCurrentSubsystem('settings');
+        };
+        window.addEventListener('itb-navigate-settings', handleSettingsNav);
+        return () => window.removeEventListener('itb-navigate-settings', handleSettingsNav);
+    }, []);
 
     const [stations, setStations] = useState([]);
 
@@ -71,6 +82,7 @@ function CommandCenterApp() {
     const [isServerOfflineModal, setIsServerOfflineModal] = useState(false);
     const [lastServerContact, setLastServerContact] = useState(() => new Date());
     const [isRetryingConnection, setIsRetryingConnection] = useState(false);
+    const connectionRef = useRef(null);
 
     const [clusterConfig, setClusterConfig] = useState(() => {
         try {
@@ -199,23 +211,6 @@ function CommandCenterApp() {
         setIsRetryingConnection(false);
     }, []);
 
-    useEffect(() => {
-        if (!isAuthenticated) return;
-
-        const checkConnectionTicker = setInterval(() => {
-            if (!lastContactTimestampRef.current) return;
-
-            const elapsedSinceLastContact = Date.now() - lastContactTimestampRef.current;
-            if (elapsedSinceLastContact >= DISCONNECT_GRACE_PERIOD_MS) {
-                setIsServerOfflineModal(true);
-            } else {
-                setIsServerOfflineModal(false);
-            }
-        }, 1000);
-
-        return () => clearInterval(checkConnectionTicker);
-    }, [isAuthenticated]);
-
     const fetchStations = useCallback(async () => {
         try {
             const controller = new AbortController();
@@ -263,6 +258,37 @@ function CommandCenterApp() {
             console.warn('[App] fetchStations timeout or error:', err.message);
         }
     }, [apiBaseUrl, registerServerHeartbeat]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const checkConnectionTicker = setInterval(() => {
+            if (!lastContactTimestampRef.current) return;
+
+            const elapsedSinceLastContact = Date.now() - lastContactTimestampRef.current;
+            if (elapsedSinceLastContact >= DISCONNECT_GRACE_PERIOD_MS) {
+                setIsServerOfflineModal(true);
+            } else {
+                setIsServerOfflineModal(false);
+            }
+        }, 1000);
+
+        return () => clearInterval(checkConnectionTicker);
+    }, [isAuthenticated]);
+
+    // Autonomous self-healing recovery loop: when disconnected, actively probe server to self-heal
+    useEffect(() => {
+        if (!isServerOfflineModal) return;
+
+        const probeRecoveryTicker = setInterval(() => {
+            if (connectionRef.current && connectionRef.current.state === signalR.HubConnectionState.Disconnected) {
+                connectionRef.current.start().then(registerServerHeartbeat).catch(() => {});
+            }
+            fetchStations();
+        }, 2500);
+
+        return () => clearInterval(probeRecoveryTicker);
+    }, [isServerOfflineModal, fetchStations, registerServerHeartbeat]);
 
     const fetchSystemConfig = useCallback(async () => {
         try {
@@ -356,8 +382,10 @@ function CommandCenterApp() {
                 if (prev <= 1) {
                     clearInterval(timer);
                     const isAlreadyOnVip = clusterConfig.virtualIp && window.location.hostname === clusterConfig.virtualIp;
-                    if (isAlreadyOnVip) {
-                        // User is already browsing via VIP address: VIP transitioned autonomously to next node, simple reload re-establishes connection
+                    const isDomainName = !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname) && window.location.hostname !== 'localhost';
+                    if (isAlreadyOnVip || isDomainName) {
+                        // User is browsing via VIP address or enterprise DNS domain name (which resolves to the VIP):
+                        // Floating VIP transitioned autonomously to surviving node, simple reload re-establishes connection while keeping the domain URL!
                         window.location.reload();
                     } else if (clusterConfig.enableVirtualIp && clusterConfig.virtualIp) {
                         const port = window.location.port ? `:${window.location.port}` : '';
@@ -421,7 +449,32 @@ function CommandCenterApp() {
             })
             .build();
 
+        connectionRef.current = connection;
+        let reconnectLoopTimer = null;
+
+        const scheduleReconnect = () => {
+            if (reconnectLoopTimer) return;
+            reconnectLoopTimer = setTimeout(async () => {
+                reconnectLoopTimer = null;
+                if (connection.state === signalR.HubConnectionState.Disconnected) {
+                    try {
+                        await connection.start();
+                        registerServerHeartbeat();
+                        fetchStations();
+                        fetchSystemConfig();
+                        fetchClusterConfig();
+                    } catch {
+                        scheduleReconnect();
+                    }
+                }
+            }, 3000);
+        };
+
         connection.onreconnected(() => {
+            if (reconnectLoopTimer) {
+                clearTimeout(reconnectLoopTimer);
+                reconnectLoopTimer = null;
+            }
             registerServerHeartbeat();
             fetchStations();
             fetchSystemConfig();
@@ -429,9 +482,7 @@ function CommandCenterApp() {
         });
 
         connection.onclose(() => {
-            setTimeout(() => {
-                connection.start().then(registerServerHeartbeat).catch(() => { });
-            }, 5000);
+            scheduleReconnect();
         });
 
         connection.on('ReceiveServerTelemetry', (telemetry) => {
@@ -550,9 +601,16 @@ function CommandCenterApp() {
 
     const handleManualRetry = async () => {
         setIsRetryingConnection(true);
+        if (connectionRef.current && connectionRef.current.state === signalR.HubConnectionState.Disconnected) {
+            try {
+                await connectionRef.current.start();
+                registerServerHeartbeat();
+            } catch { }
+        }
         await Promise.allSettled([
             fetchStations(),
-            fetchSystemConfig()
+            fetchSystemConfig(),
+            fetchClusterConfig()
         ]);
         setIsRetryingConnection(false);
     };
@@ -739,6 +797,7 @@ function CommandCenterApp() {
                 {/* 2. System Settings & Management (SYSTEM SETTINGS) */}
                 {currentSubsystem === 'settings' ? (
                     <SettingsView
+                        initialTab={settingsInitialTab}
                         onReturnToPortal={() => setCurrentSubsystem('portal')}
                         onSettingsSaved={(savedConfig) => {
                             if (savedConfig) setSystemConfig(savedConfig);

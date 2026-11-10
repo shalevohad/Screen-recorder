@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/Extractor/Models/SynchronizationPlanModels.cs
 // ==========================================
 using System;
@@ -60,9 +60,39 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public bool IsPipSwapped { get; set; } = false;
 
         /// <summary>
+        /// Composition scope: "intra-station" (monitors of a station) or "inter-station" (between stations) or "canvas".
+        /// </summary>
+        public string CompositionScope { get; set; } = "intra-station";
+
+        /// <summary>
+        /// Whether Auto-Director switching is enabled (if false, stays locked to selected layout).
+        /// </summary>
+        public bool IsAutoDirectorEnabled { get; set; } = true;
+
+        /// <summary>
         /// Director segments defining display switching schedule across timeline.
         /// </summary>
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+
+        /// <summary>
+        /// Dynamic audio routing segments across the timeline defining which station provides audio for each interval.
+        /// </summary>
+        public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
+    }
+
+    public class AudioRoutingSegmentDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("startEpochMs")]
+        public long StartEpochMs { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("endEpochMs")]
+        public long EndEpochMs { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("sourceStationId")]
+        public string SourceStationId { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("gain")]
+        public double Gain { get; set; } = 1.0;
     }
 
     /// <summary>
@@ -73,6 +103,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public long StartEpochMs { get; set; }
         public long EndEpochMs { get; set; }
         public string TargetDisplayId { get; set; } = "mon-0";
+        public int TargetDisplayNumber { get; set; } = 1;
+        public string TargetDisplayName { get; set; } = "Screen 1";
         public bool IsManualOverride { get; set; } = false;
     }
 }

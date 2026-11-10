@@ -1,11 +1,13 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Player/StudioVideoFeed.jsx
 // ==========================================
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import NoSignalHero from '../Viewport/overlays/NoSignalHero.jsx';
 import PersistentMinimapHud from '../Viewport/overlays/PersistentMinimapHud.jsx';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
 import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
+import { attachVideoAudio } from '../../utils/audioLevelMonitor.js';
 import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout.js';
 import './StudioVideoFeed.scss';
 
@@ -48,6 +50,7 @@ export default function StudioVideoFeed({
     onResetOverride,
     viewMode: propViewMode,
     onViewModeChange,
+    onOpenFullscreen,
     isPipSwapped: propIsPipSwapped,
     onPipSwapChange,
     className = ''
@@ -97,13 +100,19 @@ export default function StudioVideoFeed({
             }
 
             const dispId = (d.displayId ?? d.DisplayId ?? `mon-${idx}`).toLowerCase();
-            const dispName = d.displayName || d.DisplayName || `Display ${idx + 1}`;
+            const dispNum = d.displayNumber ?? d.DisplayNumber ?? (idx + 1);
+            const rawName = d.displayName || d.DisplayName || '';
+            const cleanName = rawName.replace(/\s*\(mon-\d+\)/i, '').trim();
+            const dispName = cleanName || `Screen ${dispNum}`;
             const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary ?? (idx === 0));
 
             return {
                 ...d,
                 displayId: dispId,
                 DisplayId: dispId,
+                displayIndex: idx,
+                displayNumber: dispNum,
+                DisplayNumber: dispNum,
                 displayName: dispName,
                 DisplayName: dispName,
                 isPrimary,
@@ -122,12 +131,22 @@ export default function StudioVideoFeed({
     const hasMultipleDisplays = stationDisplays.length > 1;
 
     // View Mode state: 'director' | 'split' | 'pip' | 'mon-0' | 'mon-1' ...
-    const [localViewMode, setLocalViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+    const [localViewMode, setLocalViewMode] = useState(() => {
+        if (!hasMultipleDisplays) return 'mon-0';
+        try {
+            const saved = localStorage.getItem('itb_solo_viewmode');
+            if (saved) return saved;
+        } catch {}
+        return 'canvas';
+    });
     const rawViewMode = propViewMode !== undefined ? propViewMode : localViewMode;
     const viewMode = hasMultipleDisplays ? rawViewMode : 'mon-0';
     const setViewMode = useCallback((val) => {
         const next = typeof val === 'function' ? val(viewMode) : val;
         setLocalViewMode(next);
+        try {
+            localStorage.setItem('itb_solo_viewmode', next);
+        } catch {}
         if (onViewModeChange) onViewModeChange(next);
     }, [viewMode, onViewModeChange]);
 
@@ -154,7 +173,7 @@ export default function StudioVideoFeed({
     // Active Display calculation based on mode & director plan
     const activeDisplayId = useMemo(() => {
         if (!hasMultipleDisplays) return 'mon-0';
-        if (viewMode === 'split' || viewMode === 'pip' || viewMode === 'canvas') {
+        if (viewMode === 'split' || viewMode === 'pip' || viewMode === 'canvas' || viewMode === 'all-displays') {
             const primaryId = (stationDisplays[0]?.displayId ?? 'mon-0').toLowerCase();
             const secondId = (stationDisplays[1]?.displayId ?? 'mon-1').toLowerCase();
             return isPipSwapped ? secondId : primaryId;
@@ -169,25 +188,83 @@ export default function StudioVideoFeed({
         return other ? (other.displayId ?? other.DisplayId).toLowerCase() : (stationDisplays[1]?.displayId || 'mon-1').toLowerCase();
     }, [hasMultipleDisplays, stationDisplays, activeDisplayId]);
 
+    const activeDisplayLabel = useMemo(() => {
+        const match = stationDisplays.find(d => (d.displayId ?? '').toLowerCase() === (activeDisplayId || '').toLowerCase());
+        if (match) return match.displayName || `Screen ${match.displayNumber || 1}`;
+        if (activeDisplayId === 'mon-0' || activeDisplayId === '0') return 'Screen 1';
+        if (activeDisplayId === 'mon-1' || activeDisplayId === '1') return 'Screen 2';
+        const m = (activeDisplayId || '').match(/\d+/);
+        if (m) {
+            const n = parseInt(m[0], 10);
+            return `Screen ${(activeDisplayId || '').startsWith('mon-') ? n + 1 : n}`;
+        }
+        return (activeDisplayId || 'Screen 1').toUpperCase();
+    }, [stationDisplays, activeDisplayId]);
+
+    const secondaryDisplayLabel = useMemo(() => {
+        const match = stationDisplays.find(d => (d.displayId ?? '').toLowerCase() === (secondaryDisplayId || '').toLowerCase());
+        if (match) return match.displayName || `Screen ${match.displayNumber || 2}`;
+        return 'Screen 2';
+    }, [stationDisplays, secondaryDisplayId]);
+
     const isCurrentManualOverride = useMemo(() => {
         if (viewMode !== 'director' && viewMode !== 'split' && viewMode !== 'pip' && viewMode !== 'canvas') return true;
         return Boolean(activeDirectorSegment?.isManualOverride ?? activeDirectorSegment?.IsManualOverride);
     }, [viewMode, activeDirectorSegment]);
 
     const [canvasFrames, setCanvasFrames] = useState({});
+    const canvasContainerRef = useRef(null);
+    const [canvasBoardSize, setCanvasBoardSize] = useState({ width: 0, height: 0 });
 
     const topologyBounds = useMemo(() => {
         return calculateTopologyBounds(stationDisplays);
     }, [stationDisplays]);
 
+    // Pixel-perfect responsive board sizing ensuring canvas NEVER collapses to 0x0
     useEffect(() => {
-        if (!hasMultipleDisplays || viewMode !== 'canvas') {
+        if (!hasMultipleDisplays || (viewMode !== 'canvas' && viewMode !== 'all-displays') || isPlaying) {
+            return;
+        }
+
+        const updateBoardSize = () => {
+            const el = canvasContainerRef.current;
+            if (!el) return;
+            const padX = 48;
+            const padY = 72;
+            const availW = Math.max(100, el.clientWidth - padX);
+            const availH = Math.max(100, el.clientHeight - padY);
+            const totalW = topologyBounds.totalWidth || 1920;
+            const totalH = topologyBounds.totalHeight || 1080;
+            const aspect = totalW / totalH;
+
+            let w = availW;
+            let h = w / aspect;
+            if (h > availH) {
+                h = availH;
+                w = h * aspect;
+            }
+            setCanvasBoardSize({ width: Math.round(w), height: Math.round(h) });
+        };
+
+        updateBoardSize();
+        const ro = new ResizeObserver(updateBoardSize);
+        if (canvasContainerRef.current) ro.observe(canvasContainerRef.current);
+        return () => ro.disconnect();
+    }, [hasMultipleDisplays, viewMode, topologyBounds]);
+
+    // Quantize playhead timestamp to 250ms to prevent endless abort thrashing during scrubbing/playback
+    const quantizedCanvasEpoch = useMemo(() => {
+        return Math.round((baseEpochMs + playheadMs) / 250) * 250;
+    }, [baseEpochMs, playheadMs]);
+
+    useEffect(() => {
+        if (!hasMultipleDisplays || (viewMode !== 'canvas' && viewMode !== 'all-displays')) {
             return;
         }
 
         let isMounted = true;
         const abortController = new AbortController();
-        const targetEpochMs = Math.round(baseEpochMs + playheadMs);
+        const targetEpochMs = quantizedCanvasEpoch;
 
         stationDisplays.forEach((d, i) => {
             const dId = (d.displayId ?? d.DisplayId ?? `mon-${i}`).toLowerCase();
@@ -214,7 +291,7 @@ export default function StudioVideoFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [hasMultipleDisplays, viewMode, stationDisplays, hostname, baseEpochMs, playheadMs]);
+    }, [hasMultipleDisplays, viewMode, stationDisplays, hostname, quantizedCanvasEpoch]);
 
     const prevDisplayIdRef = useRef(activeDisplayId);
 
@@ -271,12 +348,18 @@ export default function StudioVideoFeed({
             videoRefA.current.muted = activeSlot !== 'A' || audio.isMuted;
             videoRefA.current.defaultPlaybackRate = playbackSpeed;
             videoRefA.current.playbackRate = playbackSpeed;
+            if (activeSlot === 'A' && !audio.isMuted) {
+                attachVideoAudio(videoRefA.current);
+            }
         }
         if (videoRefB.current) {
             videoRefB.current.volume = audio.volume;
             videoRefB.current.muted = activeSlot !== 'B' || audio.isMuted;
             videoRefB.current.defaultPlaybackRate = playbackSpeed;
             videoRefB.current.playbackRate = playbackSpeed;
+            if (activeSlot === 'B' && !audio.isMuted) {
+                attachVideoAudio(videoRefB.current);
+            }
         }
         if (videoRefSecondary.current) {
             videoRefSecondary.current.muted = true; // Secondary display audio muted to prevent echo
@@ -315,7 +398,7 @@ export default function StudioVideoFeed({
     useEffect(() => {
         if (!stationId || !hostname) return;
 
-        if (isPlaying && isVideoRendering) {
+        if (isPlaying) {
             prevIsPlayingRef.current = true;
             return;
         }
@@ -358,7 +441,7 @@ export default function StudioVideoFeed({
 
     // Fetch frame for Secondary Display (Split & PiP)
     useEffect(() => {
-        if (!hasMultipleDisplays || (viewMode !== 'split' && viewMode !== 'pip') || !secondaryDisplayId) {
+        if (!hasMultipleDisplays || (viewMode !== 'split' && viewMode !== 'pip') || !secondaryDisplayId || isPlaying) {
             setSecondaryFrameResult(null);
             return;
         }
@@ -645,15 +728,17 @@ export default function StudioVideoFeed({
                     <div className="toolbar-divider" />
                     {stationDisplays.map((d, i) => {
                         const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                        const num = d.displayNumber ?? (i + 1);
+                        const label = d.displayName || `Screen ${num}`;
                         return (
                             <button
                                 key={id}
                                 type="button"
                                 className={`btn-mode ${viewMode === id ? 'active' : ''}`}
                                 onClick={() => setViewMode(id)}
-                                title={`Pin directly to Display ${i + 1} (${id})`}
+                                title={`Pin directly to ${label}`}
                             >
-                                🖥️ {i + 1}
+                                🖥️ {num}
                             </button>
                         );
                     })}
@@ -666,6 +751,8 @@ export default function StudioVideoFeed({
                                 <span className="punch-strip-label">PUNCH:</span>
                                 {stationDisplays.map((d, i) => {
                                     const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                                    const num = d.displayNumber ?? (i + 1);
+                                    const label = d.displayName || `Screen ${num}`;
                                     const isPunchActive = activeDisplayId === id;
                                     return (
                                         <button
@@ -675,9 +762,9 @@ export default function StudioVideoFeed({
                                             onClick={() => {
                                                 onOverrideDisplay?.(stationId, baseEpochMs + playheadMs, id);
                                             }}
-                                            title={`Punch CAM ${i + 1} (${id.toUpperCase()}) as override at playhead`}
+                                            title={`Punch ${label} as override at playhead`}
                                         >
-                                            <span className="cam-num">CAM {i + 1}</span>
+                                            <span className="cam-num">SCREEN {num}</span>
                                             {isPunchActive && (
                                                 <span className="cam-status">
                                                     {isCurrentManualOverride ? '✋' : '⚡'}
@@ -712,8 +799,8 @@ export default function StudioVideoFeed({
                     <span className="banner-text">
                         {viewMode === 'canvas' ? '⊞ CANVAS (PHYSICAL OS TOPOLOGY)' :
                          viewMode === 'split' ? '🔲 SPLIT SCREEN (ALL MONITORS)' :
-                         viewMode === 'pip' ? `🪟 PiP MODE: ${activeDisplayId.toUpperCase()} (HERO)` :
-                         `${isCurrentManualOverride ? '✋ MANUAL OVERRIDE' : '⚡ AUTO-DIRECTOR'}: ${activeDisplayId.toUpperCase()}`}
+                         viewMode === 'pip' ? `🪟 PiP MODE: ${activeDisplayLabel.toUpperCase()} (HERO)` :
+                         `${isCurrentManualOverride ? '✋ MANUAL OVERRIDE' : '⚡ AUTO-DIRECTOR'}: ${activeDisplayLabel.toUpperCase()}`}
                     </span>
                     {isCurrentManualOverride && viewMode === 'director' && onResetOverride && (
                         <button
@@ -887,7 +974,7 @@ export default function StudioVideoFeed({
                 <div className="feed-split-container">
                     <div className="split-pane pane-primary">
                         <div className="split-pane-header">
-                            <span>DISPLAY 1 ({activeDisplayId.toUpperCase()})</span>
+                            <span>SCREEN 1</span>
                         </div>
                         {frameResult && frameResult !== 'NO_SIGNAL' ? (
                             <img src={frameResult} className="split-frame-img" alt="Display 1" />
@@ -898,7 +985,7 @@ export default function StudioVideoFeed({
                     <div className="split-pane-divider" />
                     <div className="split-pane pane-secondary">
                         <div className="split-pane-header">
-                            <span>DISPLAY 2 ({(secondaryDisplayId || 'MON-1').toUpperCase()})</span>
+                            <span>SCREEN 2</span>
                         </div>
                         {secondaryFrameResult && secondaryFrameResult !== 'NO_SIGNAL' ? (
                             <img src={secondaryFrameResult} className="split-frame-img" alt="Display 2" />
@@ -920,7 +1007,7 @@ export default function StudioVideoFeed({
                     title="Click to swap primary and secondary screens"
                 >
                     <div className="pip-header">
-                        <span>PiP: {(secondaryDisplayId || 'MON-1').toUpperCase()}</span>
+                        <span>PiP: {secondaryDisplayLabel.toUpperCase()}</span>
                         <span className="pip-swap-hint">⇄ SWAP</span>
                     </div>
                     {secondaryFrameResult && secondaryFrameResult !== 'NO_SIGNAL' ? (
@@ -932,13 +1019,17 @@ export default function StudioVideoFeed({
             )}
 
             {/* Virtual Desktop Canvas View: Real physical OS monitor arrangement */}
-            {viewMode === 'canvas' && hasMultipleDisplays && (
-                <div className="feed-canvas-container">
+            {(viewMode === 'canvas' || viewMode === 'all-displays') && hasMultipleDisplays && (
+                <div className="feed-canvas-container" ref={canvasContainerRef}>
                     <div className="feed-canvas-grid-bg" />
                     <div
                         className="feed-canvas-board"
                         style={{
-                            aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`
+                            width: canvasBoardSize.width ? `${canvasBoardSize.width}px` : '92%',
+                            height: canvasBoardSize.height ? `${canvasBoardSize.height}px` : 'auto',
+                            aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`,
+                            maxWidth: '100%',
+                            maxHeight: '100%'
                         }}
                     >
                         {stationDisplays.map((d, index) => {
@@ -959,9 +1050,13 @@ export default function StudioVideoFeed({
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        setViewMode(dispId);
+                                        if (onOpenFullscreen) {
+                                            onOpenFullscreen(dispId);
+                                        } else {
+                                            setViewMode(dispId);
+                                        }
                                     }}
-                                    title={`Click to focus Display ${index + 1} (${d.width || 1920}x${d.height || 1080})`}
+                                    title={`Display ${index + 1} (${d.width || 1920}x${d.height || 1080}) • Click to enter Fullscreen`}
                                 >
                                     <div className="canvas-pane-header">
                                         <span className="pane-index-pill">
@@ -969,6 +1064,19 @@ export default function StudioVideoFeed({
                                         </span>
                                         <span className="pane-title">{d.displayName || d.DisplayName || dispId.toUpperCase()}</span>
                                         <span className="pane-res">{d.width || 1920}x{d.height || 1080}</span>
+                                        {onOpenFullscreen && (
+                                            <button
+                                                type="button"
+                                                className="canvas-pane-fullscreen-btn"
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    onOpenFullscreen(dispId);
+                                                }}
+                                                title={`Open Display ${index + 1} in Fullscreen`}
+                                            >
+                                                ⛶
+                                            </button>
+                                        )}
                                     </div>
 
                                     {frame && frame !== 'NO_SIGNAL' ? (
@@ -978,7 +1086,10 @@ export default function StudioVideoFeed({
                                             alt={dispId}
                                         />
                                     ) : (
-                                        <div className="canvas-pane-placeholder">DECODE PENDING...</div>
+                                        <div className="canvas-pane-placeholder">
+                                            <div className="placeholder-radar-blip" />
+                                            <span>SYNCING {d.displayName || dispId.toUpperCase()}...</span>
+                                        </div>
                                     )}
                                 </div>
                             );
@@ -1009,12 +1120,25 @@ export default function StudioVideoFeed({
                 </div>
             )}
 
+            {/* Auto-Director Active Focus Live Pill Banner */}
+            {viewMode === 'director' && activeDirectorSegment && (
+                <div className="director-live-hud-pill">
+                    <span className="director-live-icon">🎬</span>
+                    <span className="director-live-title">AUTO-DIRECTOR:</span>
+                    <span className="director-live-display">🖥️ {activeDisplayId.toUpperCase()}</span>
+                    <span className="director-live-time">
+                        [{formatTimelineClock(activeDirectorSegment.startEpochMs ?? activeDirectorSegment.StartEpochMs ?? 0, _timeMode, { includeSeconds: true })} - {formatTimelineClock(activeDirectorSegment.endEpochMs ?? activeDirectorSegment.EndEpochMs ?? 0, _timeMode, { includeSeconds: true })}]
+                    </span>
+                </div>
+            )}
+
             {/* Persistent Topology Minimap HUD (Clickable to switch displays, hidden in Canvas mode) */}
             {hasMultipleDisplays && viewMode !== 'canvas' && (
                 <PersistentMinimapHud
                     displays={stationDisplays}
                     activeDisplayId={activeDisplayId}
                     mode={isCurrentManualOverride ? 'MANUAL' : 'AUTO'}
+                    activeTimeRange={activeDirectorSegment ? `${formatTimelineClock(activeDirectorSegment.startEpochMs ?? activeDirectorSegment.StartEpochMs ?? 0, _timeMode, { includeSeconds: true })} - ${formatTimelineClock(activeDirectorSegment.endEpochMs ?? activeDirectorSegment.EndEpochMs ?? 0, _timeMode, { includeSeconds: true })}` : ''}
                     onSelectDisplay={(dispId) => {
                         if (onOverrideDisplay) {
                             onOverrideDisplay(stationId, baseEpochMs + playheadMs, dispId);

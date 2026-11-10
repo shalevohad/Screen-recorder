@@ -9,8 +9,11 @@
     height: 26px;
     background: rgba(15, 23, 42, 0.55);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    border-left: none !important;
+    border-right: none !important;
+    border-radius: 0;
     cursor: pointer;
     overflow: visible;
     box-sizing: border-box;

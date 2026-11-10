@@ -59,6 +59,11 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Required]
         public DiscoverySettings Discovery { get; set; } = new DiscoverySettings();
+
+        /// <summary>
+        /// Settings for the automated multi-monitor focus director and forensic replay cuts.
+        /// </summary>
+        public AutoDirectorSettings AutoDirector { get; set; } = new AutoDirectorSettings();
     }
 
     public class DiscoverySettings
@@ -80,17 +85,78 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string ServiceName { get; set; } = "ITB-SCREEN-RECORDER";
 
-        public string Role { get; set; } = "Active-Active"; // "Active-Active", "Standalone", "Aggregate"
+        public string Role { get; set; } = "Active-Active"; // "Active-Active", "Active-Standby", "Standalone", "Aggregate"
+
+        public string NodeRole { get; set; } = "Primary"; // "Primary", "Secondary", "Orchestrator", "Worker"
+
+        /// <summary>
+        /// Node operational mode in the cluster: "Active" (ingest & compute) or "Standby" (hot backup spare).
+        /// Allows hybrid topologies where some nodes are Active and some are Standby.
+        /// </summary>
+        public string NodeMode { get; set; } = "Active"; // "Active", "Standby"
+
+        /// <summary>
+        /// Logical cluster group identifier. Nodes broadcasting this group ID autonomously merge into the same cluster grid.
+        /// </summary>
+        public string ClusterGroup { get; set; } = "Production";
+
+        /// <summary>
+        /// When true, enables autonomous peer auto-discovery via UDP Multicast and Subnet Broadcast.
+        /// Eliminates the need to manually configure peer IP addresses or seed URLs.
+        /// </summary>
+        public bool AutoPeerDiscovery { get; set; } = true;
 
         [Range(0, 100)]
         public int Priority { get; set; } = 1;
 
         public string? PartnerServerUrl { get; set; }
 
+        /// <summary>
+        /// Seed/peer cluster node endpoints for Active-Active multi-server federation (e.g. ["http://192.168.1.101:5090", "http://192.168.1.102:5090"]).
+        /// </summary>
+        public List<string> ClusterPeerUrls { get; set; } = new();
+
+        /// <summary>
+        /// When true, node dynamically computes its stream and NLE job capacity from actual hardware specs (CPU, RAM, GPU).
+        /// </summary>
+        public bool AutoHardwareCapacity { get; set; } = true;
+
+        /// <summary>
+        /// Maximum concurrent ingest streams assigned to this node before load balancing diverts to other nodes.
+        /// When AutoHardwareCapacity is true or value is 0, dynamically derived from hardware probe.
+        /// </summary>
+        [Range(0, 500)]
+        public int MaxIngestStreamsCapacity { get; set; } = 0;
+
+        /// <summary>
+        /// Maximum concurrent video export/render jobs allowed on this node.
+        /// When AutoHardwareCapacity is true or value is 0, dynamically derived from hardware probe.
+        /// </summary>
+        [Range(0, 32)]
+        public int MaxConcurrentRenderJobs { get; set; } = 0;
+
+        /// <summary>
+        /// When true, Orchestrator automatically balances incoming agent streams across online cluster nodes.
+        /// </summary>
+        public bool AutoBalanceStreams { get; set; } = true;
+
+        /// <summary>
+        /// When true, video export and forensic cutting jobs are distributed across cluster nodes based on GPU/CPU availability.
+        /// </summary>
+        public bool DistributedVideoProcessingEnabled { get; set; } = true;
+
         public bool AutoFailoverDashboard { get; set; } = true;
 
         [Range(1, 60)]
         public int DashboardFailoverDelaySeconds { get; set; } = 8;
+
+        [Range(1, 30)]
+        public int HeartbeatIntervalSeconds { get; set; } = 2;
+
+        [Range(1, 10)]
+        public int HeartbeatMissedThreshold { get; set; } = 3;
+
+        public bool PreemptLowerPriority { get; set; } = false;
 
         public bool EnableVirtualIp { get; set; } = false;
 
@@ -192,5 +258,34 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
     {
         public string? VideoBitrate { get; set; }
         public int? TargetFps { get; set; }
+    }
+
+    public class AutoDirectorSettings
+    {
+        /// <summary>
+        /// Minimum duration in seconds that the Auto-Director camera remains focused on an active screen before allowing a cut to another screen.
+        /// Default is 10 seconds. Range: 1 to 120 seconds.
+        /// </summary>
+        [Range(1, 120, ErrorMessage = "MinDwellSeconds must be between 1 and 120 seconds.")]
+        public int MinDwellSeconds { get; set; } = 10;
+
+        /// <summary>
+        /// Maximum concurrent live video decoders / playback streams permitted simultaneously in the Replay & Editing Studio.
+        /// Hard capped at 6 to guarantee zero browser/server decode exhaustion. Range: 1 to 6. Default is 6.
+        /// </summary>
+        [Range(1, 6, ErrorMessage = "MaxConcurrentScreens must be between 1 and 6.")]
+        public int MaxConcurrentScreens { get; set; } = 6;
+
+        /// <summary>
+        /// Preload buffer duration in seconds before starting synchronized playback across multiple screens.
+        /// Default is 2.0 seconds. Range: 0.5 to 5.0 seconds.
+        /// </summary>
+        [Range(0.5, 5.0, ErrorMessage = "BufferPreloadSeconds must be between 0.5 and 5.0 seconds.")]
+        public double BufferPreloadSeconds { get; set; } = 2.0;
+
+        /// <summary>
+        /// Master toggle for Auto-Director automated camera cuts in Replay Studio.
+        /// </summary>
+        public bool EnableAutoDirector { get; set; } = true;
     }
 }

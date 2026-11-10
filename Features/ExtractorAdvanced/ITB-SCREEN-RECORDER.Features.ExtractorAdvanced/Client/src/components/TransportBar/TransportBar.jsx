@@ -30,17 +30,21 @@ export default function TransportBar({
     inPointMs = 0,
     outPointMs = 3600000,
     totalDurationMs = 3600000,
+    hasGridPlacements = true,
     onStepFrameForward,
     onStepFrameBackward,
     playbackSpeed = 1,
     onChangeSpeed,
     onSetInPoint,
-    onSetOutPoint
+    onSetOutPoint,
+    activeFocusZone = 'timeline',
+    onFocusZoneChange = null
 }) {
     const [audioState, setAudioState] = useState(() => getAudioSettings());
     const { volume, isMuted } = audioState;
 
-    const isEnabled = Boolean(activeStationId);
+    // Invariant: Transport player is immediately active & usable upon entering Canvas for synchronized playback
+    const isEnabled = Boolean(totalDurationMs > 0 || hasGridPlacements || activeStationId);
 
     useEffect(() => {
         const handleAudioSync = (e) => {
@@ -210,8 +214,25 @@ export default function TransportBar({
     return (
         <div
             className={`transport-bar-root ${isEnabled ? 'is-expanded' : 'is-compact-disabled'}`}
-            title={!isEnabled ? 'Select a station card above to enable timeline playback' : ''}
+            title={!isEnabled ? 'Playback ready' : ''}
+            onMouseDown={() => onFocusZoneChange?.('timeline')}
         >
+            {/* Tactical Focus Zone Indicator & Mode Switcher */}
+            <button
+                type="button"
+                className={`btn-ctrl-action btn-focus-indicator ${activeFocusZone === 'canvas' ? 'is-canvas' : 'is-timeline'}`}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onFocusZoneChange?.(activeFocusZone === 'canvas' ? 'timeline' : 'canvas');
+                }}
+                title={activeFocusZone === 'canvas' 
+                    ? "Focus: Canvas Screen (Arrow keys nudge screen position). Click or press Esc to return to Playhead scrubbing." 
+                    : "Focus: Timeline Playhead (Arrow keys step frames / seconds). Click to switch to Canvas screen nudging."}
+            >
+                <span className="focus-dot" />
+                <span className="focus-label">{activeFocusZone === 'canvas' ? '🖥️ CANVAS' : '⏱️ PLAYHEAD'}</span>
+            </button>
+
             <button
                 type="button"
                 className="btn-speed-badge"
@@ -361,32 +382,6 @@ export default function TransportBar({
                         className="volume-slider"
                     />
 
-                    <button
-                        type="button"
-                        className="btn-audio-mode-toggle"
-                        onClick={() => {
-                            const modes = ['both', 'mic', 'sys', 'stereo'];
-                            const currentMode = audioState.channelMode || 'both';
-                            const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
-                            updateAudio(volume, isMuted, nextMode);
-                        }}
-                        title={`Discrete Audio Channel: ${(audioState.channelMode || 'both').toUpperCase()} (Click to cycle Both / Mic / System / Stereo)`}
-                        style={{
-                            background: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(6, 182, 212, 0.35)',
-                            borderRadius: '4px',
-                            color: '#06B6D4',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            padding: '2px 6px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        {(audioState.channelMode || 'both') === 'mic' ? '🎤 MIC' :
-                         (audioState.channelMode || 'both') === 'sys' ? '🔊 SYS' :
-                         (audioState.channelMode || 'both') === 'stereo' ? '⮂ STEREO' : '🎧 BOTH'}
-                    </button>
 
 
                 </div>

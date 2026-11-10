@@ -39,11 +39,17 @@ export default function StationContextMenu({
     const { x, y, station } = menu;
     const stationName = station.displayName || station.hostname || station.name || station.id;
 
+    // Viewport edge clamping: ensure context menu is never rendered partially or completely offscreen
+    const menuWidth = 220;
+    const menuHeight = 160;
+    const posX = Math.max(10, Math.min(x, (typeof window !== 'undefined' ? window.innerWidth : 1920) - menuWidth - 12));
+    const posY = Math.max(10, Math.min(y, (typeof window !== 'undefined' ? window.innerHeight : 1080) - menuHeight - 12));
+
     return (
         <div
             ref={menuRef}
             className="station-context-menu-root"
-            style={{ top: `${y}px`, left: `${x}px` }}
+            style={{ top: `${posY}px`, left: `${posX}px` }}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
         >

@@ -329,13 +329,13 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                         type="button"
                         className="btn-action secondary"
                         onClick={() => handleOpenSwapModal()}
-                        title="Swap operational names between two workstations (החלפת שמות)"
+                        title="Swap operational names between two workstations (Cross-Swap)"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M7 16V4M7 4L3 8M7 4L11 8" />
                             <path d="M17 8v12M17 20l4-4M17 20l-4-4" />
                         </svg>
-                        <span>Swap Aliases (החלפה)</span>
+                        <span>Swap Aliases</span>
                     </button>
                 </div>
             </div>
@@ -526,7 +526,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                     <div className="swap-modal-card" onClick={e => e.stopPropagation()}>
                         <div className="diff-modal-header">
                             <div className="title-group">
-                                <span className="badge">CROSS-SWAP (החלפת שמות)</span>
+                                <span className="badge">CROSS-SWAP (Cross-Swap)</span>
                                 <h3>Swap Operational Names Between Stations</h3>
                             </div>
                         </div>

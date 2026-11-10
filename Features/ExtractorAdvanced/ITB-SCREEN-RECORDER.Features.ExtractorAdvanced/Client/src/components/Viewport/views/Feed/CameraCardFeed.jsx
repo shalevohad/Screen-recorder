@@ -1,10 +1,12 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.jsx
 // ==========================================
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { frameStore } from '../../../../utils/frameStore.js';
 import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
+import { attachVideoAudio } from '../../../../utils/audioLevelMonitor.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
+import TacticalDisplayStrip from '../../overlays/TacticalDisplayStrip.jsx';
 import PersistentMinimapHud from '../../overlays/PersistentMinimapHud.jsx';
 import './CameraCardFeed.scss';
 
@@ -22,9 +24,18 @@ export default function CameraCardFeed({
     isSpotlightActive,
     globalGaps = [],
     recordingSegments = {},
-    playbackSpeed = 1
+    playbackSpeed = 1,
+    activeAudioStationId = null,
+    directorPlan = null,
+    isAutoDirectorEnabled = true,
+    targetDisplayId = 'auto',
+    onSelectDisplayId = null,
+    areAllDisplaysPlaced = false,
+    hideDisplayStrip = false,
+    isDecoderAllowed = true,
+    maxHeight = null
 }) {
-    const stationName = station.hostname || station.name || '';
+    const stationName = station.hostname || station.name || station.id || '';
     const roundedEpochMs = Math.round(currentEpochMs);
 
     const [frameSrc, setFrameSrc] = useState(() => {
@@ -34,11 +45,13 @@ export default function CameraCardFeed({
 
     const [streamSrc, setStreamSrc] = useState('');
     const [isVideoReady, setIsVideoReady] = useState(false);
+    const [isBufferingOverlayVisible, setIsBufferingOverlayVisible] = useState(false);
     const [hasError, setHasError] = useState(false);
     const [_isLoadingFrame, setIsLoadingFrame] = useState(false);
 
     const prevIsPlayingRef = useRef(isPlaying);
     const videoRef = useRef(null);
+    const waitingDebounceTimerRef = useRef(null);
     const streamStartOffsetMsRef = useRef(0);
     const currentRelativeMsRef = useRef(currentEpochMs - baseEpochMs);
     const lastEmittedMsRef = useRef(currentEpochMs - baseEpochMs);
@@ -48,7 +61,45 @@ export default function CameraCardFeed({
     currentRelativeMsRef.current = currentEpochMs - baseEpochMs;
 
     const stationDisplays = station?.displays || station?.topology?.displays || [];
-    const [activeDisplayId, setActiveDisplayId] = useState('mon-0');
+    const [manualDisplayId, setManualDisplayId] = useState(null);
+
+    useEffect(() => {
+        setManualDisplayId(null);
+    }, [targetDisplayId]);
+
+    const activeDirectorSegment = useMemo(() => {
+        const plan = directorPlan || station?.directorPlan;
+        if (!plan || !plan.segments || plan.segments.length === 0) return null;
+        return plan.segments.find(s => {
+            const start = s.startEpochMs ?? s.StartEpochMs ?? 0;
+            const end = s.endEpochMs ?? s.EndEpochMs ?? 0;
+            return currentEpochMs >= start && currentEpochMs <= end;
+        }) || plan.segments[0];
+    }, [directorPlan, station?.directorPlan, currentEpochMs]);
+
+    const activeDisplayId = useMemo(() => {
+        if (stationDisplays.length > 1 && isAutoDirectorEnabled !== false && activeDirectorSegment) {
+            return (activeDirectorSegment.targetDisplayId || activeDirectorSegment.TargetDisplayId || 'mon-0').toLowerCase();
+        }
+        if (manualDisplayId) return manualDisplayId.toLowerCase();
+        if (targetDisplayId && targetDisplayId !== 'auto' && targetDisplayId !== 'director') {
+            return targetDisplayId.toLowerCase();
+        }
+        return (stationDisplays[0]?.displayId || 'mon-0').toLowerCase();
+    }, [manualDisplayId, targetDisplayId, stationDisplays, isAutoDirectorEnabled, activeDirectorSegment]);
+
+    const prevDisplayIdRef = useRef(activeDisplayId);
+    const [isDisplayTransitioning, setIsDisplayTransitioning] = useState(false);
+
+    useEffect(() => {
+        if (prevDisplayIdRef.current && prevDisplayIdRef.current !== activeDisplayId) {
+            setIsDisplayTransitioning(true);
+            const timer = setTimeout(() => setIsDisplayTransitioning(false), 2000);
+            prevDisplayIdRef.current = activeDisplayId;
+            return () => clearTimeout(timer);
+        }
+        prevDisplayIdRef.current = activeDisplayId;
+    }, [activeDisplayId]);
 
     const stationSegments = recordingSegments[station?.id] || recordingSegments[stationName] || station?.segments || [];
     const isInRecordingSegment = stationSegments.length === 0 || stationSegments.some(seg => {
@@ -57,23 +108,44 @@ export default function CameraCardFeed({
         return currentEpochMs >= s && currentEpochMs <= e;
     });
 
+    const isCurrentStationAudioActive = Boolean(
+        isSolo
+            ? !getAudioSettings().isMuted
+            : (activeAudioStationId && (station.id === activeAudioStationId || stationName === activeAudioStationId))
+    );
+
     const applyAudioToVideo = useCallback(() => {
         if (!videoRef.current) return;
         const audio = getAudioSettings();
-        videoRef.current.volume = audio.volume;
-        videoRef.current.muted = audio.isMuted;
-    }, []);
+        if (isSolo) {
+            videoRef.current.volume = audio.volume;
+            videoRef.current.muted = audio.isMuted;
+            if (!audio.isMuted) {
+                attachVideoAudio(videoRef.current);
+            }
+        } else {
+            const isActive = Boolean(activeAudioStationId && (station.id === activeAudioStationId || stationName === activeAudioStationId));
+            videoRef.current.muted = !isActive;
+            if (isActive) {
+                videoRef.current.volume = audio.volume;
+                attachVideoAudio(videoRef.current);
+            }
+        }
+    }, [isSolo, activeAudioStationId, station.id, stationName]);
+
+    useEffect(() => {
+        applyAudioToVideo();
+    }, [applyAudioToVideo]);
 
     useEffect(() => {
         const handleAudioChange = (e) => {
             if (videoRef.current && e.detail) {
-                videoRef.current.volume = e.detail.volume;
-                videoRef.current.muted = e.detail.isMuted;
+                applyAudioToVideo();
             }
         };
         window.addEventListener('itb-audio-state-changed', handleAudioChange);
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
-    }, []);
+    }, [applyAudioToVideo]);
 
     useEffect(() => {
         if (videoRef.current) {
@@ -85,7 +157,8 @@ export default function CameraCardFeed({
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
 
-        if (isPlaying && isSolo && isVideoReady) {
+        // If actively playing with full video decoder stream, skip static frame fetch
+        if (isPlaying && isDecoderAllowed) {
             prevIsPlayingRef.current = true;
             return;
         }
@@ -106,7 +179,7 @@ export default function CameraCardFeed({
 
         setIsLoadingFrame(true);
         // Fast-response debouncing (25ms while playing, 40ms paused) for responsive card scrubbing
-        const delayMs = wasPlaying ? 25 : 40;
+        const delayMs = isPlaying ? 180 : (wasPlaying ? 25 : 40);
 
         const timer = setTimeout(() => {
             if (!isMounted) return;
@@ -142,10 +215,26 @@ export default function CameraCardFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady, activeDisplayId]);
+    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady, activeDisplayId, isDecoderAllowed]);
 
     useEffect(() => {
-        if (!stationName || !isSolo) return;
+        const shouldStream = isSolo || (isPlaying && isDecoderAllowed);
+        if (!stationName || !shouldStream) {
+            if (!isPlaying || !isDecoderAllowed) {
+                if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+                if (waitingDebounceTimerRef.current) clearTimeout(waitingDebounceTimerRef.current);
+                isSeekingRef.current = false;
+                setStreamSrc('');
+                setIsVideoReady(false);
+                setIsBufferingOverlayVisible(false);
+                if (videoRef.current) {
+                    videoRef.current.pause();
+                    videoRef.current.removeAttribute('src');
+                    videoRef.current.load();
+                }
+            }
+            return;
+        }
 
         let debounceTimer = null;
 
@@ -155,11 +244,12 @@ export default function CameraCardFeed({
                 streamStartOffsetMsRef.current = initialSeekMs;
                 lastEmittedMsRef.current = initialSeekMs;
                 isSeekingRef.current = false;
-                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&displayId=${encodeURIComponent(activeDisplayId)}&_t=${Date.now()}`;
+                const qualityParam = maxHeight && maxHeight < 1080 ? `&maxHeight=${maxHeight}` : '';
+                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&displayId=${encodeURIComponent(activeDisplayId)}${qualityParam}&_t=${Date.now()}`;
 
                 setIsVideoReady(false);
                 setStreamSrc(url);
-            }, 100);
+            }, 80);
 
         } else if (!isPlaying) {
             if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
@@ -176,15 +266,17 @@ export default function CameraCardFeed({
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
         };
-    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
+    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId, isDecoderAllowed, maxHeight]);
 
-    // Handle user seek actions while playing in Solo mode on this card, rebinding stream offset
+    // Handle user seek actions while playing, rebinding stream offset when user seeks
     useEffect(() => {
-        if (!stationName || !isSolo) return;
+        const shouldStream = isSolo || isPlaying;
+        if (!stationName || !shouldStream) return;
 
         const currentHead = currentRelativeMsRef.current;
         const diff = Math.abs(currentHead - lastEmittedMsRef.current);
-        if (!isPlaying || diff < 15) {
+        // Only re-request video if user performed a significant scrub (> 800ms)
+        if (!isPlaying || diff < 800) {
             lastEmittedMsRef.current = currentHead;
             return;
         }
@@ -209,7 +301,8 @@ export default function CameraCardFeed({
             }
 
             const targetMs = currentRelativeMsRef.current;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&displayId=${encodeURIComponent(activeDisplayId)}&_t=${Date.now()}`;
+            const qualityParam = maxHeight && maxHeight < 1080 ? `&maxHeight=${maxHeight}` : '';
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&displayId=${encodeURIComponent(activeDisplayId)}${qualityParam}&_t=${Date.now()}`;
             setStreamSrc(newUrl);
         }, 75);
 
@@ -218,7 +311,40 @@ export default function CameraCardFeed({
                 clearTimeout(seekDebounceTimerRef.current);
             }
         };
-    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
+    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId, isDecoderAllowed, maxHeight]);
+
+    // Non-destructive smooth anti-drift synchronization for Grid / Multicam mode:
+    // Gently adjusts video.playbackRate instead of aggressively seeking video.currentTime,
+    // completely eliminating buffer stalls, MSE pipeline flushes, and "buffer organ" oscillations.
+    useEffect(() => {
+        if (isSolo || !isPlaying || !videoRef.current || !isVideoReady || isSeekingRef.current) return;
+
+        const expectedVideoSec = (currentRelativeMsRef.current - streamStartOffsetMsRef.current) / 1000;
+        if (expectedVideoSec >= 0) {
+            const video = videoRef.current;
+            const currentSec = video.currentTime;
+            const drift = currentSec - expectedVideoSec; // positive: ahead, negative: behind
+            const baseRate = playbackSpeed || 1;
+
+            if (Math.abs(drift) > 3.0) {
+                // Severe desynchronization (>3s): perform discrete seek
+                try {
+                    video.currentTime = expectedVideoSec;
+                } catch { }
+            } else if (drift < -0.15) {
+                // Lagging behind master clock: gently speed up by 4% to catch up seamlessly
+                video.playbackRate = baseRate * 1.04;
+            } else if (drift > 0.15) {
+                // Leading ahead of master clock: gently slow down by 4% to let master clock catch up
+                video.playbackRate = baseRate * 0.96;
+            } else {
+                // Aligned within ±150ms: keep target playback rate
+                if (video.playbackRate !== baseRate) {
+                    video.playbackRate = baseRate;
+                }
+            }
+        }
+    }, [isSolo, isPlaying, currentEpochMs, isVideoReady, playbackSpeed]);
 
     // Monotonic 60 FPS requestAnimationFrame tick loop when playing card feed in Solo mode
     useEffect(() => {
@@ -346,7 +472,7 @@ export default function CameraCardFeed({
 
     return (
         <div className="camera-card-feed-root">
-            {isSolo && streamSrc && (
+            {(isSolo || isPlaying) && streamSrc && (
                 <video
                     ref={videoRef}
                     src={streamSrc}
@@ -365,7 +491,7 @@ export default function CameraCardFeed({
                     }}
                     playsInline
                     autoPlay
-                    muted={getAudioSettings().isMuted}
+                    muted={!isCurrentStationAudioActive}
                     onLoadedData={() => {
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
@@ -373,6 +499,11 @@ export default function CameraCardFeed({
                         }
                     }}
                     onCanPlay={() => {
+                        if (waitingDebounceTimerRef.current) {
+                            clearTimeout(waitingDebounceTimerRef.current);
+                            waitingDebounceTimerRef.current = null;
+                        }
+                        setIsBufferingOverlayVisible(false);
                         applyAudioToVideo();
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
@@ -381,17 +512,32 @@ export default function CameraCardFeed({
                         if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onPlaying={() => {
+                        if (waitingDebounceTimerRef.current) {
+                            clearTimeout(waitingDebounceTimerRef.current);
+                            waitingDebounceTimerRef.current = null;
+                        }
+                        setIsBufferingOverlayVisible(false);
                         isSeekingRef.current = false;
                         setIsVideoReady(true);
+                        applyAudioToVideo();
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
                             videoRef.current.playbackRate = playbackSpeed;
                         }
                     }}
                     onWaiting={() => {
-                        setIsVideoReady(false);
+                        // Debounce buffering HUD by 450ms to prevent visual jitter during minor network fluctuations
+                        if (waitingDebounceTimerRef.current) clearTimeout(waitingDebounceTimerRef.current);
+                        waitingDebounceTimerRef.current = setTimeout(() => {
+                            setIsBufferingOverlayVisible(true);
+                        }, 450);
                     }}
                     onTimeUpdate={() => {
+                        if (waitingDebounceTimerRef.current) {
+                            clearTimeout(waitingDebounceTimerRef.current);
+                            waitingDebounceTimerRef.current = null;
+                        }
+                        setIsBufferingOverlayVisible(false);
                         if (!isVideoReady && videoRef.current?.currentTime > 0) {
                             isSeekingRef.current = false;
                             setIsVideoReady(true);
@@ -406,7 +552,7 @@ export default function CameraCardFeed({
                 style={{
                     position: 'absolute',
                     inset: 0,
-                    zIndex: (isSolo && isPlaying && isVideoReady && !isSpotlightActive) ? 0 : 2,
+                    zIndex: ((isSolo || isPlaying) && isVideoReady && !isSpotlightActive) ? 0 : 2,
                     pointerEvents: 'none'
                 }}
             >
@@ -426,7 +572,7 @@ export default function CameraCardFeed({
                 ) : null}
             </div>
 
-            {isSolo && isPlaying && isInRecordingSegment && !isVideoReady && !isSpotlightActive && (
+            {(isSolo || isPlaying) && isPlaying && isInRecordingSegment && (!isVideoReady || isBufferingOverlayVisible) && !isSpotlightActive && (
                 <div className="tactical-feed-buffering-overlay">
                     <div className="buffering-glass-hud">
                         <div className="radar-dual-ring">
@@ -447,11 +593,32 @@ export default function CameraCardFeed({
                 </div>
             )}
 
-            <PersistentMinimapHud
+            {stationDisplays.length > 1 && (
+                <PersistentMinimapHud
+                    displays={stationDisplays}
+                    activeDisplayId={activeDisplayId}
+                    onSelectDisplay={(newDispId) => {
+                        if (isAutoDirectorEnabled) return; // In Auto-Director mode, manual screen selection is locked
+                        setManualDisplayId(newDispId);
+                        onSelectDisplayId?.(newDispId);
+                    }}
+                    isTransitioning={isDisplayTransitioning}
+                    mode={isAutoDirectorEnabled ? 'AUTO' : 'MANUAL'}
+                />
+            )}
+
+            {!hideDisplayStrip && (
+            <TacticalDisplayStrip
                 displays={stationDisplays}
                 activeDisplayId={activeDisplayId}
-                onSelectDisplay={(newDispId) => setActiveDisplayId(newDispId)}
+                onSelectDisplay={(newDispId) => {
+                    setManualDisplayId(newDispId);
+                    onSelectDisplayId?.(newDispId);
+                }}
+                areAllDisplaysPlaced={areAllDisplaysPlaced}
+                isAutoDirectorEnabled={isAutoDirectorEnabled}
             />
+            )}
         </div>
     );
 }

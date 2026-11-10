@@ -45,10 +45,33 @@ export default function StationHubCard({ station, isSelected, onToggle, meta }) 
                         )}
                     </span>
 
-                    <span className={`status-indicator-badge ${isLoading ? 'is-loading' : (meta.hasGaps ? 'gap-warning' : 'full-archived')}`}>
-                        <span className="dot" />
-                        {isLoading ? 'SCANNING...' : (meta.hasGaps ? 'GAPS DETECTED' : '100% COVERAGE')}
-                    </span>
+                    {(() => {
+                        const isZeroCoverage = !isLoading && (meta?.coveragePct <= 0 || meta?.recordedDuration === '00:00:00');
+                        const isFullCoverage = !isLoading && meta?.coveragePct >= 100 && !meta?.hasGaps;
+                        let badgeText;
+                        let badgeClass;
+
+                        if (isLoading) {
+                            badgeText = 'SCANNING...';
+                            badgeClass = 'is-loading';
+                        } else if (isZeroCoverage) {
+                            badgeText = 'NO RECORDINGS';
+                            badgeClass = 'gap-warning';
+                        } else if (isFullCoverage) {
+                            badgeText = '100% COVERAGE';
+                            badgeClass = 'full-archived';
+                        } else {
+                            badgeText = meta?.hasGaps ? 'GAPS DETECTED' : `${meta?.coveragePct}% COVERAGE`;
+                            badgeClass = 'gap-warning';
+                        }
+
+                        return (
+                            <span className={`status-indicator-badge ${badgeClass}`}>
+                                <span className="dot" />
+                                {badgeText}
+                            </span>
+                        );
+                    })()}
                 </div>
             </div>
 

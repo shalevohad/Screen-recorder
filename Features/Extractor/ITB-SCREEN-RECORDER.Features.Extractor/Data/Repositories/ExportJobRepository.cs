@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -22,11 +22,11 @@ public sealed class ExportJobRepository : IExportJobRepository
             INSERT INTO export_jobs (
                 JobId, FileName, Status, ProgressPercent, StatusMessage, SpeedMBps,
                 EtaSeconds, FileSizeBytes, CreatedAtUtc, CompletedAtUtc, ErrorMessage,
-                OutputFilePath, NetworkFolderPath, DownloadCount, IsBookmarked
+                OutputFilePath, NetworkFolderPath, DownloadCount, IsBookmarked, CreatedBy, Notes
             ) VALUES (
                 @JobId, @FileName, @Status, @ProgressPercent, @StatusMessage, @SpeedMBps,
                 @EtaSeconds, @FileSizeBytes, @CreatedAtUtc, @CompletedAtUtc, @ErrorMessage,
-                @OutputFilePath, @NetworkFolderPath, @DownloadCount, @IsBookmarked
+                @OutputFilePath, @NetworkFolderPath, @DownloadCount, @IsBookmarked, @CreatedBy, @Notes
             )
             ON CONFLICT(JobId) DO UPDATE SET
                 Status = excluded.Status,
@@ -40,7 +40,9 @@ public sealed class ExportJobRepository : IExportJobRepository
                 OutputFilePath = excluded.OutputFilePath,
                 NetworkFolderPath = excluded.NetworkFolderPath,
                 DownloadCount = excluded.DownloadCount,
-                IsBookmarked = excluded.IsBookmarked;
+                IsBookmarked = excluded.IsBookmarked,
+                CreatedBy = excluded.CreatedBy,
+                Notes = excluded.Notes;
         ";
 
         await db.ExecuteAsync(sql, job);

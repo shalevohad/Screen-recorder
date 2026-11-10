@@ -17,8 +17,11 @@
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
     <PackageReference Include="Moq" Version="4.20.72" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.33" />
     <PackageReference Include="Dapper" Version="2.1.89" />
+    <!-- Overrides for transitive vulnerabilities (GHSA-7jgj-8wvc-jh57 & GHSA-cmhx-cq75-c4mj) -->
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +30,7 @@
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.AgentWorker\ITB-SCREEN-RECORDER.AgentWorker.csproj" />
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.AgentService\ITB-SCREEN-RECORDER.AgentService.csproj" />
     <ProjectReference Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj" />
+    <ProjectReference Include="..\Features\ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced.csproj" />
   </ItemGroup>
 
   <ItemGroup>

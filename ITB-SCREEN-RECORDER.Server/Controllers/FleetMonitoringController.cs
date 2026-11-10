@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Services.Security;
 using System.Linq;
 using System;
@@ -111,6 +113,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             var netSnapshot = _serverNetworkTelemetry.GetMetricsSnapshot();
             var encoderReport = await HardwareProbe.GetEncoderProbeReportAsync().ConfigureAwait(false);
 
+            var clusterService = HttpContext.RequestServices.GetService<IClusterService>();
+            var clusterGrid = clusterService?.GetClusterGridStatus();
+
             var serverMetrics = new
             {
                 serverHostname = Environment.MachineName,
@@ -132,6 +137,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
                 // Hardware Encoder Invariant Probe (Rule 8)
                 encoderProbe = encoderReport,
+
+                // Live Cluster Grid telemetry and fleet-wide aggregates
+                cluster = clusterGrid,
 
                 // Full list of physical and virtual network adapters
                 nics = netSnapshot.Nics.Select(n => new

@@ -1,14 +1,55 @@
-// ==========================================
+ // ==========================================
 // File: Client/src/components/Settings/tabs/SystemNetworkTab.jsx
 // ==========================================
 import React from 'react';
+import { useAuth } from '../../../context/AuthContext';
 
-export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField }) {
+export default function SystemNetworkTab({ form, activeFeatures = [], updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField, updateAutoDirectorField }) {
+    const hasReplayStudioFeature = React.useMemo(() => {
+        if (!Array.isArray(activeFeatures) || activeFeatures.length === 0) return false;
+        return activeFeatures.some(f =>
+            f.id === 'extractor-advanced-studio' ||
+            f.id === 'extractor-slicer' ||
+            (typeof f.id === 'string' && f.id.toLowerCase().includes('extractor'))
+        );
+    }, [activeFeatures]);
+    const { isSystemRoot, hasPermission } = useAuth();
+
     if (!form) return null;
+
+    const isStealthAuthorized = isSystemRoot || Boolean(hasPermission?.('system.stealth') || hasPermission?.('settings.stealth'));
 
     const dashboard = form.dashboard || {};
     const mediaMtx = form.mediaMtx || {};
     const discovery = form.discovery || {};
+    const autoDirector = form.autoDirector || {};
+
+    const studioScreenTicks = [
+        { val: 1, label: '1' },
+        { val: 2, label: '2' },
+        { val: 3, label: '3' },
+        { val: 4, label: '4' },
+        { val: 5, label: '5' },
+        { val: 6, label: '6' }
+    ];
+
+    const preloadTicks = [
+        { val: 0.5, label: '0.5s' },
+        { val: 1.0, label: '1.0s' },
+        { val: 1.5, label: '1.5s' },
+        { val: 2.0, label: '2.0s' },
+        { val: 3.0, label: '3.0s' },
+        { val: 5.0, label: '5.0s' }
+    ];
+
+    const dwellTicks = [
+        { val: 3, label: '3s' },
+        { val: 5, label: '5s' },
+        { val: 10, label: '10s' },
+        { val: 15, label: '15s' },
+        { val: 30, label: '30s' },
+        { val: 60, label: '60s' }
+    ];
 
     const timezones = [
         { val: 'Asia/Jerusalem', label: 'Asia/Jerusalem (Israel Standard Time)' },
@@ -45,7 +86,7 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                             required
                         />
                         <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                            שינוי פורט יאתחל אוטומטית את השרת ויעביר את הדפדפן לכתובת החדשה (ברירת מחדל ללא פורט: 443 ל-HTTPS, 80 ל-HTTP).
+                            ×©×™× ×•×™ ×¤×•×¨×˜ ×™××ª×—×œ ××•×˜×•×ž×˜×™×ª ××ª ×”×©×¨×ª ×•×™×¢×‘×™×¨ ××ª ×”×“×¤×“×¤×Ÿ ×œ×›×ª×•×‘×ª ×”×—×“×©×” (×‘×¨×™×¨×ª ×ž×—×“×œ ×œ×œ× ×¤×•×¨×˜: 443 ×œ-HTTPS, 80 ×œ-HTTP).
                         </span>
                     </div>
 
@@ -311,6 +352,219 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                     </label>
                 </div>
             </div>
+
+            {/* DEDICATED CLUSTER TAB REDIRECTION BANNER */}
+            <div className="security-subpanel ha-cluster-subpanel" style={{ borderColor: 'rgba(6, 182, 212, 0.35)', background: 'rgba(15, 23, 42, 0.7)' }}>
+                <div className="subpanel-header" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.6rem' }}>🌐</span>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>DEDICATED TAB</span>
+                                <h4 style={{ margin: 0, color: '#38BDF8' }}>Distributed Server Cluster & Load Balancing (Cluster & Nodes)</h4>
+                            </div>
+                            <span className="subpanel-desc" style={{ marginTop: '4px', display: 'block' }}>
+                                All cluster topology, dynamic stream routing, 75% CPU safety ceilings, and VIP failover controls have moved to the dedicated tab <strong>"Cluster & Nodes"</strong>.
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                            padding: '3px 10px',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            background: 'rgba(6, 182, 212, 0.15)',
+                            color: '#38BDF8',
+                            border: '1px solid rgba(6, 182, 212, 0.3)'
+                        }}>
+                            Configured Mode: {discovery.role || 'Active-Active'} ({discovery.clusterGroup || 'Production'})
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* STEALTH REPLAY STUDIO & AUTO-DIRECTOR ENGINE CONFIGURATION */}
+            {/* Principle of Secrecy: Feature settings strictly exposed ONLY if server has feature active */}
+            {isStealthAuthorized && hasReplayStudioFeature && (
+                <div className="security-subpanel stealth-studio-subpanel" style={{ borderColor: 'rgba(6, 182, 212, 0.35)', background: 'rgba(6, 182, 212, 0.03)' }}>
+                    <div className="subpanel-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 800 }}>STEALTH OPS</span>
+                            <h4 style={{ margin: 0 }}>AUTO-DIRECTOR & REPLAY STUDIO ENGINE</h4>
+                        </div>
+                        <span className="subpanel-desc">Configure forensic NLE playback limits, hardware decoder budget, buffer preload hysteresis, and multi-monitor focus tracking.</span>
+                    </div>
+
+                    <div className="settings-fields-row" style={{ marginTop: '16px' }}>
+                        {/* Max Concurrent Studio Feeds (Hard Capped at 6) */}
+                        <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                            <span>Max Concurrent Studio Playback Streams (Hard Cap: 6)</span>
+                            <div className="range-with-input">
+                                <div className="slider-input-inline-row">
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={6}
+                                        step={1}
+                                        value={Math.max(1, Math.min(6, Number(autoDirector.maxConcurrentScreens) || 6))}
+                                        onChange={e => updateAutoDirectorField?.('maxConcurrentScreens', Number(e.target.value))}
+                                        className="tactical-range-slider"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={6}
+                                        step={1}
+                                        value={Math.max(1, Math.min(6, Number(autoDirector.maxConcurrentScreens) || 6))}
+                                        onChange={e => updateAutoDirectorField?.('maxConcurrentScreens', Math.max(1, Math.min(6, Number(e.target.value))))}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="slider-ticks-track">
+                                    {studioScreenTicks.map((tick) => {
+                                        const THUMB_RADIUS = 12;
+                                        const pct = ((tick.val - 1) / (6 - 1)) * 100;
+                                        const isCurrent = (Number(autoDirector.maxConcurrentScreens) || 6) === tick.val;
+                                        return (
+                                            <button
+                                                key={tick.val}
+                                                type="button"
+                                                className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                                style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                                onClick={() => updateAutoDirectorField?.('maxConcurrentScreens', tick.val)}
+                                                title={`Cap at ${tick.label} Screens`}
+                                            >
+                                                <span className="tick-pip"></span>
+                                                <span className="tick-text">{tick.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                                ×”×’×‘×œ×ª ×›×ž×•×ª ×ž×¡×›×™ ×•×™×“××• ×ž×§×‘×™×œ×™× ×‘×”×¨×¦×” ×¡×™×ž×•×œ×˜× ×™×ª ×‘×ž×¢×¨×›×ª ×”×¢×¨×™×›×” (×ž×§×¡×™×ž×•× 6). ×ž×‘×˜×™×— ×‘×™×¦×•×¢×™× ×—×œ×§×™× ×œ×œ× ×§×¨×™×¡×ª Decoders.
+                            </span>
+                        </div>
+
+                        {/* Buffer Preload Lead-In Duration */}
+                        <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                            <span>Buffer Preload Lead-In (Seconds)</span>
+                            <div className="range-with-input">
+                                <div className="slider-input-inline-row">
+                                    <input
+                                        type="range"
+                                        min={0.5}
+                                        max={5.0}
+                                        step={0.5}
+                                        value={Math.max(0.5, Math.min(5.0, Number(autoDirector.bufferPreloadSeconds) || 2.0))}
+                                        onChange={e => updateAutoDirectorField?.('bufferPreloadSeconds', Number(e.target.value))}
+                                        className="tactical-range-slider"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={0.5}
+                                        max={5.0}
+                                        step={0.5}
+                                        value={Number(autoDirector.bufferPreloadSeconds) || 2.0}
+                                        onChange={e => updateAutoDirectorField?.('bufferPreloadSeconds', Math.max(0.5, Math.min(5.0, Number(e.target.value))))}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="slider-ticks-track">
+                                    {preloadTicks.map((tick) => {
+                                        const THUMB_RADIUS = 12;
+                                        const pct = ((tick.val - 0.5) / (5.0 - 0.5)) * 100;
+                                        const isCurrent = Math.abs((Number(autoDirector.bufferPreloadSeconds) || 2.0) - tick.val) < 0.1;
+                                        return (
+                                            <button
+                                                key={tick.val}
+                                                type="button"
+                                                className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                                style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                                onClick={() => updateAutoDirectorField?.('bufferPreloadSeconds', tick.val)}
+                                                title={`Set ${tick.label}`}
+                                            >
+                                                <span className="tick-pip"></span>
+                                                <span className="tick-text">{tick.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                                ×–×ž×Ÿ ×˜×¢×™× ×” ×ž×•×§×“× ×œ-Buffer ×œ×¤× ×™ ×ª×—×™×œ×ª ×”×©×ž×¢×” ×ž×§×‘×™×œ×™×ª. ×ž×•× ×¢ ×›× ×™×¡×” ×œ-Buffering ×œ×¡×™×¨×•×’×™×Ÿ ("××•×¨×’×Ÿ Buffer") ×‘×”×¨×¦×” ×©×œ ×ž×¡×¤×¨ ×ž×¡×›×™×.
+                            </span>
+                        </div>
+
+                        {/* Auto-Director Minimum Screen Dwell Time */}
+                        <div className="settings-field" style={{ flex: '1 1 100%', marginTop: '12px' }}>
+                            <span>Auto-Director Minimum Screen Dwell Time (Seconds)</span>
+                            <div className="range-with-input">
+                                <div className="slider-input-inline-row">
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={60}
+                                        step={1}
+                                        value={Math.max(1, Math.min(60, Number(autoDirector.minDwellSeconds) || 10))}
+                                        onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
+                                        className="tactical-range-slider"
+                                    />
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={120}
+                                        step={1}
+                                        value={autoDirector.minDwellSeconds || 10}
+                                        onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="slider-ticks-track">
+                                    {dwellTicks.map((tick) => {
+                                        const THUMB_RADIUS = 12;
+                                        const pct = ((tick.val - 1) / (60 - 1)) * 100;
+                                        const isCurrent = Number(autoDirector.minDwellSeconds || 10) === tick.val;
+                                        return (
+                                            <button
+                                                key={tick.val}
+                                                type="button"
+                                                className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                                style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                                onClick={() => updateAutoDirectorField?.('minDwellSeconds', tick.val)}
+                                                title={`Set ${tick.label}`}
+                                            >
+                                                <span className="tick-pip"></span>
+                                                <span className="tick-text">{tick.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                                ×–×ž×Ÿ ×©×”×™×™×” ×ž×™× ×™×ž×œ×™ ×‘×ž×¡×š ×œ×¤× ×™ ×ž×¢×‘×¨ ×œ×‘×ž××™ ×”××•×˜×•×ž×˜×™ (×‘×¨×™×¨×ª ×ž×—×“×œ: 10 ×©× ×™×•×ª). ×ž×•× ×¢ ×ž×¢×‘×¨×™× ×ž×”×™×¨×™× ×•×ª×›×•×¤×™× ×©×ž×¢×™×™×¤×™× ××ª ×”×¢×™×Ÿ ×‘×¡×¨×˜×•× ×™ ×©×—×–×•×¨ ×•×™×™×¦×•×.
+                            </span>
+                        </div>
+
+                        {/* Master Auto-Director Toggle */}
+                        <div style={{ marginTop: '12px', width: '100%' }}>
+                            <label className="tactical-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={autoDirector.enableAutoDirector !== false}
+                                    onChange={e => updateAutoDirectorField?.('enableAutoDirector', e.target.checked)}
+                                />
+                                <span>Enable Automated Multi-Monitor Camera Tracking in Replay Studio (Auto-Director)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            )}
         </fieldset>
     );
 }

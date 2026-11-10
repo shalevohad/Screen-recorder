@@ -1,7 +1,7 @@
 // ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
-import { useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
@@ -53,8 +53,39 @@ export default function DashboardGrid(props) {
 
     const hasNoAgentsInView = logic.processedStations.length === 0 && logic.activeInlineFeatures.length === 0;
 
+    // Tactical Cinema Theater Blur: Listen to embedded studio fullscreen transitions
+    const [isStudioFullscreen, setIsStudioFullscreen] = useState(false);
+
+    useEffect(() => {
+        const handleStudioFs = (e) => {
+            setIsStudioFullscreen(Boolean(e.detail?.isFullscreen));
+        };
+        const handleNativeFs = () => {
+            if (!document.fullscreenElement) {
+                setIsStudioFullscreen(false);
+            }
+        };
+        window.addEventListener('itb:studio-fullscreen-change', handleStudioFs);
+        document.addEventListener('fullscreenchange', handleNativeFs);
+        return () => {
+            window.removeEventListener('itb:studio-fullscreen-change', handleStudioFs);
+            document.removeEventListener('fullscreenchange', handleNativeFs);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (isStudioFullscreen) {
+            document.body?.classList?.add('is-studio-fullscreen');
+        } else {
+            document.body?.classList?.remove('is-studio-fullscreen');
+        }
+        return () => {
+            document.body?.classList?.remove('is-studio-fullscreen');
+        };
+    }, [isStudioFullscreen]);
+
     return (
-        <div className={`dashboard-layout-wrapper ${isFeatureMode ? 'is-feature-mode' : ''}`} dir={direction}>
+        <div className={`dashboard-layout-wrapper ${isFeatureMode ? 'is-feature-mode' : ''} ${isStudioFullscreen ? 'studio-theater-active' : ''}`} dir={direction}>
             <div className="dashboard-content-container">
 
                 <DashboardDock

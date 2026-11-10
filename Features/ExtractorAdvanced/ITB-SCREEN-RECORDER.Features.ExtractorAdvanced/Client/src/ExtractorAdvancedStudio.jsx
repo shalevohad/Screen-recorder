@@ -13,18 +13,21 @@ import SoloSpotlightModal from './components/Modals/SoloSpotlightModal.jsx';
 import ShortcutsHelpModal from './components/Modals/ShortcutsHelpModal.jsx';
 import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 import StationContextMenu from './components/Modals/StationContextMenu.jsx';
+import ExportOptionsModal from './components/Modals/ExportOptionsModal.jsx';
 
 import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
 import { useTimelineNavigation } from './hooks/useTimelineNavigation.js';
 import { useStudioHotkeys } from './hooks/useStudioHotkeys.js';
+import { updateKeyframeTransition, updateKeyframeClockPosition } from './utils/nleTimelineEngine.js';
 import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
 import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
+import { formatTimelineClock } from './utils/timeFormat.js';
+import { getCurrentOperatorName } from './utils/operatorStore.js';
+import { waveformStore } from './utils/waveformStore.js';
 
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
-
-const pad = (n) => String(n).padStart(2, '0');
 
 const generateDefaultTimeRange = (mode = 'LOCAL') => {
     const now = Date.now();
@@ -40,16 +43,38 @@ const generateDefaultTimeRange = (mode = 'LOCAL') => {
     };
 };
 
-export const parseSafeEpoch = (dateStr) => {
+export const parseSafeEpoch = (dateStr, timeStr = null, mode = 'LOCAL') => {
     if (!dateStr) return Date.now();
     if (typeof dateStr === 'number') return dateStr;
     const str = String(dateStr).trim();
     if (/^\d+$/.test(str)) return Number(str);
-    if (str.includes('T') && !str.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(str)) {
-        const [d, t] = str.split('T');
-        const epoch = dateTimeToEpochMs(d, t.substring(0, 8), 'LOCAL');
+    
+    // Explicit ISO strings with UTC 'Z' or timezone offset (+03:00 / -05:00) should be parsed directly as UTC ms
+    if (str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str)) {
+        const ms = Date.parse(str);
+        if (!isNaN(ms)) return ms;
+    }
+
+    let d = str;
+    let t = timeStr;
+    if (!t) {
+        if (str.includes('T')) {
+            const parts = str.split('T');
+            d = parts[0];
+            t = parts[1];
+        } else if (str.includes(' ')) {
+            const parts = str.split(' ');
+            d = parts[0];
+            t = parts[1];
+        }
+    }
+
+    if (d && t) {
+        const cleanT = t.replace(/[Zz].*$/, '').replace(/[+-]\d{2}:?\d{2}$/, '').substring(0, 8);
+        const epoch = dateTimeToEpochMs(d, cleanT, mode);
         if (epoch !== null && !isNaN(epoch)) return epoch;
     }
+
     const safeStr = str.replace(' ', 'T');
     const ms = new Date(safeStr).getTime();
     return isNaN(ms) ? Date.now() : ms;
@@ -68,7 +93,7 @@ export default function ExtractorAdvancedStudio() {
     const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
     const [keystrokeMode, setKeystrokeMode] = useState(cached.keystrokeMode || 'BURN_IN');
     const [showRulerKeystrokes, setShowRulerKeystrokes] = useState(() => {
-        return typeof cached.showRulerKeystrokes === 'boolean' ? cached.showRulerKeystrokes : false;
+        return typeof cached.showRulerKeystrokes === 'boolean' ? cached.showRulerKeystrokes : true;
     });
 
     useEffect(() => {
@@ -77,8 +102,8 @@ export default function ExtractorAdvancedStudio() {
 
     const baseEpochMs = useMemo(() => {
         if (timeRange.startEpochMs) return timeRange.startEpochMs;
-        return parseSafeEpoch(timeRange.start);
-    }, [timeRange.start, timeRange.startEpochMs]);
+        return parseSafeEpoch(timeRange.start, null, timeMode);
+    }, [timeRange.start, timeRange.startEpochMs, timeMode]);
 
     const bufferMs = useMemo(() => Math.max(60000, Math.round(timeRange.durationMs * 0.05)), [timeRange.durationMs]);
     const timelineBaseEpochMs = useMemo(() => baseEpochMs - bufferMs, [baseEpochMs, bufferMs]);
@@ -87,15 +112,187 @@ export default function ExtractorAdvancedStudio() {
     const [selectedStationIds, setSelectedStationIds] = useState(cached.selectedStationIds || []);
     const [activeStationId, setActiveStationId] = useState(cached.activeStationId || null);
     const [spotlightStationId, setSpotlightStationId] = useState(null);
+    const [spotlightInitialDisplayId, setSpotlightInitialDisplayId] = useState(null);
     const [globalGaps, setGlobalGaps] = useState([]);
     const [noStationsAlert, setNoStationsAlert] = useState(false);
 
     const [stationContextMenu, setStationContextMenu] = useState(null);
 
+    // Universal Studio Composition Engine State
+    const [compositionScope, setCompositionScope] = useState(() => {
+        return cached.compositionScope || (cached.selectedStationIds?.length > 1 ? 'inter-station' : 'intra-station');
+    });
+    // Solo mode: defaults automatically to 'canvas' while remembering the operator's last layout choice
+    const [compositionLayout, setCompositionLayoutState] = useState(() => {
+        try {
+            const saved = localStorage.getItem('itb_composition_layout');
+            if (saved) return saved;
+        } catch {}
+        return cached.compositionLayout || 'canvas';
+    });
+    const setCompositionLayout = useCallback((layout) => {
+        setCompositionLayoutState(prev => {
+            const next = typeof layout === 'function' ? layout(prev) : layout;
+            try {
+                localStorage.setItem('itb_composition_layout', next);
+            } catch {}
+            return next;
+        });
+    }, []);
+    const [isAutoDirectorEnabled, setIsAutoDirectorEnabled] = useState(() => {
+        return typeof cached.isAutoDirectorEnabled === 'boolean' ? cached.isAutoDirectorEnabled : true;
+    });
+    const [isPipSwapped, setIsPipSwapped] = useState(() => {
+        return Boolean(cached.isPipSwapped);
+    });
+
+    // Audio Routing Track State
+    const [audioRoutingPlan, setAudioRoutingPlan] = useState(() => {
+        return cached.audioRoutingPlan || null;
+    });
+    const [isAutoFollowAudio, setIsAutoFollowAudio] = useState(() => {
+        return typeof cached.isAutoFollowAudio === 'boolean' ? cached.isAutoFollowAudio : true;
+    });
+
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [currentCanvasLayout, setCurrentCanvasLayout] = useState(null);
+    const [canvasLayoutTimeline, setCanvasLayoutTimeline] = useState(() => {
+        return cached.canvasLayoutTimeline || null;
+    });
+    const [activeKfIndex, setActiveKfIndex] = useState(0);
+
+    const handleAddKeyframeAtEpoch = useCallback((targetEpoch) => {
+        setCanvasLayoutTimeline(prev => {
+            const currentKfs = [...(prev?.keyframes || [])];
+            const existingIdx = currentKfs.findIndex(k => Math.abs(k.timestampEpochMs - targetEpoch) < 300);
+            if (existingIdx >= 0) {
+                setActiveKfIndex(existingIdx);
+                return prev;
+            }
+
+            const activeKf = currentKfs[activeKfIndex] || currentKfs[0];
+            const activeLayout = activeKf?.layout || currentCanvasLayout || {
+                width: currentCanvasLayout?.width || 2560,
+                height: currentCanvasLayout?.height || 1440,
+                backgroundColor: '#070A10',
+                fps: 30.0,
+                placements: []
+            };
+
+            const prevKf = [...currentKfs].reverse().find(k => k.timestampEpochMs <= targetEpoch) || activeKf;
+            const targetClock = activeLayout?.utcClockPosition || prevKf?.utcClockPosition || prevKf?.layout?.utcClockPosition || 'top-right';
+
+            const clonedLayout = JSON.parse(JSON.stringify(activeLayout));
+            clonedLayout.utcClockPosition = targetClock;
+
+            const newKf = {
+                id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+                timestampEpochMs: Math.round(targetEpoch),
+                transitionDurationSec: 0.5,
+                transitionType: 'smooth',
+                utcClockPosition: targetClock,
+                layout: clonedLayout
+            };
+
+            const nextKfs = [...currentKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            const newIdx = nextKfs.findIndex(k => k.timestampEpochMs === Math.round(targetEpoch));
+            setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
+
+            return {
+                ...(prev || {}),
+                width: 1920,
+                height: 1080,
+                backgroundColor: '#070A10',
+                fps: 30.0,
+                keyframes: nextKfs
+            };
+        });
+    }, [activeKfIndex, currentCanvasLayout]);
+
+    const handleUpdateKeyframeTransition = useCallback((idx, patch) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            return updateKeyframeTransition(prev, idx, patch);
+        });
+    }, []);
+
+    const handleDeleteKeyframe = useCallback((idxToDelete) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length <= 1) return prev;
+            if (idxToDelete === 0) return prev; // Invariant: Root keyframe (index 0) cannot be deleted
+            const nextKfs = prev.keyframes.filter((_, i) => i !== idxToDelete);
+            setActiveKfIndex(prevIdx => {
+                if (prevIdx === idxToDelete) {
+                    return Math.max(0, idxToDelete - 1);
+                } else if (prevIdx > idxToDelete) {
+                    return prevIdx - 1;
+                }
+                return Math.min(prevIdx, nextKfs.length - 1);
+            });
+            return { ...prev, keyframes: nextKfs };
+        });
+    }, []);
+
+    const handleUpdateKeyframeClockPosition = useCallback((idx, clockPos) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            return updateKeyframeClockPosition(prev, idx, clockPos);
+        });
+    }, []);
+
+
+    
+
+    const handleUpdateKeyframeEpoch = useCallback((idxOrId, newEpoch) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            const targetEpoch = Math.round(newEpoch);
+            const foundIdx = typeof idxOrId === 'number' && prev.keyframes[idxOrId]
+                ? idxOrId
+                : prev.keyframes.findIndex(k => k.id === idxOrId);
+            if (foundIdx === -1) return prev;
+
+            const nextKfs = [...prev.keyframes];
+            nextKfs[foundIdx] = {
+                ...nextKfs[foundIdx],
+                timestampEpochMs: targetEpoch
+            };
+            nextKfs.sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            const newActiveIdx = nextKfs.findIndex(k => k.timestampEpochMs === targetEpoch);
+            if (newActiveIdx >= 0) setActiveKfIndex(newActiveIdx);
+            return {
+                ...prev,
+                keyframes: nextKfs
+            };
+        });
+    }, []);
+
+    // Notify parent app (CommandCenterHeader) that Studio editing mode is active to auto-collapse telemetry
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('itb:studio-mode', { detail: { active: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent('itb:studio-mode', { detail: { active: false } }));
+        };
+    }, []);
+
+    const [stationAutoDirectorMap, setStationAutoDirectorMap] = useState({});
+
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
         if (activeStationId === stationId) setActiveStationId(null);
         if (spotlightStationId === stationId) setSpotlightStationId(null);
+        // Purge deselected station from canvas layout keyframes
+        setCanvasLayoutTimeline(prev => {
+            if (!prev || !prev.keyframes) return prev;
+            const nextKfs = prev.keyframes.map(kf => ({
+                ...kf,
+                layout: {
+                    ...kf.layout,
+                    placements: (kf.layout?.placements || []).filter(p => p.stationId !== stationId)
+                }
+            }));
+            return { ...prev, keyframes: nextKfs };
+        });
     }, [activeStationId, spotlightStationId]);
 
     const handleStationContextMenu = useCallback((e, station) => {
@@ -143,6 +340,80 @@ export default function ExtractorAdvancedStudio() {
     const [inPointMs, setInPointMs] = useState(initialInPointMs);
     const [outPointMs, setOutPointMs] = useState(initialOutPointMs);
 
+    // Invariant (2026-11-04): Automatically ensure Keyframes exist at CUT boundaries (In and Out) and move with them
+    useEffect(() => {
+        if (!timelineBaseEpochMs) return;
+        const inEpoch = Math.round(timelineBaseEpochMs + inPointMs);
+        const outEpoch = Math.round(timelineBaseEpochMs + outPointMs);
+
+        setCanvasLayoutTimeline(prev => {
+            if (!prev || !prev.keyframes || prev.keyframes.length === 0) return prev;
+            let kfs = [...prev.keyframes];
+            let modified = false;
+
+            // Find or bind cut-in keyframe
+            let inKf = kfs.find(k => k.tag === 'cut-in');
+            if (inKf) {
+                if (inKf.timestampEpochMs !== inEpoch) {
+                    inKf.timestampEpochMs = inEpoch;
+                    modified = true;
+                }
+            } else {
+                const nearIn = kfs.find(k => Math.abs(k.timestampEpochMs - inEpoch) < 500);
+                if (nearIn) {
+                    nearIn.tag = 'cut-in';
+                    nearIn.timestampEpochMs = inEpoch;
+                    modified = true;
+                } else {
+                    const baseLayout = kfs[0]?.layout || currentCanvasLayout || { width: 1920, height: 1080, placements: [] };
+                    kfs.push({
+                        id: `kf_cut_in_${Date.now()}`,
+                        tag: 'cut-in',
+                        timestampEpochMs: inEpoch,
+                        transitionDurationSec: 0.5,
+                        transitionType: 'smooth',
+                        layout: JSON.parse(JSON.stringify(baseLayout))
+                    });
+                    modified = true;
+                }
+            }
+
+            // Find or bind cut-out keyframe
+            let outKf = kfs.find(k => k.tag === 'cut-out');
+            if (outKf) {
+                if (outKf.timestampEpochMs !== outEpoch) {
+                    outKf.timestampEpochMs = outEpoch;
+                    modified = true;
+                }
+            } else {
+                const nearOut = kfs.find(k => Math.abs(k.timestampEpochMs - outEpoch) < 500 && k.tag !== 'cut-in');
+                if (nearOut) {
+                    nearOut.tag = 'cut-out';
+                    nearOut.timestampEpochMs = outEpoch;
+                    modified = true;
+                } else {
+                    const baseLayout = kfs[kfs.length - 1]?.layout || currentCanvasLayout || { width: 1920, height: 1080, placements: [] };
+                    kfs.push({
+                        id: `kf_cut_out_${Date.now()}`,
+                        tag: 'cut-out',
+                        timestampEpochMs: outEpoch,
+                        transitionDurationSec: 0.5,
+                        transitionType: 'smooth',
+                        layout: JSON.parse(JSON.stringify(baseLayout))
+                    });
+                    modified = true;
+                }
+            }
+
+            if (!modified) return prev;
+            kfs.sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            return {
+                ...prev,
+                keyframes: kfs
+            };
+        });
+    }, [timelineBaseEpochMs, inPointMs, outPointMs, currentCanvasLayout]);
+
     const { allStations, recordingSegments, isLoadingStations, movieBoundaries } = useStudioData(
         timelineBaseEpochMs,
         totalTimelineDurationMs,
@@ -155,10 +426,187 @@ export default function ExtractorAdvancedStudio() {
         return allStations.find(s => s.id === activeStationId) || null;
     }, [allStations, activeStationId]);
 
+    const handleToggleStationAutoDirector = useCallback((stationId) => {
+        setStationAutoDirectorMap(prev => {
+            const nextState = !(prev[stationId] ?? true);
+            // Invariant (2026-11-04): When Auto-Director is turned OFF for a station,
+            // migrate any 'auto' placement for that station on the canvas to 'mon-0' (Primary Screen),
+            // so the system explicitly recognizes that Screen 1 is already on the Canvas and allows removing/toggling it!
+            setCanvasLayoutTimeline(layoutPrev => {
+                if (!layoutPrev?.keyframes) return layoutPrev;
+                const nextKfs = layoutPrev.keyframes.map(kf => {
+                    const placements = kf.layout?.placements || [];
+                    let modified = false;
+                    const updatedPlacements = placements.map(p => {
+                        if (p.stationId === stationId) {
+                            if (!nextState && (p.displayId === 'auto' || !p.displayId)) {
+                                modified = true;
+                                const st = allStations.find(s => s.id === stationId);
+                                return {
+                                    ...p,
+                                    displayId: 'mon-0',
+                                    label: `${st?.displayName || stationId} - Screen 1 (Main)`
+                                };
+                            } else if (nextState && (p.displayId === 'mon-0' || !p.displayId)) {
+                                const stationPlacementsCount = placements.filter(x => x.stationId === stationId).length;
+                                if (stationPlacementsCount === 1) {
+                                    modified = true;
+                                    const st = allStations.find(s => s.id === stationId);
+                                    return {
+                                        ...p,
+                                        displayId: 'auto',
+                                        label: `${st?.displayName || stationId} - Central Composition (Auto-Director)`
+                                    };
+                                }
+                            }
+                        }
+                        return p;
+                    });
+                    if (!modified) return kf;
+                    return {
+                        ...kf,
+                        layout: {
+                            ...kf.layout,
+                            placements: updatedPlacements
+                        }
+                    };
+                });
+                return { ...layoutPrev, keyframes: nextKfs };
+            });
+
+            return {
+                ...prev,
+                [stationId]: nextState
+            };
+        });
+    }, [allStations]);
+
+    const handleToggleDisplayOnCanvas = useCallback((stationId, displayId) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev || !prev.keyframes || prev.keyframes.length === 0) return prev;
+            const targetKfIdx = activeKfIndex >= 0 && activeKfIndex < prev.keyframes.length ? activeKfIndex : 0;
+            const currentKf = prev.keyframes[targetKfIdx];
+            const placements = currentKf?.layout?.placements || [];
+            const normDispId = (displayId || 'mon-0').toLowerCase();
+            const existingIdx = placements.findIndex(p => {
+                if (p.stationId !== stationId) return false;
+                const pDisp = (p.displayId || 'mon-0').toLowerCase();
+                if (pDisp === normDispId) return true;
+                if (pDisp === 'auto' && (normDispId === 'mon-0' || normDispId === 'screen-0')) return true;
+                return false;
+            });
+
+            let nextPlacements;
+            if (existingIdx >= 0) {
+                nextPlacements = placements.filter((_, i) => i !== existingIdx);
+            } else {
+                const st = allStations.find(s => s.id === stationId);
+                const disp = st?.displays?.find(d => (d.displayId || '').toLowerCase() === normDispId) || { displayId: normDispId, width: 1920, height: 1080 };
+                const srcW = disp.width || 1920;
+                const srcH = disp.height || 1080;
+                const aspect = srcW / srcH;
+                const initW = aspect >= 1 ? 640 : Math.round(360 * aspect);
+                const initH = aspect >= 1 ? Math.round(640 / aspect) : 360;
+                const newPlacement = {
+                    stationId,
+                    displayId: normDispId,
+                    label: `${st?.displayName || stationId} - ${disp.displayName || normDispId}`,
+                    x: 120 + (placements.length * 40) % 800,
+                    y: 100 + (placements.length * 40) % 500,
+                    width: initW,
+                    height: initH,
+                    sourceWidth: srcW,
+                    sourceHeight: srcH,
+                    nativeAspectRatio: aspect,
+                    aspectRatio: aspect,
+                    zIndex: placements.length,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: '#06B6D4',
+                    shadowEffect: 'deep',
+                    borderRadius: 0
+                };
+                nextPlacements = [...placements, newPlacement];
+            }
+
+            const nextKfs = [...prev.keyframes];
+            nextKfs[targetKfIdx] = {
+                ...nextKfs[targetKfIdx],
+                layout: {
+                    ...nextKfs[targetKfIdx].layout,
+                    placements: nextPlacements
+                }
+            };
+            return { ...prev, keyframes: nextKfs };
+        });
+    }, [activeKfIndex, allStations]);
+
     const timelineStations = useMemo(() => {
         if (!selectedStationIds || selectedStationIds.length === 0) return [];
         return allStations.filter(s => selectedStationIds.includes(s.id));
     }, [allStations, selectedStationIds]);
+
+    // Guarantee Root Keyframe and Cut Out Keyframe on session mount
+    useEffect(() => {
+        if (!timelineBaseEpochMs || isNaN(timelineBaseEpochMs)) return;
+        setCanvasLayoutTimeline(prev => {
+            if (prev?.keyframes && prev.keyframes.length > 0) return prev;
+            const inEpoch = timelineBaseEpochMs + (inPointMs || 0);
+            const outEpoch = timelineBaseEpochMs + (outPointMs || totalTimelineDurationMs || 3600000);
+            const initialW = currentCanvasLayout?.width || 2560;
+            const initialH = currentCanvasLayout?.height || 1440;
+            const initialLayout = currentCanvasLayout || {
+                width: initialW,
+                height: initialH,
+                backgroundColor: "#070A10",
+                preset: 'auto-grid',
+                fps: 30.0,
+                placements: []
+            };
+            return {
+                width: initialW,
+                height: initialH,
+                backgroundColor: "#070A10",
+                fps: 30.0,
+                keyframes: [
+                    {
+                        id: `kf_root_${inEpoch}`,
+                        timestampEpochMs: Math.round(inEpoch),
+                        transitionDurationSec: 0.5,
+                        transitionType: "smooth",
+                        layout: JSON.parse(JSON.stringify(initialLayout))
+                    },
+                    {
+                        id: `kf_out_${outEpoch}`,
+                        timestampEpochMs: Math.round(outEpoch),
+                        transitionDurationSec: 0.5,
+                        transitionType: "smooth",
+                        layout: JSON.parse(JSON.stringify(initialLayout))
+                    }
+                ]
+            };
+        });
+    }, [timelineBaseEpochMs, inPointMs, outPointMs, totalTimelineDurationMs, currentCanvasLayout]);
+
+    // Pre-fetch real acoustic waveforms for timeline stations across active visible session (debounced & cancellable)
+    useEffect(() => {
+        if (!timelineStations || timelineStations.length === 0 || !timelineBaseEpochMs || isNaN(timelineBaseEpochMs)) return;
+        const startEpoch = timelineBaseEpochMs;
+        const endEpoch = timelineBaseEpochMs + (totalTimelineDurationMs || 3600000);
+        if (endEpoch <= startEpoch) return;
+
+        const abortCtrl = new AbortController();
+        const debounceTimer = setTimeout(() => {
+            timelineStations.forEach(st => {
+                waveformStore.fetchWaveform(st.id, startEpoch, endEpoch, abortCtrl.signal, 250);
+            });
+        }, 300);
+
+        return () => {
+            clearTimeout(debounceTimer);
+            abortCtrl.abort();
+        };
+    }, [timelineStations, timelineBaseEpochMs, totalTimelineDurationMs]);
 
     const spotlightStation = useMemo(() => {
         return allStations.find(s => s.id === spotlightStationId) || null;
@@ -191,7 +639,8 @@ export default function ExtractorAdvancedStudio() {
         initialPlayheadMs,
         initialIsPlaying: false,
         initialIsLooping: cached.isLooping !== undefined ? cached.isLooping : true,
-        initialPlaybackSpeed: cached.playbackSpeed || 1
+        initialPlaybackSpeed: cached.playbackSpeed || 1,
+        isGridMode: !activeStationId
     });
 
     const {
@@ -219,13 +668,28 @@ export default function ExtractorAdvancedStudio() {
 
     const [activeStationKeystrokes, setActiveStationKeystrokes] = useState([]);
 
-    useEffect(() => {
-        const targetStation = isSpotlightOpen ? (spotlightStation || activeStation) : activeStation;
-        const stationName = targetStation?.hostname || targetStation?.displayName || targetStation?.id;
-        const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        const shouldFetch = (normalizedMode !== 'NONE' && normalizedMode !== 'OFF') || showRulerKeystrokes;
+    const targetKeystrokeStations = useMemo(() => {
+        if (timelineStations && timelineStations.length > 0) {
+            return timelineStations;
+        }
+        if (activeStation) {
+            return [activeStation];
+        }
+        if (spotlightStation) {
+            return [spotlightStation];
+        }
+        return [];
+    }, [timelineStations, activeStation, spotlightStation]);
 
-        if (!stationName || !timelineBaseEpochMs || !shouldFetch) {
+    const targetKeystrokeStationsKey = useMemo(() => {
+        return targetKeystrokeStations.map(s => `${s.id}:${s.hostname || s.id}:${s.displayName || ''}`).join('|');
+    }, [targetKeystrokeStations]);
+
+    useEffect(() => {
+        const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+        const shouldFetch = (normalizedMode === 'BURN_IN') || showRulerKeystrokes;
+
+        if (!targetKeystrokeStations.length || !timelineBaseEpochMs || !shouldFetch) {
             setActiveStationKeystrokes([]);
             return;
         }
@@ -234,24 +698,37 @@ export default function ExtractorAdvancedStudio() {
         const endEpoch = timelineBaseEpochMs + totalTimelineDurationMs + 5000;
         const ac = new AbortController();
 
-        fetch(`/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(stationName)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`, { signal: ac.signal })
-            .then(res => res.ok ? res.json() : [])
-            .then(data => setActiveStationKeystrokes(Array.isArray(data) ? data : []))
+        const fetches = targetKeystrokeStations.map(st => {
+            const stationIdentifier = st.hostname || st.displayName || st.id;
+            const stationDisplayName = st.displayName || st.hostname || st.name || st.id;
+            return fetch(`/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(stationIdentifier)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`, { signal: ac.signal })
+                .then(res => res.ok ? res.json() : [])
+                .then(data => (Array.isArray(data) ? data : []).map(evt => ({
+                    ...evt,
+                    stationId: st.id,
+                    stationName: stationDisplayName,
+                    stationHostname: st.hostname || st.id
+                })))
+                .catch(err => {
+                    if (err.name !== 'AbortError') return [];
+                    throw err;
+                });
+        });
+
+        Promise.all(fetches)
+            .then(results => {
+                const combined = results.flat();
+                combined.sort((a, b) => (a.epochMs || 0) - (b.epochMs || 0));
+                setActiveStationKeystrokes(combined);
+            })
             .catch(err => {
                 if (err.name !== 'AbortError') setActiveStationKeystrokes([]);
             });
 
         return () => ac.abort();
-    }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode, showRulerKeystrokes]);
+    }, [targetKeystrokeStationsKey, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode, showRulerKeystrokes]);
 
-    useEffect(() => {
-        if (selectedStationIds.length === 1) {
-            const singleId = selectedStationIds[0];
-            if (activeStationId !== singleId) {
-                setActiveStationId(singleId);
-            }
-        }
-    }, [selectedStationIds, activeStationId]);
+// Single station opens directly into Master Canvas Grid for WYSIWYG editing
 
     useEffect(() => {
         if (isLoadingStations) return;
@@ -283,33 +760,109 @@ export default function ExtractorAdvancedStudio() {
     }, [isLoadingStations, allStations]);
 
     const handleSelectActiveStation = useCallback((id) => {
-        if (selectedStationIds.length <= 1) return;
         if (id === null) {
             setIsPlaying(false);
             setPlaybackSpeed(1);
-        } else if (id !== activeStationId) {
+            setActiveStationId(null);
+            return;
+        }
+        if (id !== activeStationId) {
             setPlaybackSpeed(1);
         }
         setActiveStationId(id);
-    }, [activeStationId, selectedStationIds.length, setIsPlaying, setPlaybackSpeed]);
+    }, [activeStationId, setIsPlaying, setPlaybackSpeed]);
 
-    const handleOpenSpotlightFullscreen = useCallback((id) => {
+    const handleOpenSpotlightFullscreen = useCallback((id, targetDisplayId = null) => {
         if (id !== activeStationId) setPlaybackSpeed(1);
         lastViewBeforeFullscreenRef.current = (selectedStationIds.length <= 1 || activeStationId) ? 'spotlight' : 'grid';
         setActiveStationId(id);
         setSpotlightStationId(id);
+        setSpotlightInitialDisplayId(targetDisplayId || null);
     }, [activeStationId, selectedStationIds.length, setPlaybackSpeed]);
 
     const handleCloseSpotlightFullscreen = useCallback(() => {
         setSpotlightStationId(null);
-        if (selectedStationIds.length <= 1) {
-            if (selectedStationIds.length === 1) setActiveStationId(selectedStationIds[0]);
-            return;
-        }
+        setSpotlightInitialDisplayId(null);
         if (lastViewBeforeFullscreenRef.current === 'grid') {
             setActiveStationId(null);
         }
-    }, [selectedStationIds]);
+    }, []);
+
+    // Master Audio Routing Management
+    const effectiveAudioPlan = useMemo(() => {
+        if (audioRoutingPlan?.segments && audioRoutingPlan.segments.length > 0) {
+            return audioRoutingPlan;
+        }
+        const defaultStationId = selectedStationIds[0] || activeStationId || 'mon-0';
+        return {
+            segments: [
+                {
+                    startEpochMs: timelineBaseEpochMs,
+                    endEpochMs: timelineBaseEpochMs + totalTimelineDurationMs,
+                    sourceStationId: defaultStationId
+                }
+            ]
+        };
+    }, [audioRoutingPlan, selectedStationIds, activeStationId, timelineBaseEpochMs, totalTimelineDurationMs]);
+
+    const handleSplitAudioSegment = useCallback((splitEpochMs) => {
+        setAudioRoutingPlan(prev => {
+            const plan = prev || effectiveAudioPlan;
+            const segments = [...(plan.segments || [])];
+            const segIdx = segments.findIndex(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                return splitEpochMs > s + 500 && splitEpochMs < e - 500;
+            });
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            const s = targetSeg.startEpochMs ?? targetSeg.StartEpochMs ?? 0;
+            const e = targetSeg.endEpochMs ?? targetSeg.EndEpochMs ?? 0;
+            const stId = targetSeg.sourceStationId ?? targetSeg.SourceStationId ?? selectedStationIds[0];
+
+            const seg1 = { startEpochMs: s, endEpochMs: splitEpochMs, sourceStationId: stId };
+            const seg2 = { startEpochMs: splitEpochMs, endEpochMs: e, sourceStationId: stId };
+
+            segments.splice(segIdx, 1, seg1, seg2);
+            return { ...plan, segments };
+        });
+    }, [effectiveAudioPlan, selectedStationIds]);
+
+    const handleChangeAudioSegmentStation = useCallback((segmentEpochMs, newStationId) => {
+        setAudioRoutingPlan(prev => {
+            const plan = prev || effectiveAudioPlan;
+            const segments = (plan.segments || []).map(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                if (segmentEpochMs >= s && segmentEpochMs <= e) {
+                    return { ...seg, sourceStationId: newStationId };
+                }
+                return seg;
+            });
+            return { ...plan, segments };
+        });
+        setIsAutoFollowAudio(false);
+    }, [effectiveAudioPlan]);
+
+    const handleChangeAudioSegmentGain = useCallback((segmentEpochMs, newGain) => {
+        setAudioRoutingPlan(prev => {
+            const plan = prev || effectiveAudioPlan;
+            const segments = (plan.segments || []).map(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                if (segmentEpochMs >= s && segmentEpochMs <= e) {
+                    return { ...seg, gain: newGain };
+                }
+                return seg;
+            });
+            return { ...plan, segments };
+        });
+    }, [effectiveAudioPlan]);
+
+    const handleFollowVisualFeed = useCallback(() => {
+        setIsAutoFollowAudio(prev => !prev);
+    }, []);
 
     // Multi-Monitor Auto-Director State & Manual Overrides
     const [stationDirectorPlans, setStationDirectorPlans] = useState({});
@@ -362,33 +915,133 @@ export default function ExtractorAdvancedStudio() {
         if (!stId) return;
         setStationDirectorPlans(prev => {
             const plan = prev[stId] || getStationPlan(stId);
-            const segments = (plan.segments || []).map(seg => {
+            const segments = [...(plan.segments || [])];
+            // Match specific segment: prioritize strict containment (midpoint) to avoid adjacent boundary collisions
+            let segIdx = segments.findIndex(seg => {
                 const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                 const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
-                if (segmentEpochMs >= s && segmentEpochMs <= e) {
-                    return { ...seg, targetDisplayId: newDisplayId, isManualOverride: true };
-                }
-                return seg;
+                return segmentEpochMs > s && segmentEpochMs < e;
             });
+            if (segIdx === -1) {
+                segIdx = segments.findIndex(seg => {
+                    const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                    const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                    return segmentEpochMs >= s && segmentEpochMs <= e;
+                });
+            }
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            segments[segIdx] = { ...targetSeg, targetDisplayId: newDisplayId, isManualOverride: true };
             return { ...prev, [stId]: { ...plan, segments } };
         });
     }, [getStationPlan]);
 
     const handleResetDirectorSegmentToAuto = useCallback((stId, segmentEpochMs) => {
         if (!stId) return;
+        const targetStation = allStations.find(s => s.id === stId);
+        const autoPlan = targetStation?.directorPlan;
+
         setStationDirectorPlans(prev => {
             const plan = prev[stId] || getStationPlan(stId);
-            const segments = (plan.segments || []).map(seg => {
+            const segments = [...(plan.segments || [])];
+
+            let segIdx = segments.findIndex(seg => {
                 const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                 const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
-                if (segmentEpochMs >= s && segmentEpochMs <= e) {
-                    return { ...seg, targetDisplayId: 'mon-0', isManualOverride: false };
-                }
-                return seg;
+                return segmentEpochMs > s && segmentEpochMs < e;
             });
+            if (segIdx === -1) {
+                segIdx = segments.findIndex(seg => {
+                    const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                    const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                    return segmentEpochMs >= s && segmentEpochMs <= e;
+                });
+            }
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            const s = targetSeg.startEpochMs ?? targetSeg.StartEpochMs ?? 0;
+            const e = targetSeg.endEpochMs ?? targetSeg.EndEpochMs ?? 0;
+            const mid = (s + e) / 2;
+
+            const autoSeg = autoPlan?.segments?.find(as => {
+                const start = as.startEpochMs ?? as.StartEpochMs ?? 0;
+                const end = as.endEpochMs ?? as.EndEpochMs ?? 0;
+                return mid >= start && mid <= end;
+            });
+            const autoDisplay = autoSeg ? (autoSeg.targetDisplayId ?? autoSeg.TargetDisplayId ?? 'mon-0') : 'mon-0';
+
+            segments[segIdx] = { ...targetSeg, targetDisplayId: autoDisplay, isManualOverride: false };
             return { ...prev, [stId]: { ...plan, segments } };
         });
-    }, [getStationPlan]);
+    }, [allStations, getStationPlan]);
+
+    // Invariant (2026-11-05): Re-plan Auto-Director when CUT window (IN / OUT points) expands or changes
+    // Listens to cut range adjustments and fetches refined director plan for multi-display stations,
+    // preserving any manual overrides while covering newly added deltas.
+    useEffect(() => {
+        if (!timelineStations || timelineStations.length === 0 || isNaN(timelineBaseEpochMs)) return;
+        const cutStartEpoch = timelineBaseEpochMs + inPointMs;
+        const cutEndEpoch = timelineBaseEpochMs + outPointMs;
+        if (cutEndEpoch <= cutStartEpoch) return;
+
+        const timer = setTimeout(async () => {
+            const multiStations = timelineStations.filter(s => {
+                const disps = s.displays || s.Displays || s.displayTopology?.displays || [];
+                return disps.length > 1;
+            });
+            if (multiStations.length === 0) return;
+
+            for (const st of multiStations) {
+                try {
+                    const res = await fetch(`/api/v1/extractor-advanced/director-plan?stationId=${encodeURIComponent(st.id)}&startEpoch=${cutStartEpoch}&endEpoch=${cutEndEpoch}`);
+                    if (res.ok) {
+                        const newPlan = await res.json();
+                        if (newPlan?.segments && newPlan.segments.length > 0) {
+                            setStationDirectorPlans(prev => {
+                                const currentPlan = prev[st.id] || st.directorPlan;
+                                const manualOverrides = (currentPlan?.segments || []).filter(s => s.isManualOverride || s.IsManualOverride);
+
+                                if (manualOverrides.length === 0) {
+                                    return { ...prev, [st.id]: newPlan };
+                                }
+
+                                const merged = [...newPlan.segments];
+                                manualOverrides.forEach(mo => {
+                                    const mStart = mo.startEpochMs ?? mo.StartEpochMs;
+                                    const mEnd = mo.endEpochMs ?? mo.EndEpochMs;
+                                    for (let i = merged.length - 1; i >= 0; i--) {
+                                        const s = merged[i].startEpochMs ?? merged[i].StartEpochMs;
+                                        const e = merged[i].endEpochMs ?? merged[i].EndEpochMs;
+                                        if (e <= mStart || s >= mEnd) continue;
+                                        if (s >= mStart && e <= mEnd) {
+                                            merged.splice(i, 1);
+                                        } else if (s < mStart && e > mEnd) {
+                                            const left = { ...merged[i], endEpochMs: mStart };
+                                            const right = { ...merged[i], startEpochMs: mEnd };
+                                            merged.splice(i, 1, left, right);
+                                        } else if (s < mStart) {
+                                            merged[i].endEpochMs = mStart;
+                                        } else if (e > mEnd) {
+                                            merged[i].startEpochMs = mEnd;
+                                        }
+                                    }
+                                    merged.push(mo);
+                                });
+                                merged.sort((a, b) => (a.startEpochMs ?? a.StartEpochMs) - (b.startEpochMs ?? b.StartEpochMs));
+                                return { ...prev, [st.id]: { ...newPlan, segments: merged } };
+                            });
+                        }
+                    }
+                } catch {
+                    // Graceful fallback
+                }
+            }
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [inPointMs, outPointMs, timelineStations, timelineBaseEpochMs]);
 
     const enrichedTimelineStations = useMemo(() => {
         return timelineStations.map(st => ({
@@ -413,7 +1066,116 @@ export default function ExtractorAdvancedStudio() {
         };
     }, [spotlightStation, stationDirectorPlans, getStationPlan]);
 
+    const formatCutDurationSMPTE = (durationMs, fps = 30) => {
+        const totalMs = Math.max(0, durationMs);
+        const totalSeconds = Math.floor(totalMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const frames = Math.floor(((totalMs % 1000) / 1000) * fps);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(frames)}`;
+    };
+
+    const [isGridFullscreen, setIsGridFullscreen] = useState(false);
+    const [isCinemaDockVisible, setIsCinemaDockVisible] = useState(true);
+    const [isHoveringCinemaDock, setIsHoveringCinemaDock] = useState(false);
+    const cinemaIdleTimerRef = useRef(null);
+
+    const hasGridPlacements = useMemo(() => {
+        const kfs = canvasLayoutTimeline?.keyframes;
+        const kf = kfs?.[activeKfIndex] || kfs?.[0];
+        const placements = kf?.layout?.placements || currentCanvasLayout?.placements || [];
+        return placements.length > 0 || (selectedStationIds && selectedStationIds.length > 0);
+    }, [canvasLayoutTimeline, activeKfIndex, currentCanvasLayout, selectedStationIds]);
+
+    const resetCinemaIdleTimer = useCallback(() => {
+        if (cinemaIdleTimerRef.current) clearTimeout(cinemaIdleTimerRef.current);
+        setIsCinemaDockVisible(true);
+        cinemaIdleTimerRef.current = setTimeout(() => {
+            if (!isHoveringCinemaDock) {
+                setIsCinemaDockVisible(false);
+            }
+        }, 2500);
+    }, [isHoveringCinemaDock]);
+
+    useEffect(() => {
+        if (!isGridFullscreen) {
+            setIsCinemaDockVisible(true);
+            if (cinemaIdleTimerRef.current) clearTimeout(cinemaIdleTimerRef.current);
+            return;
+        }
+
+        const handleMouseMove = (e) => {
+            if (e.clientY >= window.innerHeight - 280) {
+                setIsCinemaDockVisible(true);
+            }
+            resetCinemaIdleTimer();
+        };
+
+        window.addEventListener('mousemove', handleMouseMove, { passive: true });
+        resetCinemaIdleTimer();
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            if (cinemaIdleTimerRef.current) clearTimeout(cinemaIdleTimerRef.current);
+        };
+    }, [isGridFullscreen, resetCinemaIdleTimer]);
+
+    const handleToggleGridFullscreen = useCallback(() => {
+        setIsGridFullscreen(prev => {
+            const next = !prev;
+            if (next) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                }
+            } else {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            }
+            return next;
+        });
+    }, []);
+
+    const handleExitGridFullscreen = useCallback(() => {
+        setIsGridFullscreen(false);
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isGridFullscreen) {
+            document.body?.classList?.add('is-studio-fullscreen');
+            window.dispatchEvent(new CustomEvent('itb:studio-fullscreen-change', {
+                detail: { isFullscreen: true }
+            }));
+        } else {
+            document.body?.classList?.remove('is-studio-fullscreen');
+            window.dispatchEvent(new CustomEvent('itb:studio-fullscreen-change', {
+                detail: { isFullscreen: false }
+            }));
+        }
+        return () => {
+            document.body?.classList?.remove('is-studio-fullscreen');
+        };
+    }, [isGridFullscreen]);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            if (!document.fullscreenElement && isGridFullscreen) {
+                setIsGridFullscreen(false);
+            }
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, [isGridFullscreen]);
+
+    const [activeFocusZone, setActiveFocusZone] = useState('timeline');
+
     useStudioHotkeys({
+        activeFocusZone,
         activeStationId,
         spotlightStationId,
         timelineStations: enrichedTimelineStations,
@@ -440,7 +1202,11 @@ export default function ExtractorAdvancedStudio() {
                 }
             }
         },
-        isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen
+        isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen,
+        hasGridPlacements,
+        onToggleGridFullscreen: handleToggleGridFullscreen,
+        isGridFullscreen,
+        onExitGridFullscreen: handleExitGridFullscreen
     });
 
     useEffect(() => {
@@ -465,7 +1231,14 @@ export default function ExtractorAdvancedStudio() {
             isLooping,
             playbackSpeed,
             keystrokeMode,
-            showRulerKeystrokes
+            showRulerKeystrokes,
+            compositionScope,
+            compositionLayout,
+            isAutoDirectorEnabled,
+            isPipSwapped,
+            audioRoutingPlan: effectiveAudioPlan,
+            isAutoFollowAudio,
+            canvasLayoutTimeline
         });
     }, [
         timeRange,
@@ -482,7 +1255,14 @@ export default function ExtractorAdvancedStudio() {
         playbackSpeed,
         timelineBaseEpochMs,
         keystrokeMode,
-        showRulerKeystrokes
+        showRulerKeystrokes,
+        compositionScope,
+        compositionLayout,
+        isAutoDirectorEnabled,
+        isPipSwapped,
+        effectiveAudioPlan,
+        isAutoFollowAudio,
+        canvasLayoutTimeline
     ]);
 
     const handleLoadBookmark = useCallback((bm) => {
@@ -538,9 +1318,6 @@ export default function ExtractorAdvancedStudio() {
             } else if (rawActiveId && stationsToSelect.includes(rawActiveId)) {
                 setActiveStationId(rawActiveId);
                 setSpotlightStationId(null);
-            } else if (stationsToSelect.length === 1) {
-                setActiveStationId(stationsToSelect[0]);
-                setSpotlightStationId(null);
             } else {
                 setActiveStationId(null);
                 setSpotlightStationId(null);
@@ -553,10 +1330,12 @@ export default function ExtractorAdvancedStudio() {
     }, []);
 
     const handleApplyRange = useCallback((newRange) => {
-        const startMs = newRange.startEpochMs || parseSafeEpoch(newRange.start);
-        const endMs = newRange.endEpochMs || parseSafeEpoch(newRange.end);
+        const startMs = newRange.startEpochMs || parseSafeEpoch(newRange.start, null, timeMode);
+        const endMs = newRange.endEpochMs || parseSafeEpoch(newRange.end, null, timeMode);
         const durationMs = Math.max(0, endMs - startMs) || 14400000;
         const newBuf = Math.max(60000, Math.round(durationMs * 0.05));
+        const newTimelineBase = startMs - newBuf;
+        const newTotalDuration = durationMs + (2 * newBuf);
 
         setTimeRange({
             ...newRange,
@@ -568,40 +1347,128 @@ export default function ExtractorAdvancedStudio() {
         setInPointMs(newBuf);
         setOutPointMs(newBuf + durationMs);
         setPlayheadMs(newBuf);
-    }, []);
 
-    const handleExecuteExport = useCallback(async () => {
+        // Sanitize & re-anchor canvas timeline keyframes to new timeline range
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            const updated = prev.keyframes.map((kf, i) => {
+                if (i === 0) return { ...kf, timestampEpochMs: newTimelineBase };
+                return kf;
+            }).filter(kf => kf.timestampEpochMs >= newTimelineBase && kf.timestampEpochMs <= newTimelineBase + newTotalDuration);
+            return { ...prev, keyframes: updated };
+        });
+
+        // Re-anchor audio routing plan if existing segments fall outside the new window
+        setAudioRoutingPlan(prev => {
+            if (!prev?.segments || prev.segments.length === 0) return prev;
+            const hasOverlap = prev.segments.some(s => {
+                const segStart = s.startEpochMs ?? s.StartEpochMs ?? 0;
+                const segEnd = s.endEpochMs ?? s.EndEpochMs ?? 0;
+                return segEnd > newTimelineBase && segStart < newTimelineBase + newTotalDuration;
+            });
+            if (!hasOverlap) {
+                const defaultStationId = selectedStationIds[0] || activeStationId || 'station-0';
+                return {
+                    segments: [
+                        {
+                            startEpochMs: newTimelineBase,
+                            endEpochMs: newTimelineBase + newTotalDuration,
+                            sourceStationId: defaultStationId
+                        }
+                    ]
+                };
+            }
+            return prev;
+        });
+
+        // Reset manual overrides so fresh director analysis is loaded for the new scope
+        setStationDirectorPlans({});
+    }, [timeMode, selectedStationIds, activeStationId]);
+
+    const handleExecuteExport = useCallback(() => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
+        setIsExportModalOpen(true);
+    }, [timelineStations]);
 
-        let resolvedMode;
-        const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
-        else if (normMode === 'CAPTION') resolvedMode = 'Caption';
-        else resolvedMode = 'BurnIn';
+    const handleConfirmMasterExport = useCallback(async (chosenKeystrokeMode, chosenResolution, notes = '') => {
+        const targetStationIds = timelineStations.map(s => s.id);
+        if (targetStationIds.length === 0) return;
+
+        let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
+        const targetResolution = chosenResolution || 'NATIVE';
+
+        const stationDirectorSegsMap = {};
+        timelineStations.forEach(st => {
+            const plan = stationDirectorPlans[st.id] || st.directorPlan;
+            if (plan?.segments?.length > 0) {
+                stationDirectorSegsMap[st.id] = plan.segments.map(s => ({
+                    startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? 0,
+                    endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? 0,
+                    targetDisplayId: s.targetDisplayId ?? s.TargetDisplayId ?? 'mon-0',
+                    targetDisplayNumber: s.targetDisplayNumber ?? s.TargetDisplayNumber ?? 1,
+                    targetDisplayName: s.targetDisplayName ?? s.TargetDisplayName ?? 'Screen 1',
+                    isManualOverride: Boolean(s.isManualOverride ?? s.IsManualOverride)
+                }));
+            }
+        });
+
+        const directorSegs = stationDirectorSegsMap[enrichedActiveStation?.id] ||
+            ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1))
+            ? (enrichedActiveStation?.directorPlan?.segments || [])
+            : [];
 
         try {
             const response = await fetch('/api/v1/extractor-advanced/cut', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    createdBy: getCurrentOperatorName(),
+                    notes: (notes || '').trim(),
                     stationIds: targetStationIds,
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
                     keystrokeMode: resolvedMode,
-                    layoutMode: ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1)) ? 'director' : 'mon-0',
-                    isPipSwapped: false,
-                    directorSegments: ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1)) ? (enrichedActiveStation?.directorPlan?.segments || []) : []
+                    resolution: targetResolution || canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
+                    videoQuality: targetResolution || canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
+                    compositionScope: compositionScope,
+                    layoutMode: 'canvas',
+                    canvasLayout: currentCanvasLayout,
+                    canvasLayoutTimeline: canvasLayoutTimeline || currentCanvasLayout?.timeline || null,
+                    isPipSwapped: isPipSwapped,
+                    isAutoDirectorEnabled: isAutoDirectorEnabled,
+                    directorSegments: directorSegs,
+                    stationDirectorSegments: stationDirectorSegsMap,
+                    audioRoutingSegments: effectiveAudioPlan.segments || [],
+                    utcClockPosition: (() => {
+                        if (canvasLayoutTimeline?.keyframes?.[0]?.utcClockPosition) {
+                            return canvasLayoutTimeline.keyframes[0].utcClockPosition;
+                        }
+                        if (currentCanvasLayout?.utcClockPosition) {
+                            return currentCanvasLayout.utcClockPosition;
+                        }
+                        try {
+                            return localStorage.getItem('itb_canvas_utc_clock_pos') || 'top-right';
+                        } catch {
+                            return 'top-right';
+                        }
+                    })()
                 })
             });
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                const errorPayload = await response.json().catch(() => ({}));
+                throw new Error(errorPayload.message || errorPayload.error || `HTTP ${response.status}`);
+            }
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         } catch (error) {
             console.error('[Studio] Export failed:', error);
-            alert('Failed to launch background export job.');
+            alert(`Failed to launch background master MP4 export job: ${error.message}`);
         }
-    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, keystrokeMode]);
+    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, currentCanvasLayout, canvasLayoutTimeline, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
+
+    
+
 
     const handleResetStudioSession = useCallback(() => {
         clearStudioSessionCache();
@@ -630,8 +1497,25 @@ export default function ExtractorAdvancedStudio() {
     const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const currentPlayheadEpochMs = timelineBaseEpochMs + playheadMs;
 
+    // Synchronize active layout keyframe index with current playhead epoch during playback and scrubbing
+    useEffect(() => {
+        const kfs = canvasLayoutTimeline?.keyframes;
+        if (!kfs || kfs.length === 0) return;
+        let targetIdx = 0;
+        for (let i = 0; i < kfs.length; i++) {
+            if (kfs[i].timestampEpochMs <= currentPlayheadEpochMs + 50) {
+                targetIdx = i;
+            } else {
+                break;
+            }
+        }
+        if (targetIdx !== activeKfIndex) {
+            setActiveKfIndex(targetIdx);
+        }
+    }, [currentPlayheadEpochMs, canvasLayoutTimeline?.keyframes, activeKfIndex]);
+
     return (
-        <div className="extractor-advanced-studio">
+        <div className={`extractor-advanced-studio ${isGridFullscreen ? 'is-cinema-mode' : ''}`}>
             <div className="studio-workspace-area">
                 <TopScopeBar
                     timeRange={timeRange}
@@ -688,16 +1572,63 @@ export default function ExtractorAdvancedStudio() {
                     </div>
                 )}
 
-                <div className="studio-lower-body">
+                <div className={`studio-lower-body ${isGridFullscreen ? 'cinema-fullscreen-mode' : ''}`}>
+                    {isGridFullscreen && (
+                        <div className={`cinema-top-hud ${!isCinemaDockVisible ? 'is-hud-hidden' : ''}`}>
+                            <div className="top-hud-left-group">
+                                <button
+                                    type="button"
+                                    className="btn-exit-spotlight"
+                                    onClick={handleExitGridFullscreen}
+                                    title="Exit Fullscreen (Esc or F)"
+                                >
+                                    <kbd>ESC</kbd>
+                                    <span>EXIT FULLSCREEN</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-spotlight-help"
+                                    onClick={() => setIsHelpModalOpen(true)}
+                                    title="Keyboard Shortcuts (?)"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                    <span>SHORTCUTS</span>
+                                </button>
+                            </div>
+                            <div className="cinema-brand-pill">
+                                <span className="feed-res">MULTICAM GRID</span>
+                                <span className="divider" />
+                                <span className="station-title">TACTICAL CANVAS THEATER</span>
+                                <span className="station-physical-badge">
+                                    {enrichedTimelineStations.length} ACTIVE WORKSTATIONS
+                                </span>
+                            </div>
+                        </div>
+                    )}
                     {!isInitialSetup && (
-                        <div className="studio-left-content">
+                        <div 
+                            className="studio-left-content"
+                            onMouseDown={(e) => {
+                                if (e.target.closest('.studio-bottom-timeline, .transport-bar-root, .transport-bar, .timeline-board')) {
+                                    setActiveFocusZone('timeline');
+                                }
+                            }}
+                        >
                             <div className="studio-main-viewport-container">
                                 <MulticamViewport
                                     activeStation={enrichedActiveStation}
                                     timelineStations={enrichedTimelineStations}
+                                    allStations={allStations}
                                     onSelectActiveStation={handleSelectActiveStation}
                                     onOpenSpotlight={handleOpenSpotlightFullscreen}
                                     onStationContextMenu={handleStationContextMenu}
+                                    onDeselectStation={handleDeselectStation}
+                                    stationAutoDirectorMap={stationAutoDirectorMap}
+                                    onToggleStationAutoDirector={handleToggleStationAutoDirector}
                                     onOpenDrawer={() => setIsDrawerOpen(true)}
                                     baseEpochMs={timelineBaseEpochMs}
                                     playheadMs={playheadMs}
@@ -713,40 +1644,140 @@ export default function ExtractorAdvancedStudio() {
                                     globalGaps={globalGaps}
                                     recordingSegments={recordingSegments}
                                     playbackSpeed={playbackSpeed}
+                                    onChangePlaybackSpeed={setPlaybackSpeed}
                                     keystrokeMode={keystrokeMode}
                                     keystrokes={activeStationKeystrokes}
                                     directorPlan={enrichedActiveStation?.directorPlan}
                                     onOverrideDisplay={handleChangeDirectorSegmentDisplay}
                                     onResetOverride={handleResetDirectorSegmentToAuto}
+                                    compositionScope={compositionScope}
+                                    onChangeCompositionScope={setCompositionScope}
+                                    compositionLayout={compositionLayout}
+                                    onChangeCompositionLayout={setCompositionLayout}
+                                    isAutoDirectorEnabled={isAutoDirectorEnabled}
+                                    onToggleAutoDirector={() => setIsAutoDirectorEnabled(p => !p)}
+                                    isPipSwapped={isPipSwapped}
+                                    onTogglePipSwap={() => setIsPipSwapped(p => !p)}
+                                    onUpdateCanvasLayout={setCurrentCanvasLayout}
+                                    canvasLayoutTimeline={canvasLayoutTimeline}
+                                    onUpdateCanvasLayoutTimeline={setCanvasLayoutTimeline}
+                                    activeKfIndex={activeKfIndex}
+                                    setActiveKfIndex={setActiveKfIndex}
+                                    isModalOpen={isExportModalOpen || isRangeModalOpen || isBookmarksModalOpen || isSpotlightOpen || isHelpModalOpen}
+                                    isGridFullscreen={isGridFullscreen}
+                                    onToggleGridFullscreen={handleToggleGridFullscreen}
+                                    activeFocusZone={activeFocusZone}
+                                    onFocusZoneChange={setActiveFocusZone}
                                 />
-                                <TransportBar
-                                    baseEpochMs={timelineBaseEpochMs}
-                                    timeMode={timeMode}
-                                    totalDurationMs={totalTimelineDurationMs}
-                                    playheadMs={playheadMs}
-                                    setPlayheadMs={setPlayheadMs}
-                                    inPointMs={inPointMs}
-                                    setInPointMs={setInPointMs}
-                                    outPointMs={outPointMs}
-                                    setOutPointMs={setOutPointMs}
-                                    activeStationId={activeStationId}
-                                    isPlaying={isPlaying}
-                                    setIsPlaying={togglePlaySmart}
-                                    isLooping={isLooping}
-                                    setIsLooping={setIsLooping}
-                                    playbackSpeed={playbackSpeed}
-                                    onChangeSpeed={setPlaybackSpeed}
-                                    onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
-                                    onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
-                                />
+                                {!isGridFullscreen && (
+                                    <TransportBar
+                                        activeFocusZone={activeFocusZone}
+                                        onFocusZoneChange={setActiveFocusZone}
+                                        hasGridPlacements={hasGridPlacements}
+                                        baseEpochMs={timelineBaseEpochMs}
+                                        timeMode={timeMode}
+                                        totalDurationMs={totalTimelineDurationMs}
+                                        playheadMs={playheadMs}
+                                        setPlayheadMs={setPlayheadMs}
+                                        inPointMs={inPointMs}
+                                        setInPointMs={setInPointMs}
+                                        outPointMs={outPointMs}
+                                        setOutPointMs={setOutPointMs}
+                                        activeStationId={activeStationId}
+                                        isPlaying={isPlaying}
+                                        setIsPlaying={togglePlaySmart}
+                                        isLooping={isLooping}
+                                        setIsLooping={setIsLooping}
+                                        playbackSpeed={playbackSpeed}
+                                        onChangeSpeed={setPlaybackSpeed}
+                                        onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
+                                        onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
+                                        onStepFrameBackward={() => { setIsPlaying(false); setPlayheadMs(p => Math.max(0, p - 33)); }}
+                                        onStepFrameForward={() => { setIsPlaying(false); setPlayheadMs(p => Math.min(totalTimelineDurationMs, p + 33)); }}
+                                    />
+                                )}
                             </div>
 
-                            <div className="studio-bottom-timeline" ref={timelineContainerRef}>
+                            {isGridFullscreen && (
+                                <div
+                                    className="cinema-bottom-sensor-strip"
+                                    onMouseEnter={() => {
+                                        setIsCinemaDockVisible(true);
+                                        resetCinemaIdleTimer();
+                                    }}
+                                />
+                            )}
+
+                            <div
+                                className={`studio-bottom-timeline ${isGridFullscreen ? 'cinema-timeline-island' : ''} ${isGridFullscreen && !isCinemaDockVisible ? 'dock-hidden' : ''} ${isGridFullscreen && isPlaying ? 'is-playing-dimmed' : ''}`}
+                                ref={timelineContainerRef}
+                                onMouseDown={() => setActiveFocusZone('timeline')}
+                                onMouseEnter={() => setIsHoveringCinemaDock(true)}
+                                onMouseLeave={() => {
+                                    setIsHoveringCinemaDock(false);
+                                    if (isGridFullscreen) resetCinemaIdleTimer();
+                                }}
+                            >
+                                {isGridFullscreen && (
+                                    <div className="cinema-island-transport-row">
+                                        <div className="cut-actions-cluster">
+                                            <div className="cut-duration-pill">
+                                                <span className="label">CUT DURATION</span>
+                                                <span className="val">{formatCutDurationSMPTE(outPointMs - inPointMs)}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="btn-export-cut-hero"
+                                                onClick={handleExecuteExport}
+                                                title="Export Selected Cut Window (Ctrl+E)"
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
+                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                    <polyline points="7 10 12 15 17 10" />
+                                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                                </svg>
+                                                <span>EXPORT CUT</span>
+                                            </button>
+                                        </div>
+                                        <TransportBar
+                                            activeFocusZone={activeFocusZone}
+                                            onFocusZoneChange={setActiveFocusZone}
+                                            hasGridPlacements={hasGridPlacements}
+                                            baseEpochMs={timelineBaseEpochMs}
+                                            timeMode={timeMode}
+                                            totalDurationMs={totalTimelineDurationMs}
+                                            playheadMs={playheadMs}
+                                            setPlayheadMs={setPlayheadMs}
+                                            inPointMs={inPointMs}
+                                            setInPointMs={setInPointMs}
+                                            outPointMs={outPointMs}
+                                            setOutPointMs={setOutPointMs}
+                                            activeStationId={activeStationId}
+                                            isPlaying={isPlaying}
+                                            setIsPlaying={togglePlaySmart}
+                                            isLooping={isLooping}
+                                            setIsLooping={setIsLooping}
+                                            playbackSpeed={playbackSpeed}
+                                            onChangeSpeed={setPlaybackSpeed}
+                                            onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
+                                            onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
+                                            onStepFrameBackward={() => { setIsPlaying(false); setPlayheadMs(p => Math.max(0, p - 33)); }}
+                                            onStepFrameForward={() => { setIsPlaying(false); setPlayheadMs(p => Math.min(totalTimelineDurationMs, p + 33)); }}
+                                        />
+                                        <div className="clock-timecode">
+                                            <span className="label">PLAYHEAD</span>
+                                            <span className="digits">{formatTimelineClock(timelineBaseEpochMs + playheadMs, timeMode)}</span>
+                                        </div>
+                                    </div>
+                                )}
                                 <TimelineBoard
                                     stations={enrichedTimelineStations}
                                     activeStationId={activeStationId}
                                     onSelectActiveStation={(id) => handleSelectActiveStation(selectedStationIds.length <= 1 ? id : (id === activeStationId ? null : id))}
                                     onStationContextMenu={handleStationContextMenu}
+                                    onDeselectStation={handleDeselectStation}
+                                    stationAutoDirectorMap={stationAutoDirectorMap}
+                                    onToggleStationAutoDirector={handleToggleStationAutoDirector}
                                     baseEpochMs={timelineBaseEpochMs}
                                     timeMode={timeMode}
                                     totalDurationMs={totalTimelineDurationMs}
@@ -776,38 +1807,55 @@ export default function ExtractorAdvancedStudio() {
                                     onSplitDirectorSegment={handleSplitDirectorSegment}
                                     onChangeDirectorSegmentDisplay={handleChangeDirectorSegmentDisplay}
                                     onResetDirectorSegmentToAuto={handleResetDirectorSegmentToAuto}
+                                    audioRoutingPlan={effectiveAudioPlan}
+                                    onSplitAudioSegment={handleSplitAudioSegment}
+                                    onChangeAudioSegmentStation={handleChangeAudioSegmentStation}
+                                    onChangeAudioSegmentGain={handleChangeAudioSegmentGain}
+                                    onFollowVisualFeed={handleFollowVisualFeed}
+                                    isAutoFollowAudio={isAutoFollowAudio}
+                                    canvasLayoutTimeline={canvasLayoutTimeline}
+                                    activeKfIndex={activeKfIndex}
+                                    onSelectKeyframe={(idx, epoch) => {
+                                        setActiveKfIndex(idx);
+                                        setPlayheadMs(Math.max(0, epoch - timelineBaseEpochMs));
+                                    }}
+                                    onAddKeyframeAtEpoch={handleAddKeyframeAtEpoch}
+                                    onDeleteKeyframe={handleDeleteKeyframe}
+                                    onUpdateKeyframeEpoch={handleUpdateKeyframeEpoch}
+                                    onUpdateKeyframeTransition={handleUpdateKeyframeTransition}
+                                     onUpdateKeyframeClockPosition={handleUpdateKeyframeClockPosition}
+                                    onToggleDisplayOnCanvas={handleToggleDisplayOnCanvas}
+                                    onUpdateAudioPlan={setAudioRoutingPlan}
                                 />
                             </div>
                         </div>
                     )}
 
-                    <StationDrawer
-                        isOpen={isDrawerOpen || isInitialSetup}
-                        onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
-                        onClose={() => setIsDrawerOpen(false)}
-                        allStations={allStations}
-                        selectedStationIds={selectedStationIds}
-                        onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
-                        onUpdateSelections={setSelectedStationIds}
-                        isInitialSetup={isInitialSetup}
-                        isLoadingStations={isLoadingStations}
-                        recordingSegments={recordingSegments}
-                        baseEpochMs={baseEpochMs}
-                        durationMs={timeRange.durationMs}
-                        onApply={() => {
-                            if (selectedStationIds.length > 0) {
-                                if (selectedStationIds.length === 1) {
-                                    setActiveStationId(selectedStationIds[0]);
-                                } else {
-                                    setActiveStationId(null);
+                    {!isGridFullscreen && (
+                        <StationDrawer
+                            isOpen={isDrawerOpen || isInitialSetup}
+                            onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
+                            onClose={() => setIsDrawerOpen(false)}
+                            allStations={allStations}
+                            selectedStationIds={selectedStationIds}
+                            onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                            onUpdateSelections={setSelectedStationIds}
+                            isInitialSetup={isInitialSetup}
+                            isLoadingStations={isLoadingStations}
+                            recordingSegments={recordingSegments}
+                            baseEpochMs={baseEpochMs}
+                            durationMs={timeRange.durationMs}
+                            onApply={() => {
+                                if (selectedStationIds.length > 0) {
+                                    setActiveStationId(null); // Always start in Master Canvas Grid
+                                    setSpotlightStationId(null);
+                                    setIsWorkspaceActive(true);
+                                    setIsDrawerOpen(false);
                                 }
-                                setSpotlightStationId(null);
-                                setIsWorkspaceActive(true);
-                                setIsDrawerOpen(false);
-                            }
-                        }}
-                        onOpenRangeModal={() => setIsRangeModalOpen(true)}
-                    />
+                            }}
+                            onOpenRangeModal={() => setIsRangeModalOpen(true)}
+                        />
+                    )}
                 </div>
             </div>
 
@@ -853,6 +1901,7 @@ export default function ExtractorAdvancedStudio() {
             <SoloSpotlightModal
                 isOpen={isSpotlightOpen}
                 station={enrichedSpotlightStation}
+                initialDisplayId={spotlightInitialDisplayId}
                 allStations={enrichedTimelineStations}
                 onSelectStation={(newId) => {
                     if (newId !== spotlightStationId) setPlaybackSpeed(1);
@@ -904,6 +1953,25 @@ export default function ExtractorAdvancedStudio() {
                 onDeselect={handleDeselectStation}
                 onFocusSolo={handleSelectActiveStation}
             />
+
+            <ExportOptionsModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onConfirm={handleConfirmMasterExport}
+                compositionSummary={{
+                    scope: compositionScope,
+                    layout: currentCanvasLayout?.preset || compositionLayout,
+                    isPipSwapped,
+                    isAutoDirectorEnabled,
+                    stationsCount: timelineStations.length,
+                    audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1,
+                    resolution: canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
+                    canvasWidth: currentCanvasLayout?.width || 2560,
+                    canvasHeight: currentCanvasLayout?.height || 1440
+                }}
+            />
+
+
 
             <ExportJobMonitor />
         </div>

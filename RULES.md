@@ -214,6 +214,29 @@ ITB-SCREEN-RECORDER is engineered strictly for air-gapped, high-security operati
 - **Offline Self-Sufficiency**:
   - All services, media players (WebRTC WHEP, HLS), installers, and toolchains must install, run, decode, and operate with zero outbound internet network packets.
 
+---
+
+## 15. Pre-Flight Dependency Vetting via Socket.dev (Zero Unvetted Packages) — Enforced
+
+To safeguard air-gapped mission-critical infrastructure against supply-chain attacks, typosquatting, dependency confusion, malicious lifecycle scripts, and critical CVEs:
+
+- **Mandatory Pre-Flight Vetting (Before Coding / Installing)**:
+  - **AI coding agents and developers are STRICTLY PROHIBITED from introducing, installing, or modifying code dependent on any new npm or NuGet package without prior security verification on [https://socket.dev/](https://socket.dev/)**.
+  - Verification must occur **BEFORE** running `npm install <pkg>`, `yarn add`, `dotnet add package`, or writing application code around the candidate dependency.
+- **Required Socket.dev Security Metrics Evaluation**:
+  1. **Supply Chain Risk Score**: Inspect for suspicious postinstall scripts, unauthorized network calls, obfuscated bytecode, or unverified author changes (`https://socket.dev/npm/package/<name>`).
+  2. **Vulnerability Score & CVEs**: The candidate package version must have **ZERO Critical CVEs** and zero unresolved high-severity vulnerabilities.
+  3. **Maintenance & Quality Hygiene**: Must show active maintenance, established community adoption, and clear open-source licensing.
+  4. **Prohibited Package Characteristics**: Any package flagging Socket **Critical Alerts** (e.g. Known Malware, Typosquat, Protestware, Telemetry/Tracker injection, Shell execution in install hooks) is **CATEGORICALLY REJECTED**.
+- **Alternative Selection Over Vulnerable Packages**:
+  - If a package fails the Socket.dev safety threshold, the agent must NEVER proceed with coding or installing it.
+  - The agent MUST select a safe, highly-vetted alternative or implement the required logic using native runtime primitives (Node.js standard library, native Web APIs, .NET BCL).
+- **Automated Build-Breaking Security Gates**:
+  - **Local MSBuild Gate**: `npm audit --audit-level=critical` is integrated into project compilation targets (`CompileFrontend`, `CompileExtractorFrontend`, `CompileAdvancedFrontend`) with `ContinueOnError="false"`. Any critical dependency vulnerability immediately breaks local `dotnet build`.
+  - **CI/CD Socket Security Action**: `.github/workflows/security-scan.yml` enforces `socketsecurity/socket-action@v1` with `continue-on-error: false`. Policy violations and supply-chain attacks immediately fail CI.
+  - **CI/CD Vulnerability Gating**: Both `security-scan.yml` and `node.js.yml` execute `npm audit --audit-level=critical` and `dotnet list package --vulnerable`, strictly aborting the pipeline on detected critical vulnerabilities.
+
+
 
 
 

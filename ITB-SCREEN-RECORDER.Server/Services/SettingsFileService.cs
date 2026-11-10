@@ -37,10 +37,26 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 discoveryDto.EnableBroadcastFallback = (bool)(discovery["EnableBroadcastFallback"] ?? true);
                 discoveryDto.BroadcastAddress = (string)(discovery["BroadcastAddress"] ?? ServerDiscoveryConstants.DefaultBroadcastAddress);
                 discoveryDto.Role = (string)(discovery["Role"] ?? ServerDiscoveryConstants.RoleActiveActive);
+                discoveryDto.NodeRole = (string)(discovery["NodeRole"] ?? ServerDiscoveryConstants.RolePrimary);
+                discoveryDto.NodeMode = (string)(discovery["NodeMode"] ?? ServerDiscoveryConstants.NodeModeActive);
+                discoveryDto.ClusterGroup = (string)(discovery["ClusterGroup"] ?? "Production");
+                discoveryDto.AutoPeerDiscovery = (bool)(discovery["AutoPeerDiscovery"] ?? true);
                 discoveryDto.Priority = (int)(discovery["Priority"] ?? 1);
                 discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
+                if (discovery["ClusterPeerUrls"] is JsonArray peerArr)
+                {
+                    discoveryDto.ClusterPeerUrls = peerArr.Select(x => x?.ToString() ?? "").Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+                }
+                discoveryDto.AutoHardwareCapacity = (bool)(discovery["AutoHardwareCapacity"] ?? true);
+                discoveryDto.MaxIngestStreamsCapacity = (int)(discovery["MaxIngestStreamsCapacity"] ?? 0);
+                discoveryDto.MaxConcurrentRenderJobs = (int)(discovery["MaxConcurrentRenderJobs"] ?? 0);
+                discoveryDto.AutoBalanceStreams = (bool)(discovery["AutoBalanceStreams"] ?? true);
+                discoveryDto.DistributedVideoProcessingEnabled = (bool)(discovery["DistributedVideoProcessingEnabled"] ?? true);
                 discoveryDto.AutoFailoverDashboard = (bool)(discovery["AutoFailoverDashboard"] ?? true);
                 discoveryDto.DashboardFailoverDelaySeconds = (int)(discovery["DashboardFailoverDelaySeconds"] ?? 8);
+                discoveryDto.HeartbeatIntervalSeconds = (int)(discovery["HeartbeatIntervalSeconds"] ?? 2);
+                discoveryDto.HeartbeatMissedThreshold = (int)(discovery["HeartbeatMissedThreshold"] ?? 3);
+                discoveryDto.PreemptLowerPriority = (bool)(discovery["PreemptLowerPriority"] ?? false);
                 discoveryDto.EnableVirtualIp = (bool)(discovery["EnableVirtualIp"] ?? false);
                 discoveryDto.VirtualIp = (string?)discovery["VirtualIp"];
                 discoveryDto.VirtualIpSubnetMask = (string)(discovery["VirtualIpSubnetMask"] ?? ServerDiscoveryConstants.DefaultSubnetMask);
@@ -114,10 +130,31 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     discNode["EnableBroadcastFallback"] = dto.Discovery.EnableBroadcastFallback;
                     discNode["BroadcastAddress"] = dto.Discovery.BroadcastAddress ?? ServerDiscoveryConstants.DefaultBroadcastAddress;
                     discNode["Role"] = dto.Discovery.Role;
+                    discNode["NodeRole"] = dto.Discovery.NodeRole;
+                    discNode["NodeMode"] = dto.Discovery.NodeMode ?? ServerDiscoveryConstants.NodeModeActive;
+                    discNode["ClusterGroup"] = dto.Discovery.ClusterGroup ?? "Production";
+                    discNode["AutoPeerDiscovery"] = dto.Discovery.AutoPeerDiscovery;
                     discNode["Priority"] = dto.Discovery.Priority;
                     discNode["PartnerServerUrl"] = dto.Discovery.PartnerServerUrl ?? "";
+                    var peerArray = new JsonArray();
+                    if (dto.Discovery.ClusterPeerUrls != null)
+                    {
+                        foreach (var url in dto.Discovery.ClusterPeerUrls)
+                        {
+                            if (!string.IsNullOrWhiteSpace(url)) peerArray.Add(url.Trim());
+                        }
+                    }
+                    discNode["ClusterPeerUrls"] = peerArray;
+                    discNode["AutoHardwareCapacity"] = dto.Discovery.AutoHardwareCapacity;
+                    discNode["MaxIngestStreamsCapacity"] = dto.Discovery.MaxIngestStreamsCapacity;
+                    discNode["MaxConcurrentRenderJobs"] = dto.Discovery.MaxConcurrentRenderJobs;
+                    discNode["AutoBalanceStreams"] = dto.Discovery.AutoBalanceStreams;
+                    discNode["DistributedVideoProcessingEnabled"] = dto.Discovery.DistributedVideoProcessingEnabled;
                     discNode["AutoFailoverDashboard"] = dto.Discovery.AutoFailoverDashboard;
                     discNode["DashboardFailoverDelaySeconds"] = dto.Discovery.DashboardFailoverDelaySeconds;
+                    discNode["HeartbeatIntervalSeconds"] = dto.Discovery.HeartbeatIntervalSeconds;
+                    discNode["HeartbeatMissedThreshold"] = dto.Discovery.HeartbeatMissedThreshold;
+                    discNode["PreemptLowerPriority"] = dto.Discovery.PreemptLowerPriority;
                     discNode["EnableVirtualIp"] = dto.Discovery.EnableVirtualIp;
                     discNode["VirtualIp"] = dto.Discovery.VirtualIp ?? "";
                     discNode["VirtualIpSubnetMask"] = dto.Discovery.VirtualIpSubnetMask ?? ServerDiscoveryConstants.DefaultSubnetMask;

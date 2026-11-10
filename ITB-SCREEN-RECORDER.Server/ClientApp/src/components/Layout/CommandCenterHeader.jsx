@@ -21,6 +21,19 @@ export default function CommandCenterHeader({
     const totalCount = stations.length;
     const [fetchedConfig, setFetchedConfig] = useState(null);
     const [isExpanded, setIsExpanded] = useState(true);
+    const [isStudioMode, setIsStudioMode] = useState(false);
+
+    useEffect(() => {
+        const handleStudio = (e) => {
+            const active = Boolean(e?.detail?.active);
+            setIsStudioMode(active);
+            if (active) {
+                setIsExpanded(false);
+            }
+        };
+        window.addEventListener('itb:studio-mode', handleStudio);
+        return () => window.removeEventListener('itb:studio-mode', handleStudio);
+    }, []);
 
     useEffect(() => {
         if (!propSystemConfig) {
@@ -71,7 +84,7 @@ export default function CommandCenterHeader({
     }, [stations, onlineStations, onlineCount, totalCount]);
 
     return (
-        <header className={`command-center-top-bar ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+        <header className={`command-center-top-bar ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${isStudioMode && !isExpanded ? 'is-stealth-studio' : ''}`}>
             <div className="top-row-main">
                 <div className="brand-logo-section">
                     <div className="tactical-emblem">
@@ -101,7 +114,6 @@ export default function CommandCenterHeader({
 
                 <div className="header-actions-group">
                     <SessionControlWidget onOpenAppSwitcher={onOpenAppSwitcher} />
-
                     <button
                         className={`header-icon-btn toggle-collapse-btn ${isExpanded ? 'active' : ''}`}
                         title={isExpanded ? "Collapse Overview" : "Expand Overview"}

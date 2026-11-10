@@ -19,7 +19,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             StationDisplayTopologyDto? topology,
             IReadOnlyList<ActivityEventDto> events,
             long preRollLeadInMs = 1000,
-            long minDwellMs = 2000)
+            long minDwellMs = 10000,
+            IReadOnlyList<(long StartEpochMs, long EndEpochMs)>? knownGaps = null)
         {
             var plan = new StationDirectorPlanDto
             {
@@ -42,11 +43,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // If station has 0 or 1 display, entire duration is single primary display segment
             if (displays.Count <= 1)
             {
+                int dispNum = ResolveDisplayNumber(primaryDisplayId, displays);
+                string dispName = ResolveDisplayName(primaryDisplayId, displays);
                 plan.Segments.Add(new StationDirectorSegmentDto
                 {
                     StartEpochMs = timelineStartEpochMs,
                     EndEpochMs = timelineEndEpochMs,
                     TargetDisplayId = primaryDisplayId,
+                    TargetDisplayNumber = dispNum,
+                    TargetDisplayName = dispName,
                     IsManualOverride = false,
                     TriggerReason = DirectorTriggerReason.Default,
                     TransitionDurationSec = 0.3
@@ -57,6 +62,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // Filter and sort events within the active timeline window
             var validEvents = (events ?? Array.Empty<ActivityEventDto>())
                 .Where(e => e.TimestampEpochMs >= timelineStartEpochMs && e.TimestampEpochMs <= timelineEndEpochMs)
+                .Where(e => knownGaps == null || !knownGaps.Any(g => e.TimestampEpochMs >= g.StartEpochMs && e.TimestampEpochMs <= g.EndEpochMs))
                 .OrderBy(e => e.TimestampEpochMs)
                 .ToList();
 
@@ -70,12 +76,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
 
             foreach (var evt in validEvents)
             {
-                string targetDisplay = ResolveDisplayForCoordinates(evt.X, evt.Y, displays, primaryDisplayId);
+                string targetDisplay = ResolveDisplayForCoordinates(evt, displays, primaryDisplayId);
 
                 if (string.Equals(targetDisplay, currentDisplayId, StringComparison.OrdinalIgnoreCase))
                 {
                     // Reset pending hover if returned to current display
                     pendingHoverDisplayId = null;
+                    continue;
+                }
+
+                // Minimum dwell time enforcement: Must remain on current display for at least minDwellMs (default 10s)
+                // before any cut or transition can take place ("לחייב לפחות 10 שניות במסך אחרת אין צורך לעבור")
+                if (evt.TimestampEpochMs - currentSegmentStart < minDwellMs)
+                {
                     continue;
                 }
 
@@ -116,7 +129,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
                     // Transition initiates 1.0 second prior to the interaction timestamp T (T - 1000ms),
                     // but never earlier than the current segment start + minimum dwell time.
                     long idealCutTime = evt.TimestampEpochMs - preRollLeadInMs;
-                    long earliestCutTime = currentSegmentStart + (minDwellMs / 2);
+                    long earliestCutTime = currentSegmentStart + minDwellMs;
                     long cutTime = Math.Max(earliestCutTime, idealCutTime);
 
                     // Clamp cutTime to ensure positive progress and within timeline
@@ -124,11 +137,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
 
                     if (cutTime > currentSegmentStart)
                     {
+                        int dispNum = ResolveDisplayNumber(currentDisplayId, displays);
+                        string dispName = ResolveDisplayName(currentDisplayId, displays);
                         plan.Segments.Add(new StationDirectorSegmentDto
                         {
                             StartEpochMs = currentSegmentStart,
                             EndEpochMs = cutTime,
                             TargetDisplayId = currentDisplayId,
+                            TargetDisplayNumber = dispNum,
+                            TargetDisplayName = dispName,
                             IsManualOverride = false,
                             TriggerReason = currentReason,
                             TransitionDurationSec = 0.3
@@ -144,18 +161,119 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // Close trailing segment
             if (currentSegmentStart < timelineEndEpochMs)
             {
+                int dispNum = ResolveDisplayNumber(currentDisplayId, displays);
+                string dispName = ResolveDisplayName(currentDisplayId, displays);
                 plan.Segments.Add(new StationDirectorSegmentDto
                 {
                     StartEpochMs = currentSegmentStart,
                     EndEpochMs = timelineEndEpochMs,
                     TargetDisplayId = currentDisplayId,
+                    TargetDisplayNumber = dispNum,
+                    TargetDisplayName = dispName,
                     IsManualOverride = false,
                     TriggerReason = currentReason,
                     TransitionDurationSec = 0.3
                 });
             }
 
+            // Enforce minimum 10 seconds per screen (eliminate jittery switches)
+            ConsolidateShortSegments(plan, minDwellMs);
+
+            // Eliminate any screen switches planning across or within gap regions
+            EliminateCutsInsideGaps(plan, knownGaps);
+
             return plan;
+        }
+
+        private static void ConsolidateShortSegments(StationDirectorPlanDto plan, long minDwellMs)
+        {
+            if (plan.Segments.Count <= 1) return;
+
+            bool changed = true;
+            while (changed && plan.Segments.Count > 1)
+            {
+                changed = false;
+                for (int i = 0; i < plan.Segments.Count; i++)
+                {
+                    var seg = plan.Segments[i];
+                    long dur = seg.EndEpochMs - seg.StartEpochMs;
+
+                    if (dur < minDwellMs)
+                    {
+                        if (i > 0)
+                        {
+                            // Absorb short segment into preceding segment to preserve screen continuity
+                            plan.Segments[i - 1].EndEpochMs = seg.EndEpochMs;
+                            plan.Segments.RemoveAt(i);
+                            changed = true;
+                            break;
+                        }
+                        else if (plan.Segments.Count > 1)
+                        {
+                            // First segment too short: absorb into following segment
+                            plan.Segments[1].StartEpochMs = seg.StartEpochMs;
+                            plan.Segments.RemoveAt(0);
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Merge any contiguous segments that now share the same TargetDisplayId
+            for (int i = plan.Segments.Count - 1; i > 0; i--)
+            {
+                if (string.Equals(plan.Segments[i].TargetDisplayId, plan.Segments[i - 1].TargetDisplayId, StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.Segments[i - 1].EndEpochMs = plan.Segments[i].EndEpochMs;
+                    plan.Segments.RemoveAt(i);
+                }
+            }
+        }
+
+
+
+        private static void EliminateCutsInsideGaps(StationDirectorPlanDto plan, IReadOnlyList<(long StartEpochMs, long EndEpochMs)>? knownGaps)
+        {
+            if (knownGaps == null || knownGaps.Count == 0 || plan.Segments.Count <= 1) return;
+
+            foreach (var gap in knownGaps)
+            {
+                if (gap.EndEpochMs <= gap.StartEpochMs) continue;
+
+                for (int i = plan.Segments.Count - 1; i > 0; i--)
+                {
+                    long cutTime = plan.Segments[i].StartEpochMs;
+                    if (cutTime >= gap.StartEpochMs && cutTime <= gap.EndEpochMs)
+                    {
+                        plan.Segments[i - 1].EndEpochMs = plan.Segments[i].EndEpochMs;
+                        plan.Segments.RemoveAt(i);
+                    }
+                }
+            }
+
+            for (int i = plan.Segments.Count - 1; i > 0; i--)
+            {
+                if (string.Equals(plan.Segments[i].TargetDisplayId, plan.Segments[i - 1].TargetDisplayId, StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.Segments[i - 1].EndEpochMs = plan.Segments[i].EndEpochMs;
+                    plan.Segments.RemoveAt(i);
+                }
+            }
+        }
+        private static string ResolveDisplayForCoordinates(
+            ActivityEventDto evt,
+            IReadOnlyList<DisplayMetadataDto> displays, 
+            string fallbackDisplayId)
+        {
+            if (!string.IsNullOrWhiteSpace(evt.DisplayId))
+            {
+                var matched = displays.FirstOrDefault(d => 
+                    string.Equals(d.DisplayId, evt.DisplayId, StringComparison.OrdinalIgnoreCase));
+                if (matched != null) return matched.DisplayId;
+            }
+
+            return ResolveDisplayForCoordinates(evt.X, evt.Y, displays, fallbackDisplayId);
         }
 
         private static string ResolveDisplayForCoordinates(
@@ -173,6 +291,42 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
                 }
             }
             return fallbackDisplayId;
+        }
+
+        private static int ResolveDisplayNumber(string displayId, IReadOnlyList<DisplayMetadataDto> displays)
+        {
+            if (displays != null && displays.Count > 0)
+            {
+                for (int i = 0; i < displays.Count; i++)
+                {
+                    if (string.Equals(displays[i].DisplayId, displayId, StringComparison.OrdinalIgnoreCase))
+                        return displays[i].DisplayNumber > 0 ? displays[i].DisplayNumber : i + 1;
+                }
+            }
+            var m = System.Text.RegularExpressions.Regex.Match(displayId ?? string.Empty, @"\d+");
+            if (m.Success && int.TryParse(m.Value, out int n))
+            {
+                return (displayId ?? string.Empty).StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ? n + 1 : n;
+            }
+            return 1;
+        }
+
+        private static string ResolveDisplayName(string displayId, IReadOnlyList<DisplayMetadataDto> displays)
+        {
+            if (displays != null && displays.Count > 0)
+            {
+                for (int i = 0; i < displays.Count; i++)
+                {
+                    if (string.Equals(displays[i].DisplayId, displayId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!string.IsNullOrWhiteSpace(displays[i].DisplayName))
+                            return displays[i].DisplayName;
+                        return $"Screen {i + 1}";
+                    }
+                }
+            }
+            int num = ResolveDisplayNumber(displayId, displays ?? Array.Empty<DisplayMetadataDto>());
+            return $"Screen {num}";
         }
     }
 }

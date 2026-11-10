@@ -50,26 +50,26 @@ export default function ServerRestartModal({ restartState }) {
 
                 <div className="restart-header">
                     <span className="tactical-badge amber">SERVICE RESTART IN PROGRESS</span>
-                    <h3>אתחול שרת והחלת פורט חדש</h3>
+                    <h3>Server Restart & Port Rebinding</h3>
                     <p className="restart-desc">
-                        פורט האזנה של שרת Kestrel עודכן בהצלחה. השירות מופעל מחדש כעת כדי להחיל את השינוי ברשת.
+                        Kestrel listening port updated successfully. The server service is restarting now to apply network configuration changes.
                     </p>
                 </div>
 
                 <div className="port-transition-panel">
                     <div className="port-box old">
-                        <span className="port-label">פורט נוכחי</span>
+                        <span className="port-label">Current Port</span>
                         <span className="port-value">{oldPort || '5090'}</span>
                     </div>
                     <div className="port-arrow">➔</div>
                     <div className="port-box new">
-                        <span className="port-label">פורט חדש פעיל</span>
+                        <span className="port-label">New Active Port</span>
                         <span className="port-value">{newPort}</span>
                     </div>
                 </div>
 
                 <div className="target-url-preview">
-                    <span className="url-label">כתובת יעד חדשה:</span>
+                    <span className="url-label">New Target Address:</span>
                     <a href={targetUrl} className="target-link">
                         {targetUrl}
                     </a>
@@ -81,13 +81,13 @@ export default function ServerRestartModal({ restartState }) {
                         className="btn-redirect-now"
                         onClick={() => { window.location.href = targetUrl; }}
                     >
-                        <span>עבור כעת לכתובת החדשה ({countdown}s)</span>
+                        <span>Navigate to New Address ({countdown}s)</span>
                         <span className="btn-icon">⚡</span>
                     </button>
                 </div>
 
                 <div className="restart-footer-note">
-                    עמדות ההקלטה (Agents) יזהו אוטומטית את הפורט החדש וימשיכו בהזרמת הווידאו ללא איבוד מידע.
+                    Active recording agents will automatically detect the updated port and continue streaming without data loss.
                 </div>
             </div>
         </div>

@@ -257,7 +257,43 @@
                 }
             }
 
+            .cluster-nodes-indicator,
             .fleet-nodes-indicator {
+                &.is-clickable {
+                    cursor: pointer;
+                    transition: all 0.18s ease;
+
+                    &:hover {
+                        border-color: var(--accent-cyan, #06B6D4);
+                        background-color: var(--surface-card-hover, #1B273D);
+                        box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+                        transform: translateY(-1px);
+                    }
+                }
+
+                .cluster-mode-badge {
+                    font-size: 8px;
+                    font-weight: 800;
+                    background: rgba(6, 182, 212, 0.15);
+                    color: var(--accent-cyan, #06B6D4);
+                    border: 1px solid rgba(6, 182, 212, 0.35);
+                    padding: 1px 4px;
+                    border-radius: 4px;
+                    line-height: 1;
+                    letter-spacing: 0.4px;
+                }
+
+                .cluster-vip-badge {
+                    font-size: 8px;
+                    font-weight: 900;
+                    background: rgba(16, 185, 129, 0.2);
+                    color: var(--accent-emerald, #10B981);
+                    border: 1px solid rgba(16, 185, 129, 0.4);
+                    padding: 1px 4px;
+                    border-radius: 4px;
+                    line-height: 1;
+                    box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
+                }
                 display: flex;
                 align-items: center;
                 gap: 10px;
@@ -623,6 +659,61 @@
                     height: 52px;
                     justify-content: center;
                     box-sizing: border-box;
+                }
+            }
+        }
+    }
+
+        &.is-stealth-studio {
+        padding: 0.25rem 1rem;
+        margin: 4px auto 0 auto;
+        border-radius: 8px;
+        background: rgba(10, 15, 26, 0.85);
+
+        .top-row-main {
+            gap: 0.75rem;
+
+            .brand-logo-section {
+                gap: 8px;
+
+                .tactical-emblem {
+                    width: 26px;
+                    height: 26px;
+                }
+
+                .brand-text-group {
+                    .brand-title-row {
+                        .brand-name, .brand-main {
+                            font-size: 0.95rem;
+                        }
+                    }
+                }
+            }
+
+            .header-center-metrics {
+                transform: scale(0.85);
+            }
+
+            .header-actions-group {
+                gap: 6px;
+
+                .btn-stealth-telemetry-toggle {
+                    background: rgba(6, 182, 212, 0.12);
+                    border: 1px solid rgba(6, 182, 212, 0.35);
+                    color: #38bdf8;
+                    font-size: 9px;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.18s ease;
+
+                    &:hover {
+                        background: rgba(6, 182, 212, 0.25);
+                        border-color: #06b6d4;
+                        color: #fff;
+                    }
                 }
             }
         }

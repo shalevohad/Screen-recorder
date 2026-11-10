@@ -339,28 +339,7 @@ namespace ITB_SCREEN_RECORDER.Tests.Synchronization
 
             await _catalogRepository.BulkInsertKeystrokesAsync(stationId, events);
 
-            // 1. Verify soft subtitles extraction (SRT Caption)
-            string? srtFile = await _srtGenerator.CreateSrtFileAsync(stationId, cutStartEpochMs, cutEndEpochMs);
-            Assert.NotNull(srtFile);
-            Assert.True(File.Exists(srtFile));
-
-            string srtContent = await File.ReadAllTextAsync(srtFile);
-            File.Delete(srtFile);
-
-            // Verify events outside cut window are trimmed
-            Assert.DoesNotContain("IgnoredBeforeCut", srtContent);
-            Assert.DoesNotContain("IgnoredAfterCut", srtContent);
-
-            // Verify relative offset alignment in SRT:
-            // 30 seconds = 00:00:30,000 --> 00:00:32,000
-            Assert.Contains("00:00:30,000 --> 00:00:32,000", srtContent);
-            Assert.Contains("[ Ctrl + S ]", srtContent);
-
-            // 210 seconds = 3 min 30 sec = 00:03:30,000 --> 00:03:32,000
-            Assert.Contains("00:03:30,000 --> 00:03:32,000", srtContent);
-            Assert.Contains("[ Alt + F4 ]", srtContent);
-
-            // 2. Verify tactical burn-in subtitles extraction (ASS Keycaps Burn-In)
+            // Verify tactical burn-in subtitles extraction (ASS Keycaps Burn-In)
             string? assFile = await _srtGenerator.CreateAssKeycapsFileAsync(stationId, cutStartEpochMs, cutEndEpochMs);
             Assert.NotNull(assFile);
             Assert.True(File.Exists(assFile));
@@ -426,26 +405,6 @@ namespace ITB_SCREEN_RECORDER.Tests.Synchronization
             };
 
             await _catalogRepository.BulkInsertKeystrokesAsync(stationId, keyEvents);
-
-            // Generate soft subtitles with gap compensation
-            string? srtFile = await _srtGenerator.CreateSrtFileForSegmentsAsync(stationId, activeSegments);
-            Assert.NotNull(srtFile);
-            Assert.True(File.Exists(srtFile));
-
-            string srtContent = await File.ReadAllTextAsync(srtFile);
-            File.Delete(srtFile);
-
-            // Verify:
-            // 1. Key pressed during removed gap is completely filtered out
-            Assert.DoesNotContain("GhostKeyInGap", srtContent);
-
-            // 2. Key 1 appears at exactly 90 seconds (00:01:30,000)
-            Assert.Contains("00:01:30,000 --> 00:01:32,000", srtContent);
-            Assert.Contains("[ F11 ]", srtContent);
-
-            // 3. Key 3 appears at exactly 270 seconds (00:04:30,000) rather than at 11 minutes
-            Assert.Contains("00:04:30,000 --> 00:04:32,000", srtContent);
-            Assert.Contains("[ Ctrl + Shift + Esc ]", srtContent);
 
             // Generate hard burn-in subtitles (ASS) with gap compensation
             string? assFile = await _srtGenerator.CreateAssKeycapsFileForSegmentsAsync(stationId, activeSegments);

@@ -4,7 +4,28 @@ import FolderBrowseModal from '../FolderBrowseModal.jsx';
 export default function StorageRetentionTab({ form, updateField, updateStorageField }) {
     const [liveStorage, setLiveStorage] = useState(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isPurging, setIsPurging] = useState(false);
+    const [purgeMessage, setPurgeMessage] = useState(null);
     const [browseTarget, setBrowseTarget] = useState(null);
+
+    const handleRunRetentionSweep = async () => {
+        setIsPurging(true);
+        setPurgeMessage(null);
+        try {
+            const res = await fetch('/api/v1/settings/storage/run-retention', { method: 'POST' });
+            if (res.ok) {
+                setPurgeMessage('Sweep Triggered');
+                setTimeout(() => {
+                    fetchLiveStorage();
+                    setPurgeMessage(null);
+                }, 3000);
+            }
+        } catch (err) {
+            console.error('Failed to trigger retention sweep:', err);
+        } finally {
+            setIsPurging(false);
+        }
+    };
 
     const fetchLiveStorage = useCallback(async () => {
         setIsRefreshing(true);
@@ -130,6 +151,16 @@ export default function StorageRetentionTab({ form, updateField, updateStorageFi
                                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                             </svg>
                             <span>{isRefreshing ? 'Checking...' : 'Probe Path'}</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-refresh-telemetry"
+                            onClick={handleRunRetentionSweep}
+                            disabled={isPurging}
+                            title="Run retention and quota cleanup immediately"
+                            style={{ marginLeft: 6 }}
+                        >
+                            <span>{isPurging ? 'Purging...' : (purgeMessage || '🧹 Run Quota Clean')}</span>
                         </button>
                     </div>
 

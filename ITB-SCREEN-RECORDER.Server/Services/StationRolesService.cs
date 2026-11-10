@@ -32,7 +32,26 @@ public sealed class StationRolesService
         return await _repository.GetAllStationRoleAliasesAsync();
     }
 
-    public async Task SetRoleAliasAsync(string hostname, string? roleAlias)
+    public async Task<Dictionary<string, string>> GetRoleAliasesAtEpochAsync(long epochMs)
+    {
+        return await _repository.GetStationRoleAliasesAtEpochAsync(epochMs);
+    }
+
+    public async Task<Dictionary<string, string>> GetRoleAliasesForTimeRangeAsync(long startEpochMs, long endEpochMs)
+    {
+        return await _repository.GetStationRoleAliasesForTimeRangeAsync(startEpochMs, endEpochMs);
+    }
+
+    public async Task<List<ITB_SCREEN_RECORDER.Core.Contracts.Network.StationRoleIntervalDto>> GetRoleHistoryAsync(long? startEpochMs = null, long? endEpochMs = null, string? stationId = null)
+    {
+        return await _repository.GetStationRoleHistoryAsync(startEpochMs, endEpochMs, stationId);
+    }
+
+
+        public Task SetRoleAliasAsync(string hostname, string? roleAlias)
+        => SetRoleAliasAsync(hostname, roleAlias, null);
+
+    public async Task SetRoleAliasAsync(string hostname, string? roleAlias, long? effectiveFromEpochMs)
     {
         string cleanHost = hostname.Trim();
         string? cleanAlias = string.IsNullOrWhiteSpace(roleAlias) ? null : roleAlias.Trim();
@@ -56,10 +75,20 @@ public sealed class StationRolesService
             }
         }
 
-        await _repository.SetStationRoleAliasAsync(cleanHost, cleanAlias);
+        if (effectiveFromEpochMs.HasValue)
+        {
+            await _repository.SetStationRoleAliasAsync(cleanHost, cleanAlias, effectiveFromEpochMs.Value);
+        }
+        else
+        {
+            await _repository.SetStationRoleAliasAsync(cleanHost, cleanAlias);
+        }
     }
 
-    public async Task SwapRoleAliasesAsync(string stationA, string stationB)
+        public Task SwapRoleAliasesAsync(string stationA, string stationB)
+        => SwapRoleAliasesAsync(stationA, stationB, null);
+
+    public async Task SwapRoleAliasesAsync(string stationA, string stationB, long? effectiveFromEpochMs)
     {
         if (string.IsNullOrWhiteSpace(stationA) || string.IsNullOrWhiteSpace(stationB))
         {
@@ -74,7 +103,14 @@ public sealed class StationRolesService
             throw new InvalidOperationException("Cannot swap aliases of the same station.");
         }
 
-        await _repository.SwapStationRoleAliasesAsync(cleanA, cleanB);
+        if (effectiveFromEpochMs.HasValue)
+        {
+            await _repository.SwapStationRoleAliasesAsync(cleanA, cleanB, effectiveFromEpochMs.Value);
+        }
+        else
+        {
+            await _repository.SwapStationRoleAliasesAsync(cleanA, cleanB);
+        }
     }
 
     public async Task<IReadOnlyList<StationRoleDiffItem>> PreviewCsvMappingAsync(Stream csvStream)
@@ -132,7 +168,10 @@ public sealed class StationRolesService
         return diffList;
     }
 
-    public async Task ApplyMappingAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings)
+        public Task ApplyMappingAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings)
+        => ApplyMappingAsync(mappings, null);
+
+    public async Task ApplyMappingAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings, long? effectiveFromEpochMs)
     {
         var existing = await _repository.GetAllStationRoleAliasesAsync();
         var mapList = mappings.Select(m =>
@@ -175,7 +214,14 @@ public sealed class StationRolesService
             }
         }
 
-        await _repository.BulkUpdateStationRoleAliasesAsync(mapList);
+        if (effectiveFromEpochMs.HasValue)
+        {
+            await _repository.BulkUpdateStationRoleAliasesAsync(mapList, effectiveFromEpochMs.Value);
+        }
+        else
+        {
+            await _repository.BulkUpdateStationRoleAliasesAsync(mapList);
+        }
     }
 
     public async Task<byte[]> ExportMappingCsvAsync()

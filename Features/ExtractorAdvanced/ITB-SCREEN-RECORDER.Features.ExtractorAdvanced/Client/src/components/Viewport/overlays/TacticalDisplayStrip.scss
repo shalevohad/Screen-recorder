@@ -1,0 +1,110 @@
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Viewport/overlays/TacticalDisplayStrip.scss
+// Minimalist Tactical Vertical Display Strip
+// ==========================================
+
+.tactical-display-strip-wrapper {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 25;
+    pointer-events: auto;
+    user-select: none;
+    transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+
+    // If all monitors of this workstation are already placed on the canvas,
+    // the switcher is ultra-discreet (invisible or barely visible) until hovered.
+    &.are-all-placed {
+        opacity: 0;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+
+    &:not(.are-all-placed) {
+        opacity: 0.6;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+
+    .vertical-display-strip {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        background: rgba(10, 15, 29, 0.82);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        padding: 3px;
+        border-radius: 18px;
+        border: 1px solid rgba(6, 182, 212, 0.3);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65), 0 0 10px rgba(6, 182, 212, 0.12);
+
+        .display-strip-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #94A3B8;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            transition: all 0.16s ease;
+
+            .number-label {
+                font-size: 10.5px;
+                font-weight: 800;
+                font-family: 'JetBrains Mono', monospace;
+                line-height: 1;
+            }
+
+            .auto-icon {
+                font-size: 10px;
+                line-height: 1;
+            }
+
+            &:hover {
+                background: rgba(51, 65, 85, 0.95);
+                border-color: rgba(6, 182, 212, 0.6);
+                color: #F8FAFC;
+                transform: scale(1.1);
+            }
+
+            &.is-active {
+                background: linear-gradient(135deg, #0EA5E9, #0284C7);
+                border-color: #38BDF8;
+                color: #FFFFFF;
+                box-shadow: 0 0 8px rgba(14, 165, 233, 0.7);
+                transform: scale(1.05);
+
+                .number-label {
+                    color: #FFFFFF;
+                }
+            }
+
+            &.btn-auto {
+                &.is-active {
+                    background: linear-gradient(135deg, #F59E0B, #D97706);
+                    border-color: #FBBF24;
+                    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+                }
+            }
+        }
+    }
+}
+
+// Fade in smoothly when hovering over the card parent
+.camera-card:hover .tactical-display-strip-wrapper {
+    opacity: 1 !important;
+}
+
+.canvas-feed-card-box:hover .tactical-display-strip-wrapper {
+    opacity: 1 !important;
+}

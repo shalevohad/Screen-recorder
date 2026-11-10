@@ -31,7 +31,8 @@ export function usePlaybackEngine({
     initialPlayheadMs = 0,
     initialIsPlaying = false,
     initialIsLooping = true,
-    initialPlaybackSpeed = 1
+    initialPlaybackSpeed = 1,
+    isGridMode = false
 }) {
     const [playheadMs, setPlayheadMs] = useState(initialPlayheadMs);
     const [isPlaying, setIsPlaying] = useState(initialIsPlaying);
@@ -56,7 +57,7 @@ export function usePlaybackEngine({
         return curEp >= s && curEp <= e;
     });
 
-    const isVideoDirectlyDrivingClock = Boolean(currentStationToCheck && isCurrentInValidSegment);
+    const isVideoDirectlyDrivingClock = Boolean(!isGridMode && currentStationToCheck && isCurrentInValidSegment);
 
     useEffect(() => {
         setPlayheadMs((prev) => {
@@ -99,14 +100,14 @@ export function usePlaybackEngine({
             return nextPos;
         });
 
-        if (isPlaying && !isVideoDirectlyDrivingClock) {
+        if (isPlaying && (!isVideoDirectlyDrivingClock || isGridMode)) {
             requestRef.current = requestAnimationFrame(updatePlayhead);
         }
-    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock, playbackSpeed]);
+    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock, playbackSpeed, isGridMode]);
 
     // 2. Schedule requestAnimationFrame after handler declaration
     useEffect(() => {
-        if (isPlaying && !isVideoDirectlyDrivingClock) {
+        if (isPlaying && (!isVideoDirectlyDrivingClock || isGridMode)) {
             lastTickRef.current = performance.now();
             requestRef.current = requestAnimationFrame(updatePlayhead);
         } else {
@@ -117,7 +118,7 @@ export function usePlaybackEngine({
         return () => {
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
         };
-    }, [isPlaying, updatePlayhead, isVideoDirectlyDrivingClock]);
+    }, [isPlaying, updatePlayhead, isVideoDirectlyDrivingClock, isGridMode]);
 
     const togglePlaySmart = useCallback(() => {
         if (!isPlaying) {

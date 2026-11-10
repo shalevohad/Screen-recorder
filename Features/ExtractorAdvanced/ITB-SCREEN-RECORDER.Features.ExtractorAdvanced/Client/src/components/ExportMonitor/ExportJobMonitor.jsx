@@ -281,6 +281,10 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                                 <span className={`status-pill ${job.status.toLowerCase()}`}>
                                                     {isReady ? 'READY' : job.status}
                                                 </span>
+                                                <span className="operator-chip" title={`Export created by ${job.createdBy || 'Guest Operator'}`}>
+                                                    <span className="chip-icon">👤</span>
+                                                    <span className="chip-name">{job.createdBy || 'Guest Operator'}</span>
+                                                </span>
                                                 <span className="file-name" title={job.fileName}>
                                                     {job.fileName}
                                                 </span>
@@ -294,6 +298,14 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                             </button>
                                         </div>
 
+                                        {(job.notes || job.Notes) && (
+                                            <div className="job-notes-callout" title={`Export Note: ${job.notes || job.Notes}`}>
+                                                <span className="notes-icon">📝</span>
+                                                <span className="notes-label">NOTE:</span>
+                                                <span className="notes-body">{job.notes || job.Notes}</span>
+                                            </div>
+                                        )}
+
                                         {isProcessing && (
                                             <div className="job-progress-section">
                                                 <div className="progress-top-line">
@@ -306,6 +318,9 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                                 <div className="progress-bottom-meta">
                                                     <span className="size-streamed">EST: {formatSize(job.fileSizeBytes)}</span>
                                                     <div className="telemetry-tags">
+                                                        <span className="operator-mini-tag" title={`Initiated by ${job.createdBy || 'Guest Operator'}`}>
+                                                            👤 {job.createdBy || 'Guest Operator'}
+                                                        </span>
                                                         <span className="speed">{job.speedMBps > 0 ? `${job.speedMBps.toFixed(1)} MB/s` : 'Analyzing'}</span>
                                                         {job.estimatedSecondsRemaining > 0 && (
                                                             <span className="eta">ETA ~{Math.ceil(job.estimatedSecondsRemaining)}s</span>
@@ -317,6 +332,10 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
 
                                         {isReady && (
                                             <div className="job-ready-meta-box">
+                                                <div className="meta-item">
+                                                    <span className="lbl">OPERATOR</span>
+                                                    <span className="val highlight-cyan" title={job.createdBy || 'Guest Operator'}>👤 {job.createdBy || 'Guest Operator'}</span>
+                                                </div>
                                                 <div className="meta-item">
                                                     <span className="lbl">ARCHIVE SIZE</span>
                                                     <span className="val highlight-emerald">{formatSize(job.fileSizeBytes)}</span>

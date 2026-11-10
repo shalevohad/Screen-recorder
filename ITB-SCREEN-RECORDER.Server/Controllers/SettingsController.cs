@@ -12,6 +12,7 @@ using ITB_SCREEN_RECORDER.Server.Services.Security;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Models.Security;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Plugins;
 using Microsoft.Extensions.Options;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
@@ -45,7 +46,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly IStorageTelemetryService _storageTelemetryService;
         private readonly IServerRestartService? _restartService;
+        private readonly IStorageRetentionCoordinator? _retentionCoordinator;
         private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
+        private readonly IEnumerable<IFeatureModule> _features;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? _clusterService;
 
         public SettingsController(
             ISystemConfigDbSyncService syncService,
@@ -57,7 +61,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             TelemetryBroadcastService broadcastService,
             IStorageTelemetryService storageTelemetryService,
             Microsoft.Extensions.Logging.ILogger<SettingsController> logger,
-            IServerRestartService? restartService = null)
+            IServerRestartService? restartService = null,
+            IEnumerable<IFeatureModule>? features = null,
+            IStorageRetentionCoordinator? retentionCoordinator = null,
+            ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? clusterService = null)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
@@ -69,6 +76,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _storageTelemetryService = storageTelemetryService;
             _logger = logger;
             _restartService = restartService;
+            _features = features ?? Enumerable.Empty<IFeatureModule>();
+            _retentionCoordinator = retentionCoordinator;
+            _clusterService = clusterService;
+        }
+
+        private bool HasFeature(string featureIdOrKeyword)
+        {
+            return _features.Any(f => f.IsEnabled &&
+                (f.Id.Equals(featureIdOrKeyword, StringComparison.OrdinalIgnoreCase) ||
+                 f.Id.IndexOf(featureIdOrKeyword, StringComparison.OrdinalIgnoreCase) >= 0));
         }
 
         [HttpGet]
@@ -76,36 +93,37 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public IActionResult Get()
         {
             var config = _configMonitor.CurrentValue;
-            if (!User.HasClaim("is_root", "true") && !User.HasClaim("perm", PermissionKeys.SecurityRolesManage))
+            var isRootOrSecAdmin = User.HasClaim("is_root", "true") || User.HasClaim("perm", PermissionKeys.SecurityRolesManage);
+            var hasExtractor = HasFeature("extractor");
+
+            var result = new SystemConfig
             {
-                if (config.Security != null && !string.IsNullOrEmpty(config.Security.JwtSecretKey))
-                {
-                    var masked = new SystemConfig
+                HttpPort = config.HttpPort,
+                RecordingRetentionDays = config.RecordingRetentionDays,
+                MaxStorageQuotaGb = config.MaxStorageQuotaGb,
+                DashboardRefreshRateMs = config.DashboardRefreshRateMs,
+                DisplayTimezone = config.DisplayTimezone,
+                DisplayLocale = config.DisplayLocale,
+                ManualDstTransitions = config.ManualDstTransitions,
+                Dashboard = config.Dashboard,
+                MediaMtx = config.MediaMtx,
+                Storage = config.Storage,
+                DefaultVideoBitrate = config.DefaultVideoBitrate,
+                DefaultTargetFps = config.DefaultTargetFps,
+                Discovery = config.Discovery,
+                // Principle of Secrecy (עקרון החשאיות): AutoDirector settings are strictly suppressed if this server does not have the feature installed.
+                AutoDirector = hasExtractor ? (config.AutoDirector ?? new AutoDirectorSettings()) : null,
+                Security = (!isRootOrSecAdmin && config.Security != null && !string.IsNullOrEmpty(config.Security.JwtSecretKey))
+                    ? new SecuritySettings
                     {
-                        HttpPort = config.HttpPort,
-                        RecordingRetentionDays = config.RecordingRetentionDays,
-                        MaxStorageQuotaGb = config.MaxStorageQuotaGb,
-                        DashboardRefreshRateMs = config.DashboardRefreshRateMs,
-                        DisplayTimezone = config.DisplayTimezone,
-                        DisplayLocale = config.DisplayLocale,
-                        ManualDstTransitions = config.ManualDstTransitions,
-                        Dashboard = config.Dashboard,
-                        MediaMtx = config.MediaMtx,
-                        Storage = config.Storage,
-                        DefaultVideoBitrate = config.DefaultVideoBitrate,
-                        DefaultTargetFps = config.DefaultTargetFps,
-                        Discovery = config.Discovery,
-                        Security = new SecuritySettings
-                        {
-                            AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
-                            TokenExpirationHours = config.Security.TokenExpirationHours,
-                            JwtSecretKey = "***"
-                        }
-                    };
-                    return Ok(masked);
-                }
-            }
-            return Ok(config);
+                        AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
+                        TokenExpirationHours = config.Security.TokenExpirationHours,
+                        JwtSecretKey = "***"
+                    }
+                    : config.Security
+            };
+
+            return Ok(result);
         }
 
         [HttpGet("dst-transitions")]
@@ -127,7 +145,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             if (updatedConfig == null) return BadRequest(new { message = "Invalid configuration payload." });
 
-            int oldHttpPort = _configMonitor.CurrentValue.HttpPort;
+            var prevConfig = _configMonitor.CurrentValue;
+            int oldHttpPort = prevConfig.HttpPort;
             bool portChanged = updatedConfig.HttpPort > 0 && updatedConfig.HttpPort != oldHttpPort;
 
             try
@@ -205,6 +224,38 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                             config.Discovery.BroadcastAddress = updatedConfig.Discovery.BroadcastAddress;
                         config.Discovery.EnableBroadcastFallback = updatedConfig.Discovery.EnableBroadcastFallback;
                         config.Discovery.NetworkInterfaceName = updatedConfig.Discovery.NetworkInterfaceName;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.Role))
+                            config.Discovery.Role = updatedConfig.Discovery.Role;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.NodeRole))
+                            config.Discovery.NodeRole = updatedConfig.Discovery.NodeRole;
+                        if (updatedConfig.Discovery.Priority > 0)
+                            config.Discovery.Priority = updatedConfig.Discovery.Priority;
+                        config.Discovery.PartnerServerUrl = updatedConfig.Discovery.PartnerServerUrl;
+                        config.Discovery.AutoFailoverDashboard = updatedConfig.Discovery.AutoFailoverDashboard;
+                        if (updatedConfig.Discovery.DashboardFailoverDelaySeconds > 0)
+                            config.Discovery.DashboardFailoverDelaySeconds = updatedConfig.Discovery.DashboardFailoverDelaySeconds;
+                        if (updatedConfig.Discovery.HeartbeatIntervalSeconds > 0)
+                            config.Discovery.HeartbeatIntervalSeconds = updatedConfig.Discovery.HeartbeatIntervalSeconds;
+                        if (updatedConfig.Discovery.HeartbeatMissedThreshold > 0)
+                            config.Discovery.HeartbeatMissedThreshold = updatedConfig.Discovery.HeartbeatMissedThreshold;
+                        config.Discovery.PreemptLowerPriority = updatedConfig.Discovery.PreemptLowerPriority;
+                        config.Discovery.EnableVirtualIp = updatedConfig.Discovery.EnableVirtualIp;
+                        config.Discovery.VirtualIp = updatedConfig.Discovery.VirtualIp;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.VirtualIpSubnetMask))
+                            config.Discovery.VirtualIpSubnetMask = updatedConfig.Discovery.VirtualIpSubnetMask;
+                    }
+
+                    // Principle of Secrecy (עקרון החשאיות): Accept AutoDirector configuration updates ONLY if the server has the feature installed.
+                    if (updatedConfig.AutoDirector != null && HasFeature("extractor"))
+                    {
+                        config.AutoDirector ??= new AutoDirectorSettings();
+                        if (updatedConfig.AutoDirector.MinDwellSeconds > 0)
+                            config.AutoDirector.MinDwellSeconds = updatedConfig.AutoDirector.MinDwellSeconds;
+                        if (updatedConfig.AutoDirector.MaxConcurrentScreens > 0)
+                            config.AutoDirector.MaxConcurrentScreens = Math.Clamp(updatedConfig.AutoDirector.MaxConcurrentScreens, 1, 6);
+                        if (updatedConfig.AutoDirector.BufferPreloadSeconds > 0)
+                            config.AutoDirector.BufferPreloadSeconds = Math.Clamp(updatedConfig.AutoDirector.BufferPreloadSeconds, 0.5, 5.0);
+                        config.AutoDirector.EnableAutoDirector = updatedConfig.AutoDirector.EnableAutoDirector;
                     }
                 });
 
@@ -242,10 +293,35 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting updated system config.");
                 }
 
+                // 4. Propagate updated global configuration across all cluster nodes
+                if (_clusterService != null)
+                {
+                    try
+                    {
+                        await _clusterService.PropagateClusterConfigAsync(currentConfig, HttpContext?.RequestAborted ?? default);
+                        _logger.LogInformation("[SETTINGS] Propagated updated system configuration to all cluster nodes.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[SETTINGS] Failed propagating configuration update across cluster nodes.");
+                    }
+                }
+
                 if (portChanged)
                 {
                     _logger.LogInformation("[SETTINGS] HTTP listening port changed from {OldPort} to {NewPort}. Triggering server self-restart sequence...", oldHttpPort, currentConfig.HttpPort);
                     _restartService?.ScheduleRestart(1500);
+                }
+
+                // If Retention days or Quota changed, trigger immediate retention sweep
+                bool retentionOrQuotaChanged = updatedConfig.MaxStorageQuotaGb != prevConfig.MaxStorageQuotaGb
+                    || (updatedConfig.Storage != null && updatedConfig.Storage.RetentionDays != prevConfig.Storage?.RetentionDays)
+                    || updatedConfig.RecordingRetentionDays != prevConfig.RecordingRetentionDays;
+
+                if (retentionOrQuotaChanged)
+                {
+                    _logger.LogInformation("[SETTINGS] Storage retention or quota changed. Triggering immediate retention sweep.");
+                    _retentionCoordinator?.TriggerImmediateSweep();
                 }
 
                 return Ok(new
@@ -290,6 +366,15 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             var telemetry = _storageTelemetryService.GetCurrentStorageTelemetry();
             return Ok(telemetry);
+        }
+
+        [HttpPost("storage/run-retention")]
+        [AuthorizePermission(PermissionKeys.SettingsStorage)]
+        public IActionResult RunRetentionSweep()
+        {
+            _logger.LogInformation("[SETTINGS] Manual storage retention and quota sweep triggered via API.");
+            _retentionCoordinator?.TriggerImmediateSweep();
+            return Ok(new { success = true, message = "Storage retention and quota sweep triggered." });
         }
 
         #region Security & Policy API

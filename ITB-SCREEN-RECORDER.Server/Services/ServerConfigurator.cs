@@ -55,6 +55,7 @@ public static class ServerConfigurator
 
             if (!string.IsNullOrEmpty(virtualIp)) enableVip = true;
 
+            string nodeRole = "Primary";
             string cleanRole = serverRole.ToLowerInvariant();
             if (cleanRole == "aggregate" || cleanRole == "aggrigate" || cleanRole == "agg" || cleanRole == "super")
             {
@@ -65,6 +66,21 @@ public static class ServerConfigurator
             {
                 serverRole = "Standalone";
                 if (string.IsNullOrEmpty(serverPriority) || serverPriority == "0") serverPriority = "1";
+            }
+            else if (cleanRole == "active-standby" || cleanRole == "activestandby" || cleanRole == "standby" || cleanRole == "secondary")
+            {
+                serverRole = "Active-Standby";
+                nodeRole = (cleanRole == "standby" || cleanRole == "secondary") ? "Secondary" : "Primary";
+                if (string.IsNullOrEmpty(serverPriority) || serverPriority == "0")
+                {
+                    serverPriority = nodeRole == "Primary" ? "100" : "50";
+                }
+            }
+            else if (cleanRole == "primary")
+            {
+                serverRole = "Active-Standby";
+                nodeRole = "Primary";
+                if (string.IsNullOrEmpty(serverPriority) || serverPriority == "0") serverPriority = "100";
             }
             else
             {
@@ -129,6 +145,15 @@ public static class ServerConfigurator
                 else
                 {
                     content = Regex.Replace(content, @"(""Discovery""\s*:\s*\{)", "$1\r\n      \"Role\": \"" + serverRole + "\",", RegexOptions.IgnoreCase);
+                }
+
+                if (Regex.IsMatch(content, @"""NodeRole""\s*:\s*""[^""]*""", RegexOptions.IgnoreCase))
+                {
+                    content = Regex.Replace(content, @"""NodeRole""\s*:\s*""[^""]*""", $@"""NodeRole"": ""{nodeRole}""", RegexOptions.IgnoreCase);
+                }
+                else
+                {
+                    content = Regex.Replace(content, @"(""Discovery""\s*:\s*\{)", "$1\r\n      \"NodeRole\": \"" + nodeRole + "\",", RegexOptions.IgnoreCase);
                 }
 
                 if (Regex.IsMatch(content, @"""Priority""\s*:\s*\d+", RegexOptions.IgnoreCase))
@@ -269,6 +294,7 @@ public static class ServerConfigurator
                         key.SetValue("HlsPort", hlsPort);
                         key.SetValue("DataDir", dataDir);
                         key.SetValue("ServerRole", serverRole);
+                        key.SetValue("NodeRole", nodeRole);
                         key.SetValue("ServerPriority", serverPriority);
                         key.SetValue("DiscoveryPort", discPort);
                         key.SetValue("DiscoveryMulticast", discMcast);

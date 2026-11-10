@@ -235,6 +235,7 @@ export default function SystemOverviewTab({
 }) {
     const [liveStorage, setLiveStorage] = useState(null);
     const [serverTelemetry, setServerTelemetry] = useState(null);
+    const [clusterGrid, setClusterGrid] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // Rolling Telemetry Buffer for Visual Graphs (20-point historical window)
@@ -259,13 +260,15 @@ export default function SystemOverviewTab({
     const fetchTelemetry = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [storageRes, serverRes] = await Promise.allSettled([
+            const [storageRes, serverRes, gridRes] = await Promise.allSettled([
                 fetch('/api/v1/settings/storage-status'),
-                fetch('/api/monitoring/server')
+                fetch('/api/monitoring/server'),
+                fetch('/api/v1/cluster/grid')
             ]);
 
             let sData = null;
             let tData = null;
+            let gData = null;
 
             if (storageRes.status === 'fulfilled' && storageRes.value.ok) {
                 sData = await storageRes.value.json();
@@ -275,23 +278,49 @@ export default function SystemOverviewTab({
                 tData = await serverRes.value.json();
                 setServerTelemetry(tData);
             }
+            if (gridRes.status === 'fulfilled' && gridRes.value.ok) {
+                gData = await gridRes.value.json();
+                setClusterGrid(gData);
+            }
 
-            // Append live point to rolling chart history
+            // Append live point to rolling chart history (normalized to cluster in cluster mode)
             setHistory(prev => {
                 const onlineStations = stations.filter(s => s.isOnline || s.isProcessRunning);
                 const avgFps = onlineStations.length > 0
                     ? Math.round(onlineStations.reduce((acc, s) => acc + (s.actualFps || 30), 0) / onlineStations.length)
                     : 30;
-                const totalDrops = stations.reduce((acc, s) => acc + (s.droppedFrames || 0), 0);
 
-                const hostCpu = tData?.hostCpuPct ?? (prev[prev.length - 1]?.hostCpu ?? 15);
-                const appCpu = tData?.processCpuPct ?? (prev[prev.length - 1]?.appCpu ?? 5);
-                const ramMb = tData?.processRamMb ?? (prev[prev.length - 1]?.ramMb ?? 450);
-                const ramPct = tData?.hostTotalRamMb && tData.hostTotalRamMb > 0
-                    ? Math.round(((tData.processRamMb || 450) / tData.hostTotalRamMb) * 100)
-                    : 25;
-                const netTx = tData?.serverNetworkTxMbps ?? (prev[prev.length - 1]?.netTx ?? 12);
-                const netRx = tData?.serverNetworkRxMbps ?? (prev[prev.length - 1]?.netRx ?? 24);
+                const isClusterMode = Boolean(gData && (gData.totalNodes > 1 || (gData.clusterMode && gData.clusterMode !== 'Standalone')));
+
+                const hostCpu = isClusterMode
+                    ? (gData.aggregateCpuPct ?? tData?.hostCpuPct ?? prev[prev.length - 1]?.hostCpu ?? 15)
+                    : (tData?.hostCpuPct ?? prev[prev.length - 1]?.hostCpu ?? 15);
+
+                const appCpu = isClusterMode
+                    ? (gData.aggregateAppCpuPct ?? tData?.processCpuPct ?? prev[prev.length - 1]?.appCpu ?? 5)
+                    : (tData?.processCpuPct ?? prev[prev.length - 1]?.appCpu ?? 5);
+
+                const ramMb = isClusterMode
+                    ? ((gData.aggregateUsedRamGb || 4) * 1024)
+                    : (tData?.processRamMb ?? prev[prev.length - 1]?.ramMb ?? 450);
+
+                const totalRamMb = isClusterMode
+                    ? ((gData.aggregateTotalRamGb || 32) * 1024)
+                    : (tData?.hostTotalRamMb || 16384);
+
+                const ramPct = Math.round((ramMb / Math.max(1, totalRamMb)) * 100);
+
+                const netTx = isClusterMode
+                    ? (gData.aggregateNicTxMbps ?? tData?.serverNetworkTxMbps ?? prev[prev.length - 1]?.netTx ?? 12)
+                    : (tData?.serverNetworkTxMbps ?? prev[prev.length - 1]?.netTx ?? 12);
+
+                const netRx = isClusterMode
+                    ? (gData.aggregateNicRxMbps ?? tData?.serverNetworkRxMbps ?? prev[prev.length - 1]?.netRx ?? 24)
+                    : (tData?.serverNetworkRxMbps ?? prev[prev.length - 1]?.netRx ?? 24);
+
+                const totalDrops = isClusterMode
+                    ? (gData.totalDroppedFrames ?? stations.reduce((acc, s) => acc + (s.droppedFrames || 0), 0))
+                    : stations.reduce((acc, s) => acc + (s.droppedFrames || 0), 0);
 
                 const nextPoint = {
                     hostCpu: Math.round(Math.max(0, Math.min(100, hostCpu)) * 10) / 10,
@@ -320,7 +349,9 @@ export default function SystemOverviewTab({
         return () => clearInterval(interval);
     }, [fetchTelemetry]);
 
-    // Fleet station counters
+    const isClusterActive = Boolean(clusterGrid && (clusterGrid.totalNodes > 1 || (clusterGrid.clusterMode && clusterGrid.clusterMode !== 'Standalone')));
+
+    // Fleet station counters & normalized cluster health
     const metrics = useMemo(() => {
         const total = stations.length;
         const online = stations.filter(s => s.isOnline || s.isProcessRunning).length;
@@ -342,6 +373,23 @@ export default function SystemOverviewTab({
             healthScore = Math.max(15, Math.round(100 - dropImpact - (offlineRatio * 35)));
         }
 
+        // Factor in Cluster Nodes Health & Load normalization
+        if (isClusterActive && clusterGrid) {
+            const totalNodes = clusterGrid.totalNodes || 1;
+            const onlineNodes = clusterGrid.onlineNodesCount ?? clusterGrid.onlineNodes ?? 1;
+            const deadNodes = Math.max(0, totalNodes - onlineNodes);
+            if (deadNodes > 0) {
+                healthScore = Math.max(10, healthScore - (deadNodes * 20));
+            }
+            const overloadedNodes = clusterGrid.nodes?.filter(n => n.isOverloaded || (n.hostCpuPct || 0) >= 80).length || 0;
+            if (overloadedNodes > 0) {
+                healthScore = Math.max(10, healthScore - (overloadedNodes * 10));
+            }
+            if ((clusterGrid.aggregateCpuPct || 0) >= 85) {
+                healthScore = Math.max(10, healthScore - 15);
+            }
+        }
+
         return {
             total,
             online,
@@ -355,7 +403,7 @@ export default function SystemOverviewTab({
             offlinePct,
             healthScore
         };
-    }, [stations]);
+    }, [stations, isClusterActive, clusterGrid]);
 
     const formatBytes = (bytes) => {
         if (!bytes || bytes <= 0) return '0 B';
@@ -420,12 +468,26 @@ export default function SystemOverviewTab({
                         data-status={metrics.healthScore >= 80 ? 'optimal' : metrics.healthScore >= 50 ? 'warning' : 'critical'}
                     >
                         <span className="health-score-val">{metrics.healthScore}%</span>
-                        <span className="health-score-label">PLATFORM HEALTH</span>
+                        <span className="health-score-label">{isClusterActive ? 'CLUSTER HEALTH' : 'PLATFORM HEALTH'}</span>
                     </div>
                     <div className="hero-titles">
                         <div className="hero-heading-row">
-                            <h2 className="hero-main-title">Central Command & Platform Health</h2>
-                            <span className="airgap-badge">🔒 100% AIR-GAPPED & OFFLINE</span>
+                            <h2 className="hero-main-title">
+                                {isClusterActive ? 'Central Command & Unified Cluster Health' : 'Central Command & Platform Health'}
+                            </h2>
+                            <span className="airgap-badge">🔒 100% AIR-GAPPED &amp; OFFLINE</span>
+                            {isClusterActive && clusterGrid && (
+                                <span style={{
+                                    fontSize: '0.68rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    background: '#06B6D4',
+                                    color: '#0F172A',
+                                    fontWeight: 900
+                                }}>
+                                    👑 CLUSTER: {clusterGrid.clusterMode || 'ACTIVE-ACTIVE'} ({clusterGrid.onlineNodesCount ?? clusterGrid.onlineNodes ?? 1}/{clusterGrid.totalNodes || 1} ONLINE)
+                                </span>
+                            )}
                             {serverTelemetry?.uptimeSeconds && (
                                 <span className="uptime-pill">
                                     ⏱ Uptime: {formatUptime(serverTelemetry.uptimeSeconds)}
@@ -433,7 +495,9 @@ export default function SystemOverviewTab({
                             )}
                         </div>
                         <p className="hero-subtext">
-                            Real-time platform diagnostics, continuous recording cluster supervision, hardware telemetry, and tactical workspace routing.
+                            {isClusterActive
+                                ? 'Unified multi-node telemetry aggregation, distributed stream load balancing, cross-platform hardware encoder acceleration, and forensic DVR routing.'
+                                : 'Real-time platform diagnostics, continuous recording cluster supervision, hardware telemetry, and tactical workspace routing.'}
                         </p>
                     </div>
                 </div>
@@ -587,14 +651,14 @@ export default function SystemOverviewTab({
             </div>
 
             <div className="overview-charts-grid">
-                {/* Chart 1: Central Server CPU Load */}
+                {/* Chart 1: Central Server / Cluster CPU Load */}
                 <TacticalTelemetryChart
-                    title="SERVER CPU UTILIZATION"
-                    badge="HOST VS PROCESS"
+                    title={isClusterActive ? "CLUSTER CPU UTILIZATION (AGGREGATED)" : "SERVER CPU UTILIZATION"}
+                    badge={isClusterActive ? `${clusterGrid?.onlineNodesCount ?? clusterGrid?.onlineNodes ?? 1}/${clusterGrid?.totalNodes ?? 1} NODES AVG` : "HOST VS PROCESS"}
                     seriesA={cpuHostSeries}
                     seriesB={cpuAppSeries}
-                    labelA="Host CPU"
-                    labelB="App CPU"
+                    labelA={isClusterActive ? "Cluster Avg CPU" : "Host CPU"}
+                    labelB={isClusterActive ? "Cluster App CPU" : "App CPU"}
                     colorA="#06B6D4"
                     colorB="#10B981"
                     unit="%"
@@ -603,32 +667,32 @@ export default function SystemOverviewTab({
                     decimals={1}
                 />
 
-                {/* Chart 2: Server RAM & Process Heap */}
+                {/* Chart 2: Server RAM & Process Heap / Cluster RAM Pool */}
                 <TacticalTelemetryChart
-                    title="SERVER MEMORY & HEAP"
-                    badge="RAM ALLOCATION"
-                    seriesA={ramMbSeries}
-                    labelA="App Memory"
+                    title={isClusterActive ? "CLUSTER MEMORY POOL" : "SERVER MEMORY & HEAP"}
+                    badge={isClusterActive ? `POOL: ${clusterGrid?.aggregateTotalRamGb || 32} GB` : "RAM ALLOCATION"}
+                    seriesA={isClusterActive ? history.map(h => Math.round((h.ramMb / 1024) * 10) / 10) : ramMbSeries}
+                    labelA={isClusterActive ? "Cluster Used RAM" : "App Memory"}
                     colorA="#38BDF8"
-                    unit=" MB"
-                    maxValue={1024}
-                    currentValA={serverTelemetry?.processRamMb ? Math.round(serverTelemetry.processRamMb) : undefined}
+                    unit={isClusterActive ? " GB" : " MB"}
+                    maxValue={isClusterActive ? Math.ceil(clusterGrid?.aggregateTotalRamGb || 32) : 1024}
+                    currentValA={isClusterActive ? (clusterGrid?.aggregateUsedRamGb ?? Math.round((history[history.length - 1]?.ramMb || 0) / 1024)) : (serverTelemetry?.processRamMb ? Math.round(serverTelemetry.processRamMb) : undefined)}
                     gradientId="ram"
-                    decimals={0}
+                    decimals={isClusterActive ? 1 : 0}
                 />
 
-                {/* Chart 3: Network Throughput */}
+                {/* Chart 3: Network Throughput / Cluster Aggregate */}
                 <TacticalTelemetryChart
-                    title="NETWORK BANDWIDTH THROUGHPUT"
-                    badge="SERVER NIC TX / RX"
+                    title={isClusterActive ? "CLUSTER NETWORK AGGREGATE THROUGHPUT" : "NETWORK BANDWIDTH THROUGHPUT"}
+                    badge={isClusterActive ? `${clusterGrid?.totalNodes || 1} NODES FLEET NIC` : "SERVER NIC TX / RX"}
                     seriesA={netRxSeries}
                     seriesB={netTxSeries}
-                    labelA="Rx (Ingest)"
-                    labelB="Tx (WHEP)"
+                    labelA={isClusterActive ? "Cluster Ingest Rx" : "Rx (Ingest)"}
+                    labelB={isClusterActive ? "Cluster WHEP Tx" : "Tx (WHEP)"}
                     colorA="#A855F7"
                     colorB="#06B6D4"
                     unit=" Mbps"
-                    maxValue={50}
+                    maxValue={isClusterActive ? 100 : 50}
                     gradientId="net"
                     decimals={1}
                 />
@@ -646,6 +710,238 @@ export default function SystemOverviewTab({
                     decimals={0}
                 />
             </div>
+
+            {/* DISTRIBUTED CLUSTER GRID & HORIZONTAL CAPACITY (ACTIVE-ACTIVE / HA) */}
+            {clusterGrid && form?.discovery?.role !== 'Standalone' && (
+                <div className="cluster-health-card" style={{
+                    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(11, 17, 32, 0.98) 100%)',
+                    border: '1px solid rgba(6, 182, 212, 0.35)',
+                    borderRadius: '12px',
+                    padding: '20px 24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)'
+                }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '1.4rem' }}>🌐</span>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                        fontSize: '0.68rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        background: form?.discovery?.role === 'Active-Standby' ? '#EAB308' : '#06B6D4',
+                                        color: '#0F172A',
+                                        fontWeight: 900
+                                    }}>
+                                        {form?.discovery?.role === 'Active-Standby' ? 'HA ACTIVE-STANDBY CLUSTER' : 'ACTIVE-ACTIVE DISTRIBUTED GRID'}
+                                    </span>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#F8FAFC' }}>
+                                        Distributed Cluster Topology &amp; Horizontal Capacity
+                                    </h3>
+                                </div>
+                                <span style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '3px', display: 'block' }}>
+                                    Real-time fleet monitoring, dynamic stream ingestion and video compute allocation (current load vs. max capacity), and VIP redundancy.
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={() => onSelectTab && onSelectTab('cluster')}
+                                style={{
+                                    background: 'rgba(6, 182, 212, 0.15)',
+                                    border: '1px solid rgba(6, 182, 212, 0.4)',
+                                    color: '#38BDF8',
+                                    padding: '6px 14px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                <span>⚙️ Manage Cluster &amp; Nodes</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Cluster Dual Load Progress Bars (Current vs Maximum Capacity) */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '14px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                        borderRadius: '8px',
+                        padding: '14px 18px'
+                    }}>
+                        {/* Stream Ingest Capacity Meter */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+                                <span style={{ color: '#E2E8F0', fontWeight: 700 }}>
+                                    📹 Ingest Streams Capacity (Channels)
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: (clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) > 0.75 ? '#F43F5E' : '#34D399' }}>
+                                    {clusterGrid.totalIngestedStreams} / {clusterGrid.totalStreamsCapacity} Channels ({Math.round((clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) * 100)}%)
+                                </span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.max(4, Math.round((clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) * 100)))}%`,
+                                    height: '100%',
+                                    background: (clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) > 0.75 ? '#F43F5E' : '#10B981',
+                                    transition: 'width 0.4s ease'
+                                }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                <span>Current Ingest: {clusterGrid.totalIngestedStreams} Active Streams</span>
+                                <span>Available Headroom: {Math.max(0, clusterGrid.totalStreamsCapacity - clusterGrid.totalIngestedStreams)} Free Channels</span>
+                            </div>
+                        </div>
+
+                        {/* Video Processing (Render Jobs) Meter */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+                                <span style={{ color: '#E2E8F0', fontWeight: 700 }}>
+                                    ⚡ NLE Video Render Jobs Capacity (Distributed Grid)
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#F472B6' }}>
+                                    {clusterGrid.totalActiveRenderJobs} / {clusterGrid.totalConcurrentJobsCapacity} Jobs ({Math.round((clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) * 100)}%)
+                                </span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.max(4, Math.round((clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) * 100)))}%`,
+                                    height: '100%',
+                                    background: (clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) > 0.8 ? '#F43F5E' : '#F472B6',
+                                    transition: 'width 0.4s ease'
+                                }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                <span>Active Jobs in Fleet: {clusterGrid.totalActiveRenderJobs}</span>
+                                <span>Available Job Slots: {Math.max(0, clusterGrid.totalConcurrentJobsCapacity - clusterGrid.totalActiveRenderJobs)} Slots</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Nodes Matrix Blades */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '12px' }}>
+                        {clusterGrid.nodes?.map(node => {
+                            const isStandby = node.nodeMode === 'Standby' || node.role === 'Secondary';
+                            const isOverloaded = node.isOverloaded || (node.hostCpuPct || 0) >= 75.0;
+
+                            return (
+                                <div key={node.nodeId} style={{
+                                    background: 'rgba(30, 41, 59, 0.5)',
+                                    border: `1px solid ${node.isOnline ? (node.isOrchestrator ? '#F59E0B' : (isStandby ? '#EAB308' : '#06B6D4')) : '#EF4444'}`,
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#F8FAFC' }}>
+                                                {node.displayName || node.nodeId}
+                                            </span>
+                                            {node.nodeId === clusterGrid.localNodeId && (
+                                                <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '3px', background: 'rgba(148, 163, 184, 0.2)', color: '#CBD5E1', fontWeight: 700 }}>
+                                                    LOCAL
+                                                </span>
+                                            )}
+                                            {/* Cross-Platform OS Badge */}
+                                            <span style={{
+                                                fontSize: '0.58rem',
+                                                padding: '1px 5px',
+                                                borderRadius: '3px',
+                                                background: (node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? 'rgba(234, 179, 8, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                                                color: (node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? '#FDE047' : '#38BDF8',
+                                                fontWeight: 800,
+                                                border: `1px solid ${(node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? 'rgba(234, 179, 8, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`
+                                            }}>
+                                                {(node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? '🐧 Linux' : '🪟 Windows'}
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <span style={{
+                                                fontSize: '0.62rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '3px',
+                                                background: node.isOrchestrator ? 'rgba(245, 158, 11, 0.25)' : (isStandby ? 'rgba(234, 179, 8, 0.2)' : 'rgba(6, 182, 212, 0.2)'),
+                                                color: node.isOrchestrator ? '#FCD34D' : (isStandby ? '#FDE047' : '#38BDF8'),
+                                                fontWeight: 800
+                                            }}>
+                                                {node.isOrchestrator ? '👑 ORCHESTRATOR' : (isStandby ? '🟡 STANDBY' : '⚡ WORKER')}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.62rem',
+                                                color: node.isOnline ? '#10B981' : '#F43F5E',
+                                                fontWeight: 800
+                                            }}>
+                                                ● {node.isOnline ? 'ONLINE' : 'DOWN'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Specs & Power Index */}
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        background: 'rgba(15, 23, 42, 0.6)',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(56, 189, 248, 0.15)',
+                                        fontSize: '0.66rem'
+                                    }}>
+                                        <span style={{ color: '#38BDF8', fontWeight: 700 }}>
+                                            {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`}
+                                        </span>
+                                        <span style={{
+                                            padding: '1px 5px',
+                                            borderRadius: '3px',
+                                            fontWeight: 900,
+                                            fontSize: '0.62rem',
+                                            background: (node.hardwareCapabilityScore || 200) >= 600 ? 'rgba(16, 185, 129, 0.25)' : ((node.hardwareCapabilityScore || 200) >= 300 ? 'rgba(6, 182, 212, 0.25)' : 'rgba(148, 163, 184, 0.2)'),
+                                            color: (node.hardwareCapabilityScore || 200) >= 600 ? '#34D399' : ((node.hardwareCapabilityScore || 200) >= 300 ? '#38BDF8' : '#CBD5E1')
+                                        }}>
+                                            ⚡ PWR {node.hardwareCapabilityScore || 200}
+                                        </span>
+                                    </div>
+
+                                    {/* Load Metrics */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
+                                        <span>Streams: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
+                                        <span>NLE Jobs: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                    </div>
+                                    {node.recommendedStreamsCapacity > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.64rem', color: '#64748B', marginTop: '-2px' }}>
+                                            <span>Hardware Baseline:</span>
+                                            <span style={{ color: '#38BDF8', fontFamily: 'monospace' }}>{node.recommendedStreamsCapacity} Str • {node.recommendedConcurrentJobs} Jobs</span>
+                                        </div>
+                                    )}
+
+                                    {/* Telemetry Bar */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                        <span>CPU: <strong style={{ color: isOverloaded ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong> {isOverloaded && <span style={{ color: '#F43F5E', fontWeight: 800 }}>[THROTTLED]</span>}</span>
+                                        <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
+                                        <span>Pressure: <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>{Math.round(node.ingestPressureScore || 0)} pts</strong></span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Hardware Encoder Invariant Process Flow Graph (Rule 8) */}
             <div className="encoder-pipeline-card">
@@ -824,7 +1120,7 @@ export default function SystemOverviewTab({
                     <div className="nav-card-icon">👥</div>
                     <div className="nav-card-info">
                         <h4 className="nav-card-title">Stations & Operational Roles</h4>
-                        <p className="nav-card-desc">Map hostnames to tactical role aliases with CSV import/export and alias swapping (הצלבה).</p>
+                        <p className="nav-card-desc">Map hostnames to tactical role aliases with CSV import/export and alias swapping (Cross-Swap).</p>
                     </div>
                     <span className="nav-arrow">→</span>
                 </div>

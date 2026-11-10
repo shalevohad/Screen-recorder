@@ -5,6 +5,7 @@ using ITB_SCREEN_RECORDER.Core.Abstractions;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Plugins;
 using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using ITB_SCREEN_RECORDER.Server.Data;
@@ -265,6 +266,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 });
 
                 var mvcBuilder = builder.Services.AddControllers()
+                    .AddXmlSerializerFormatters()
                     .AddJsonOptions(options =>
                     {
                         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
@@ -277,6 +279,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSwaggerGen(options =>
                 {
                     options.CustomSchemaIds(type => type.FullName ?? type.Name);
+                    options.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
                     options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
                     {
                         Title = "ITB Screen Recorder API",
@@ -350,12 +353,23 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ServerTelemetryHostService>();
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerTelemetryHostService>());
 
+                builder.Services.AddSingleton<CertificateRenewalWorker>();
                 builder.Services.AddHostedService<CertificateRenewalWorker>();
+
+                builder.Services.AddSingleton<INetworkCommandRunner, SystemNetworkCommandRunner>();
+                builder.Services.AddSingleton<IVirtualIpManager, VirtualIpManager>();
+                builder.Services.AddSingleton<ClusterService>();
+                builder.Services.AddSingleton<IClusterService>(sp => sp.GetRequiredService<ClusterService>());
+                builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Contracts.Jobs.IClusterWorkerSelector>(sp => sp.GetRequiredService<ClusterService>());
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<ClusterService>());
+
                 builder.Services.AddHostedService<ServerDiscoveryHostedService>();
 
                 builder.Services.AddSingleton<IRetentionTask, StorageChunksRetentionTask>();
                 builder.Services.AddSingleton<IRetentionTask, KeystrokesRetentionTask>();
-                builder.Services.AddHostedService<StorageRetentionWorker>();
+                builder.Services.AddSingleton<StorageRetentionWorker>();
+                builder.Services.AddSingleton<IStorageRetentionCoordinator>(sp => sp.GetRequiredService<StorageRetentionWorker>());
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<StorageRetentionWorker>());
 
                 var app = builder.Build();
 
@@ -398,6 +412,42 @@ namespace ITB_SCREEN_RECORDER.Server
                 app.UseStaticFiles();
                 app.UseRouting();
                 app.UseCors();
+
+                // Rule: Single Entry Point to Orchestrator (ORC) Dashboard
+                app.Use(async (context, next) =>
+                {
+                    var path = context.Request.Path.Value ?? "";
+                    if (context.Request.Method == "GET" &&
+                        (path == "/" || path == "/index.html" || string.IsNullOrEmpty(path)) &&
+                        context.Request.Headers.Accept.Any(a => a != null && a.Contains("text/html")))
+                    {
+                        var clusterSvc = context.RequestServices.GetService<ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService>();
+                        var cfgMon = context.RequestServices.GetService<Microsoft.Extensions.Options.IOptionsMonitor<SystemConfig>>();
+                        var disc = cfgMon?.CurrentValue?.Discovery;
+
+                        if (clusterSvc != null && disc != null &&
+                            !string.Equals(disc.Role, ServerDiscoveryConstants.RoleStandalone, StringComparison.OrdinalIgnoreCase) &&
+                            !clusterSvc.IsLocalNodeOrchestrator)
+                        {
+                            var orch = clusterSvc.GetOrchestratorNode();
+                            if (orch != null && !string.IsNullOrWhiteSpace(orch.ApiBaseUrl))
+                            {
+                                string targetUrl = (!string.IsNullOrWhiteSpace(disc.VirtualIp) && disc.EnableVirtualIp)
+                                    ? $"{context.Request.Scheme}://{disc.VirtualIp.Trim()}:{context.Connection.LocalPort}/"
+                                    : orch.ApiBaseUrl.TrimEnd('/') + "/";
+
+                                if (Uri.TryCreate(targetUrl, UriKind.Absolute, out var targetUri) &&
+                                    !targetUri.Host.Equals(context.Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    Logger.AlwaysInfo($"[ORCHESTRATOR ROUTER] Steering browser session from worker to Orchestrator ({targetUrl})...");
+                                    context.Response.Redirect(targetUrl, permanent: false);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    await next();
+                });
 
                 app.Use(async (context, next) =>
                 {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,6 +38,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
             return Ok(hosts);
         }
 
+        [HttpGet("recording-dates")]
+        public virtual async Task<IActionResult> GetRecordingDates(
+            [FromQuery] int? year,
+            [FromQuery] int? month,
+            [FromQuery] string? stationId,
+            [FromQuery] string? timeMode,
+            CancellationToken ct)
+        {
+            var dates = await _storageScanner.GetRecordingDatesAsync(year, month, stationId, timeMode ?? "LOCAL", ct);
+            return Ok(dates);
+        }
+
         [HttpPost("reindex")]
         public virtual async Task<IActionResult> ReindexStorage(CancellationToken ct)
         {
@@ -66,6 +78,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
                 return BadRequest(new { error = "Invalid time range or empty hostnames." });
             }
 
+            if (string.IsNullOrWhiteSpace(request.CreatedBy) && !string.IsNullOrWhiteSpace(User?.Identity?.Name))
+            {
+                request.CreatedBy = User.Identity.Name;
+            }
+
             var job = _jobManager.EnqueueExportJob(request);
             return Accepted(job);
         }
@@ -82,7 +99,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
             _jobManager.RegisterDownload(jobId);
 
             var stream = new FileStream(job.OutputFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return File(stream, "application/x-tar", job.FileName, enableRangeProcessing: true);
+            string contentType = job.FileName?.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) == true
+                ? "video/mp4"
+                : "application/x-tar";
+            return File(stream, contentType, job.FileName, enableRangeProcessing: true);
         }
 
         [HttpPost("jobs/{jobId}/bookmark")]
@@ -102,7 +122,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
             return NoContent();
         }
 
-        [HttpPost("export")]
+        [HttpPost("export-tar")]
+        [HttpPost("export/tar")]
         [Produces("application/x-tar")]
         public virtual async Task ExportArchive([FromBody] ExtractionRequestDto request)
         {

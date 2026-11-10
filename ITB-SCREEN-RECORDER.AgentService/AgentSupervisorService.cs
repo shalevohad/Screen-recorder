@@ -427,7 +427,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 break;
                             }
 
-                            // Check for Fast Path messages to forward immediate keystrokes
+                            // Check for Fast Path messages to forward immediate keystrokes to server
                             if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
                             {
                                 try
@@ -565,11 +565,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // Dequeue keystrokes to transmit in current telemetry report tick
+                // Dequeue keystrokes to transmit in current telemetry report tick (when streaming)
                 var keysBatch = new List<KeystrokeEventDto>();
-                while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
+                if (isStreaming)
                 {
-                    keysBatch.Add(k);
+                    while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
+                    {
+                        keysBatch.Add(k);
+                    }
+                }
+                else
+                {
+                    while (_pendingKeystrokes.TryDequeue(out _)) { }
                 }
 
                 var report = new AgentTelemetryReport
@@ -1018,7 +1025,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     MachineName = Environment.MachineName,
                     OsVersion = Environment.OSVersion.ToString(),
-                    AgentVersion = typeof(AgentSupervisorService).Assembly.GetName().Version?.ToString(3) ?? "1.0.46",
+                    AgentVersion = typeof(AgentSupervisorService).Assembly.GetName().Version?.ToString(3) ?? "1.0.71",
                     RequestTimestampUtc = DateTime.UtcNow
                 };
 

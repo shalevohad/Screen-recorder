@@ -68,9 +68,36 @@ export default function MasterTimeRangeModal({
     const [isBookmarksDrawerOpen, setIsBookmarksDrawerOpen] = useState(false);
     const [bookmarkSearchTerm, setBookmarkSearchTerm] = useState('');
 
+    // Recorded dates indicator management
+    const [recordingDates, setRecordingDates] = useState([]);
+    const recordingDatesSet = useMemo(() => new Set(recordingDates), [recordingDates]);
+
     const [startOccurrence, setStartOccurrence] = useState(1);
     const [endOccurrence, setEndOccurrence] = useState(2);
     const [activePreset, setActivePreset] = useState(null);
+
+    // Fetch dates that contain recordings whenever modal opens or timezone mode changes
+    useEffect(() => {
+        if (!isOpen) return;
+        let isSubscribed = true;
+
+        const fetchRecordingDates = async () => {
+            try {
+                const res = await fetch(`/api/v1/extractor-advanced/recording-dates?timeMode=${timeMode}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isSubscribed && Array.isArray(data)) {
+                        setRecordingDates(data);
+                    }
+                }
+            } catch (err) {
+                console.warn('[MasterTimeRangeModal] Failed to fetch recording dates:', err);
+            }
+        };
+
+        fetchRecordingDates();
+        return () => { isSubscribed = false; };
+    }, [isOpen, timeMode]);
 
     const loadBookmarksFromStorage = useCallback(() => {
         try {
@@ -100,9 +127,16 @@ export default function MasterTimeRangeModal({
 
         if (!startEpoch || isNaN(startEpoch)) {
             if (currentRange?.start) {
-                const sClean = String(currentRange.start).replace(' ', 'T');
-                const parsed = new Date(sClean).getTime();
-                startEpoch = isNaN(parsed) ? (Date.now() - 24 * 3600 * 1000) : parsed;
+                const sClean = String(currentRange.start).trim();
+                if (sClean.includes('T')) {
+                    const [sd, st] = sClean.split('T');
+                    startEpoch = dateTimeToEpochMs(sd, st.substring(0, 8), timeMode);
+                } else if (sClean.includes(' ')) {
+                    const [sd, st] = sClean.split(' ');
+                    startEpoch = dateTimeToEpochMs(sd, st.substring(0, 8), timeMode);
+                } else {
+                    startEpoch = Date.now() - 24 * 3600 * 1000;
+                }
             } else {
                 endEpoch = Date.now();
                 startEpoch = endEpoch - (24 * 3600 * 1000);
@@ -111,11 +145,18 @@ export default function MasterTimeRangeModal({
 
         if (!endEpoch || isNaN(endEpoch)) {
             if (currentRange?.end) {
-                const eClean = String(currentRange.end).replace(' ', 'T');
-                const parsed = new Date(eClean).getTime();
-                endEpoch = isNaN(parsed) ? Date.now() : parsed;
+                const eClean = String(currentRange.end).trim();
+                if (eClean.includes('T')) {
+                    const [ed, et] = eClean.split('T');
+                    endEpoch = dateTimeToEpochMs(ed, et.substring(0, 8), timeMode);
+                } else if (eClean.includes(' ')) {
+                    const [ed, et] = eClean.split(' ');
+                    endEpoch = dateTimeToEpochMs(ed, et.substring(0, 8), timeMode);
+                } else {
+                    endEpoch = (startEpoch || Date.now()) + 24 * 3600 * 1000;
+                }
             } else {
-                endEpoch = startEpoch + (24 * 3600 * 1000);
+                endEpoch = (startEpoch || Date.now()) + (24 * 3600 * 1000);
             }
         }
 
@@ -562,17 +603,30 @@ export default function MasterTimeRangeModal({
 
                                 const dayBms = bookmarksByDateMap[dateStr];
                                 const hasBookmarks = Boolean(dayBms && dayBms.length > 0);
+                                const hasRecordings = recordingDatesSet.has(dateStr);
+
+                                let cellTitle = '';
+                                if (hasBookmarks) {
+                                    cellTitle += `${dayBms.length} Bookmark(s) on this date`;
+                                }
+                                if (hasRecordings) {
+                                    cellTitle += (cellTitle ? ' • ' : '') + 'Recordings available';
+                                }
 
                                 return (
                                     <div
                                         key={dateStr}
-                                        className={`cal-cell ${isStart ? 'start-edge' : ''} ${isEnd ? 'end-edge' : ''} ${isInRange ? 'in-range' : ''} ${hasBookmarks ? 'has-bookmark' : ''}`}
+                                        className={`cal-cell ${isStart ? 'start-edge' : ''} ${isEnd ? 'end-edge' : ''} ${isInRange ? 'in-range' : ''} ${hasBookmarks ? 'has-bookmark' : ''} ${hasRecordings ? 'has-recordings' : ''}`}
                                         onClick={() => handleCalendarDayClick(dateStr)}
                                         onMouseEnter={() => !endDateStr && startDateStr && setHoverDateStr(dateStr)}
                                         onMouseLeave={() => setHoverDateStr(null)}
-                                        title={hasBookmarks ? `${dayBms.length} Bookmark(s) on this date` : undefined}
+                                        title={cellTitle || undefined}
                                     >
                                         <span className="cell-num">{dayNum}</span>
+
+                                        {hasRecordings && (
+                                            <span className="cal-cell-recording-dot" aria-label="Recordings available" />
+                                        )}
 
                                         {hasBookmarks && (
                                             <span
@@ -592,6 +646,17 @@ export default function MasterTimeRangeModal({
                                     </div>
                                 );
                             })}
+                        </div>
+
+                        <div className="cal-indicators-legend">
+                            <span className="legend-item recordings">
+                                <span className="legend-dot green" /> Recordings
+                            </span>
+                            {bookmarks.length > 0 && (
+                                <span className="legend-item bookmarks">
+                                    <span className="legend-icon amber">🔖</span> Bookmarks
+                                </span>
+                            )}
                         </div>
 
                         <div className="range-status-footer">

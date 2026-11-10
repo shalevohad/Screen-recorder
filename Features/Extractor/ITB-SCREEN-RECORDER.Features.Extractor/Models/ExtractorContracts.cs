@@ -18,9 +18,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public bool ExportRawChunks { get; set; } = false;
 
         /// <summary>
-        /// Keystroke presentation mode for forensic export (e.g., BurnIn, Caption SRT, or None).
+        /// Keystroke presentation mode for forensic export (e.g., BurnIn or None).
         /// </summary>
-        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
 
         /// <summary>
         /// Multi-display layout mode: "director", "split", "pip", or specific display ID.
@@ -41,6 +41,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         /// Director segments defining display switching schedule across timeline.
         /// </summary>
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+        public string? CreatedBy { get; set; }
+        public string? Notes { get; set; }
     }
 
     public class ExtractionPreviewResponseDto
@@ -108,5 +110,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public bool HasAudio { get; set; }
         public int AudioChannels { get; set; } = 2;
         public string? AudioChannelMapping { get; set; } = "0:Loopback,1:Microphone";
+        public string DisplayId { get; set; } = "mon-0";
+        public bool IsPrimary { get; set; } = true;
+        public bool IsDirectorCut { get; set; } = false;
+        public int Width { get; set; } = 1920;
+        public int Height { get; set; } = 1080;
+        public int X { get; set; } = 0;
+        public int Y { get; set; } = 0;
     }
 }

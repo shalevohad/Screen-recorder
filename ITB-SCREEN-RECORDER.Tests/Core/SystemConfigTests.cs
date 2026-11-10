@@ -119,6 +119,50 @@ public class SystemConfigTests
     }
 
     [Fact]
+    public void AutoDirector_DefaultValues_AreValid()
+    {
+        var settings = new AutoDirectorSettings();
+        Assert.Equal(10, settings.MinDwellSeconds);
+        Assert.Equal(6, settings.MaxConcurrentScreens);
+        Assert.Equal(2.0, settings.BufferPreloadSeconds);
+        Assert.True(settings.EnableAutoDirector);
+
+        var errors = ValidateModel(settings);
+        Assert.Empty(errors);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(121)]
+    public void AutoDirector_MinDwellSeconds_OutOfRange_FailsValidation(int seconds)
+    {
+        var settings = new AutoDirectorSettings { MinDwellSeconds = seconds };
+        var errors = ValidateModel(settings);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.MinDwellSeconds)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(-1)]
+    public void AutoDirector_MaxConcurrentScreens_OutOfRange_FailsValidation(int screens)
+    {
+        var settings = new AutoDirectorSettings { MaxConcurrentScreens = screens };
+        var errors = ValidateModel(settings);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.MaxConcurrentScreens)));
+    }
+
+    [Theory]
+    [InlineData(0.2)]
+    [InlineData(5.5)]
+    public void AutoDirector_BufferPreloadSeconds_OutOfRange_FailsValidation(double seconds)
+    {
+        var settings = new AutoDirectorSettings { BufferPreloadSeconds = seconds };
+        var errors = ValidateModel(settings);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.BufferPreloadSeconds)));
+    }
+
+    [Fact]
     public void BufferLimits_CalculationsAreConsistent()
     {
         Assert.Equal(4096L, BufferLimits.MaxBufferFileSizeMb);

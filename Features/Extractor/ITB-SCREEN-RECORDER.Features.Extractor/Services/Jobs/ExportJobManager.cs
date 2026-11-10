@@ -98,7 +98,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 Status = "Queued",
                 StatusMessage = "Queued for packaging...",
                 ProgressPercent = 0,
-                CreatedAtUtc = DateTime.UtcNow
+                CreatedAtUtc = DateTime.UtcNow,
+                CreatedBy = !string.IsNullOrWhiteSpace(request.CreatedBy) ? request.CreatedBy : "Guest Operator",
+                Notes = !string.IsNullOrWhiteSpace(request.Notes) ? request.Notes.Trim() : null
             };
 
             _jobs[job.JobId] = job;

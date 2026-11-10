@@ -999,11 +999,6 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             int minute = int.Parse(match.Groups["minute"].Value);
             int second = int.Parse(match.Groups["sec"].Value);
 
-            if (match.Groups["utc"].Success)
-            {
-                return new DateTimeOffset(new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
-            }
-
             TimeZoneInfo tz;
             try
             {

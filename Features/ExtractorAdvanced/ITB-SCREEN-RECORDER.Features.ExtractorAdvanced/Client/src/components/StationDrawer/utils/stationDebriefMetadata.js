@@ -57,17 +57,18 @@ export function getStationDebriefMeta(
 
     // Return empty gap profile if window or segments are missing
     if (!durationMs || durationMs <= 0 || !Array.isArray(rawSegments) || rawSegments.length === 0) {
-        const trafficStatus = evaluateTrafficLight(0, false, thresholds);
+        const trafficStatus = evaluateTrafficLight(0, true, thresholds);
         return {
             coveragePct: 0,
             recordedDuration: '00:00:00',
+            totalRecordedMs: 0,
             hasAudio,
             audioChannels,
             resolution,
             fps,
             fileSize,
-            hasGaps: false,
-            gapsCount: 0,
+            hasGaps: true,
+            gapsCount: 1,
             trafficStatus,
             segments: [{ type: 'gap', startPct: 0, widthPct: 100 }]
         };
@@ -110,7 +111,8 @@ export function getStationDebriefMeta(
         totalRecordedMs += (seg.endEpoch - seg.startEpoch);
     }
 
-    const coveragePct = Math.min(100, Math.round((totalRecordedMs / durationMs) * 100));
+    const rawPct = durationMs > 0 ? (totalRecordedMs / durationMs) * 100 : 0;
+    const coveragePct = (rawPct > 0 && rawPct < 1) ? Number(rawPct.toFixed(1)) : Math.min(100, Math.round(rawPct));
 
     // 4. Construct visual segment and gap percentages (0-100%)
     const trackSegments = [];
@@ -154,12 +156,13 @@ export function getStationDebriefMeta(
         gapsCount++;
     }
 
-    const hasGaps = gapsCount > 0;
+    const hasGaps = gapsCount > 0 || coveragePct < 100;
     const trafficStatus = evaluateTrafficLight(coveragePct, hasGaps, thresholds);
 
     return {
         coveragePct,
         recordedDuration: formatDurationMs(totalRecordedMs),
+        totalRecordedMs,
         hasAudio,
         audioChannels,
         resolution,

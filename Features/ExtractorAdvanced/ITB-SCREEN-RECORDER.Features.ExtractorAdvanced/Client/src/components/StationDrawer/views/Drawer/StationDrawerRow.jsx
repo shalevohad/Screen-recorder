@@ -5,9 +5,10 @@ import './StationDrawerRow.scss';
 export default function StationDrawerRow({ station, isSelected, onToggle, meta }) {
     const hostNameStr = station.displayName || station.hostname || station.name || '';
     const isLoading = meta?.isLoading;
+    const isZeroCoverage = !isLoading && (meta?.coveragePct <= 0 || meta?.recordedDuration === '00:00:00');
     const trafficLevel = isLoading
         ? 'loading'
-        : (meta.trafficStatus?.level || (meta.hasGaps ? 'critical' : 'optimal'));
+        : (isZeroCoverage ? 'critical' : (meta.trafficStatus?.level || (meta.hasGaps ? 'critical' : 'optimal')));
 
     return (
         <label className={`station-row ${isSelected ? 'selected' : ''}`}>

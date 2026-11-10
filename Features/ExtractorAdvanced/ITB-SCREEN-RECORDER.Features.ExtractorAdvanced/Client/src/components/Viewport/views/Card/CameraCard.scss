@@ -99,6 +99,44 @@
                 }
             }
 
+            .card-display-picker-group {
+                display: flex;
+                align-items: center;
+                gap: 3px;
+                background: rgba(0, 0, 0, 0.4);
+                padding: 2px 4px;
+                border-radius: 6px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+
+                .btn-disp-pill {
+                    background: transparent;
+                    border: 1px solid transparent;
+                    color: #94a3b8;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 9px;
+                    font-weight: 600;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                    white-space: nowrap;
+
+                    &:hover {
+                        color: #f8fafc;
+                        background: rgba(255, 255, 255, 0.08);
+                    }
+
+
+
+                    &.active {
+                        background: rgba(6, 182, 212, 0.22);
+                        color: #22d3ee;
+                        border-color: rgba(6, 182, 212, 0.5);
+                        box-shadow: 0 0 8px rgba(6, 182, 212, 0.25);
+                    }
+                }
+            }
+
             .card-header-actions {
                 display: flex;
                 align-items: center;
@@ -127,9 +165,32 @@
                         color: #f8fafc;
                     }
 
+
+
                     &.active {
                         background: rgba(6, 182, 212, 0.18);
                         color: #22d3ee;
+                    }
+
+                    &.swap-action {
+                        color: #94a3b8;
+                        &:hover {
+                            color: #38bdf8;
+                            background: rgba(56, 189, 248, 0.15);
+                        }
+                    }
+
+                    &.audio-action {
+                        &.audio-active {
+                            background: rgba(16, 185, 129, 0.22);
+                            color: #10B981;
+                            border: 1px solid rgba(16, 185, 129, 0.4);
+                            box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
+
+                            svg {
+                                stroke: #10B981;
+                            }
+                        }
                     }
                 }
             }

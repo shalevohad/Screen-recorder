@@ -11,7 +11,8 @@ export default function ExportOptionsModal({
     title = 'EXPORT CONFIRMATION',
     summaryText = ''
 }) {
-    const [mode, setMode] = useState('Caption');
+    const [mode, setMode] = useState('BurnIn');
+    const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!isOpen) return null;
@@ -19,7 +20,7 @@ export default function ExportOptionsModal({
     const handleConfirm = async () => {
         setIsSubmitting(true);
         try {
-            await onConfirm(mode);
+            await onConfirm(mode, notes);
             onClose();
         } finally {
             setIsSubmitting(false);
@@ -43,21 +44,6 @@ export default function ExportOptionsModal({
                     <div className="options-title">SELECT KEYSTROKE PRESENTATION</div>
 
                     <div className="modes-grid">
-                        <label className={`mode-card ${mode === 'Caption' ? 'active' : ''}`}>
-                            <input
-                                type="radio"
-                                name="keystrokeMode"
-                                value="Caption"
-                                checked={mode === 'Caption'}
-                                onChange={() => setMode('Caption')}
-                            />
-                            <div className="mode-content">
-                                <div className="mode-name">SOFT CAPTIONS (RECOMMENDED)</div>
-                                <div className="mode-desc">
-                                    Embeds a soft subtitle track (mov_text). Toggable in VLC/Players, keeps video pristine and clean.
-                                </div>
-                            </div>
-                        </label>
 
                         <label className={`mode-card ${mode === 'BurnIn' ? 'active' : ''}`}>
                             <input
@@ -68,7 +54,7 @@ export default function ExportOptionsModal({
                                 onChange={() => setMode('BurnIn')}
                             />
                             <div className="mode-content">
-                                <div className="mode-name">HARD BURN-IN</div>
+                                <div className="mode-name">HARD BURN-IN (RECOMMENDED)</div>
                                 <div className="mode-desc">
                                     Permanently bakes keystrokes directly onto the video pixels for unalterable court evidence.
                                 </div>
@@ -90,6 +76,19 @@ export default function ExportOptionsModal({
                                 </div>
                             </div>
                         </label>
+                    </div>
+
+                    <div className="options-title">MISSION / FORENSIC EXPORT NOTE (OPTIONAL)</div>
+                    <div className="export-notes-wrapper">
+                        <textarea
+                            className="export-notes-input"
+                            placeholder="Add operational notes or investigation context for team members..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                        />
+                        <div className="notes-char-counter">{notes.length} / 500</div>
                     </div>
                 </div>
 

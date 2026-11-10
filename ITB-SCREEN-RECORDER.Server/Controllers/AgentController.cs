@@ -57,6 +57,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ICatalogRepository _catalogRepository;
         private readonly IVideoProbeService _probeService;
         private readonly ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? _keyRingService;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? _clusterService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -68,7 +69,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             ICatalogRepository catalogRepository,
             IVideoProbeService probeService,
             ILogger<AgentController> logger,
-            ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRingService = null)
+            ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRingService = null,
+            ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? clusterService = null)
         {
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
@@ -79,6 +81,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _probeService = probeService;
             _logger = logger;
             _keyRingService = keyRingService;
+            _clusterService = clusterService;
         }
 
         [HttpPost("telemetry")]
@@ -101,14 +104,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             List<KeystrokeEventDto>? decryptedKeystrokes = null;
             if (report.Keystrokes != null && report.Keystrokes.Count > 0)
             {
-                try
+                // Keystrokes are strictly stored to database only when the station is actively recording
+                if (report.IsRecording)
                 {
-                    await _catalogRepository.BulkInsertKeystrokesAsync(report.Hostname, report.Keystrokes);
-                    _logger.LogDebug("[TELEMETRY] Ingested {Count} live keystrokes for {Host}", report.Keystrokes.Count, report.Hostname);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                    try
+                    {
+                        await _catalogRepository.BulkInsertKeystrokesAsync(report.Hostname, report.Keystrokes);
+                        _logger.LogDebug("[TELEMETRY] Ingested {Count} live keystrokes for {Host}", report.Keystrokes.Count, report.Hostname);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                    }
                 }
 
                 decryptedKeystrokes = new List<KeystrokeEventDto>(report.Keystrokes.Count);
@@ -122,7 +129,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     {
                         EpochMs = k.EpochMs,
                         TimestampUtc = k.TimestampUtc,
-                        KeyCombination = clearTextCombo
+                        KeyCombination = clearTextCombo,
+                        X = k.X,
+                        Y = k.Y,
+                        DisplayId = k.DisplayId
                     });
                 }
             }
@@ -197,19 +207,23 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest("Invalid keystroke payload.");
             }
 
-            // 1. Asynchronously queue DB bulk insertion in background without blocking SignalR broadcast
-            _ = Task.Run(async () =>
+            // 1. Asynchronously queue DB bulk insertion in background ONLY if station is actively recording
+            bool isRecording = _telemetryState != null && _telemetryState.IsStationRecording(request.Hostname);
+            if (isRecording)
             {
-                try
+                _ = Task.Run(async () =>
                 {
-                    await _catalogRepository.BulkInsertKeystrokesAsync(request.Hostname, request.Keystrokes);
-                    _logger.LogDebug("[KEYSTROKES:FAST] Ingested {Count} fast keystrokes for {Host}", request.Keystrokes.Count, request.Hostname);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[KEYSTROKES:FAST] Failed to insert fast keystrokes for {Host}", request.Hostname);
-                }
-            });
+                    try
+                    {
+                        await _catalogRepository.BulkInsertKeystrokesAsync(request.Hostname, request.Keystrokes);
+                        _logger.LogDebug("[KEYSTROKES:FAST] Ingested {Count} fast keystrokes for {Host}", request.Keystrokes.Count, request.Hostname);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[KEYSTROKES:FAST] Failed to insert fast keystrokes for {Host}", request.Hostname);
+                    }
+                });
+            }
 
             // 2. Decrypt keystrokes if end-to-end encryption is configured
             var decryptedKeystrokes = new List<KeystrokeEventDto>(request.Keystrokes.Count);
@@ -223,7 +237,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 {
                     EpochMs = k.EpochMs,
                     TimestampUtc = k.TimestampUtc,
-                    KeyCombination = clearTextCombo
+                    KeyCombination = clearTextCombo,
+                    X = k.X,
+                    Y = k.Y,
+                    DisplayId = k.DisplayId
                 });
             }
 
@@ -243,6 +260,26 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             string requestHost = Request.Host.Host;
             var policy = await _telemetryState.GetAgentPolicyAsync(request.MachineName, requestHost);
+
+            // Active-Active Ingest Workload Balancing
+            if (_clusterService != null)
+            {
+                try
+                {
+                    var assignedRtmpBaseUrl = await _clusterService.ResolveAssignedIngestNodeUrlAsync(request.MachineName);
+                    if (!string.IsNullOrWhiteSpace(assignedRtmpBaseUrl))
+                    {
+                        policy.RtmpServerBaseUrl = assignedRtmpBaseUrl;
+                        _logger.LogInformation("[CLUSTER BALANCER] Ingest routed: Station '{Station}' -> RTMP Target '{RtmpUrl}'",
+                            request.MachineName, assignedRtmpBaseUrl);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[CLUSTER BALANCER] Failed to resolve cluster ingest assignment for '{Station}'", request.MachineName);
+                }
+            }
+
             string safeStreamKey = Uri.EscapeDataString(request.MachineName.Trim().Replace(" ", "_"));
 
             var response = new AgentRegistrationResponse
@@ -452,11 +489,28 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                                 if (extractedEpoch > 0 && !string.IsNullOrEmpty(keyCombination))
                                 {
                                     long normalizedEpochMs = extractedEpoch > 100_000_000_000L ? extractedEpoch : extractedEpoch * 1000;
+                                    int coordX = 0;
+                                    int coordY = 0;
+                                    string? dispId = null;
+
+                                    if (jsonRoot.TryGetProperty("x", out var xProp) && xProp.TryGetInt32(out var parsedX)) coordX = parsedX;
+                                    else if (jsonRoot.TryGetProperty("X", out var xCapProp) && xCapProp.TryGetInt32(out var parsedXCap)) coordX = parsedXCap;
+
+                                    if (jsonRoot.TryGetProperty("y", out var yProp) && yProp.TryGetInt32(out var parsedY)) coordY = parsedY;
+                                    else if (jsonRoot.TryGetProperty("Y", out var yCapProp) && yCapProp.TryGetInt32(out var parsedYCap)) coordY = parsedYCap;
+
+                                    if (jsonRoot.TryGetProperty("displayId", out var dProp)) dispId = dProp.GetString();
+                                    else if (jsonRoot.TryGetProperty("display_id", out var dSnakeProp)) dispId = dSnakeProp.GetString();
+                                    else if (jsonRoot.TryGetProperty("DisplayId", out var dCapProp)) dispId = dCapProp.GetString();
+
                                     ingestedKeystrokes.Add(new KeystrokeEventDto
                                     {
                                         EpochMs = normalizedEpochMs,
                                         KeyCombination = keyCombination,
-                                        TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(normalizedEpochMs).UtcDateTime
+                                        TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(normalizedEpochMs).UtcDateTime,
+                                        X = coordX,
+                                        Y = coordY,
+                                        DisplayId = dispId
                                     });
                                 }
                             }
@@ -516,22 +570,31 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             await _overridesService.SetOverrideAsync(hostname, stationConfig);
 
+            // Synchronize tuning override across all cluster nodes
+            if (_clusterService != null)
+            {
+                _ = _clusterService.BroadcastStationOverrideAsync(hostname, stationConfig.VideoBitrate, stationConfig.TargetFps, false);
+            }
+
             return Ok(new
             {
                 Hostname = hostname,
                 TargetFps = stationConfig.TargetFps,
                 VideoBitrate = stationConfig.VideoBitrate,
-                Message = "Tuning saved to SQLite. Policy updated for next heartbeat.",
+                Message = "Tuning saved to SQLite and synchronized across cluster. Policy updated for next heartbeat.",
                 TimestampUtc = DateTime.UtcNow
             });
         }
 
         [HttpPost("command/{hostname}")]
         [AuthorizePermission(PermissionKeys.StationsControl)]
-        public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
+        public async Task<IActionResult> EnforceStreamingPolicy(string hostname, [FromQuery] bool enable, CancellationToken ct)
         {
             _telemetryState.SetAgentStreamState(hostname, enable);
-            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var allAgents = _clusterService != null
+                ? await _clusterService.GetClusterStationsAsync(ct)
+                : _telemetryState.GetAllAgents().ToList();
+
             var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
             if (match != null)
             {
@@ -544,6 +607,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
                 _ = _broadcastService.BroadcastAgentUpdateAsync(match);
             }
+
+            // Cluster C2 command propagation: ensure all nodes know this station must record
+            if (_clusterService != null)
+            {
+                await _clusterService.BroadcastStationStreamPolicyAsync(hostname, enable, ct);
+            }
+
             return Ok(new { Hostname = hostname, RecordingRequested = enable, StreamingActive = match?.IsStreaming ?? true });
         }
 
@@ -556,12 +626,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
         [HttpPost("fleet-streaming-policy")]
         [AuthorizePermission(PermissionKeys.StationsControl)]
-        public IActionResult EnforceFleetWideStreamingPolicy(
+        public async Task<IActionResult> EnforceFleetWideStreamingPolicy(
             [FromBody] FleetStreamingPolicyRequest? request,
-            [FromQuery] bool? enable)
+            [FromQuery] bool? enable,
+            CancellationToken ct)
         {
             bool targetEnable = request?.Enable ?? enable ?? false;
-            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var allAgents = _clusterService != null
+                ? await _clusterService.GetClusterStationsAsync(ct)
+                : _telemetryState.GetAllAgents().ToList();
+
             var targetedHostnames = new List<string>();
 
             if (request?.Hostnames != null && request.Hostnames.Any())
@@ -603,6 +677,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     }
                     _ = _broadcastService.BroadcastAgentUpdateAsync(match);
                 }
+            }
+
+            // Propagate across the cluster to all peer nodes
+            if (_clusterService != null && targetedHostnames.Any())
+            {
+                await _clusterService.BroadcastFleetStreamPolicyAsync(targetedHostnames, targetEnable, ct);
             }
 
             return Ok(new

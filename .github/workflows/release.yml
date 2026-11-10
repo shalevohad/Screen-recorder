@@ -149,7 +149,7 @@ jobs:
         Get-ChildItem -Path "Features" -Filter "package.json" -Recurse | Where-Object { $_.FullName -notmatch "node_modules" } | ForEach-Object {
             Write-Host "Installing dependencies for $($_.DirectoryName)..."
             Push-Location $_.DirectoryName
-            npm ci --prefer-offline --no-audit || npm install
+            npm ci --prefer-offline --no-audit --ignore-scripts
             Pop-Location
         }
 
@@ -249,7 +249,7 @@ jobs:
         find Features -name "package.json" -not -path "*/node_modules/*" | while read -r pkg; do
           dir=$(dirname "$pkg")
           echo "Installing dependencies for $dir..."
-          (cd "$dir" && (npm ci --prefer-offline --no-audit || npm install))
+          (cd "$dir" && npm ci --prefer-offline --no-audit --ignore-scripts)
         done
 
     - name: Restore NuGet dependencies

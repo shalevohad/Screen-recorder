@@ -6,7 +6,7 @@
     position: absolute;
     top: 44px;
     bottom: 0;
-    left: 180px;
+    left: 230px;
     right: 58px;
     pointer-events: none;
     z-index: 500;
@@ -84,16 +84,8 @@
             }
 
             &.at-edge {
-                left: 0% !important;
-                margin-left: 0 !important;
-
-                .marker-core-line {
-                    margin-left: 0;
-                    margin-right: auto;
-                }
-
                 .handle-badge {
-                    left: 2px;
+                    left: 9px;
                     right: auto;
                     border-radius: 0 6px 6px 0;
                 }
@@ -136,17 +128,9 @@
             }
 
             &.at-edge {
-                left: 100% !important;
-                margin-left: -18px !important;
-
-                .marker-core-line {
-                    margin-left: auto;
-                    margin-right: 0;
-                }
-
                 .handle-badge {
                     left: auto;
-                    right: 2px;
+                    right: 9px;
                     border-radius: 6px 0 0 6px;
                 }
             }

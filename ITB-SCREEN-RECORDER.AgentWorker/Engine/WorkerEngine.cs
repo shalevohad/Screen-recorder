@@ -90,6 +90,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds);
 
             _keyboardCapture.KeystrokeCaptured += OnKeystrokeCaptured;
+#if WINDOWS
+            ITBRecorderAgent.Providers.Video.Mouse.Windows.WindowsMouseOverlay.MouseInteractionOccurred += OnMouseInteractionOccurred;
+#endif
             _keyboardCapture.Start();
 
             WireIpcEvents();
@@ -103,10 +106,32 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
         }
 
+        private void OnMouseInteractionOccurred(int x, int y, string button)
+        {
+            if (!_isStreaming || !_isRecording) return;
+            long epochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds;
+            var k = new KeystrokeEventDto
+            {
+                EpochMs = epochMs,
+                KeyCombination = $"[{button}]",
+                TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime,
+                X = x,
+                Y = y,
+                DisplayId = _displayManager.ResolveDisplayIdForPoint(x, y)
+            };
+            OnKeystrokeCaptured(k);
+        }
+
         private void OnKeystrokeCaptured(KeystrokeEventDto k)
         {
-            // Keystroke telemetry recording is strictly permitted only while the station is actively streaming/recording
+            // Keystrokes are captured whenever the station is streaming (for real-time dashboard live viewing)
             if (!_isStreaming) return;
+
+            // Resolve target physical/virtual monitor if not already stamped
+            if (string.IsNullOrEmpty(k.DisplayId))
+            {
+                k.DisplayId = _displayManager.ResolveDisplayIdForPoint(k.X, k.Y);
+            }
 
             // In-worker end-to-end payload encryption prior to disk storage or network dispatch
             if (!string.IsNullOrEmpty(_activeKeyId) && _activeKeyBytes != null && !string.IsNullOrEmpty(k.KeyCombination))
@@ -229,6 +254,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 bool prev = _isRecording;
                 _isRecording = shouldRecord;
                 Logger.Info($"[WORKER:RECORDING] Recording state updated to {shouldRecord} (Stream live status: {_isStreaming})");
+                if (!shouldRecord && !_isStreaming)
+                {
+                    while (_onlineKeystrokes.TryDequeue(out _)) { }
+                }
                 if (!shouldRecord && _isOffline)
                 {
                     Logger.Info("[WORKER:RECORDING] Recording stopped while in offline buffer mode. Flushing and switching off offline buffer.");

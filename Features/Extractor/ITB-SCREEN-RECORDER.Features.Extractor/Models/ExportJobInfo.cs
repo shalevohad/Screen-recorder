@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Models/ExportJobInfo.cs
 // ==========================================
 using System;
@@ -24,6 +24,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 
         public virtual int DownloadCount { get; set; } = 0;
         public virtual bool IsBookmarked { get; set; } = false;
+        public virtual string? CreatedBy { get; set; } = "Guest Operator";
+        public virtual string? Notes { get; set; }
 
         [JsonIgnore]
         public ExtractionRequestDto? Request { get; set; }

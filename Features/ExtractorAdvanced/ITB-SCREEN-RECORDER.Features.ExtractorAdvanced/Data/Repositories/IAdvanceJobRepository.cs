@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
+namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -31,12 +31,12 @@ public sealed class AdvanceJobRepository : IAdvanceJobRepository
                 JobId, FileName, Status, ProgressPercent, StatusMessage, SpeedMBps,
                 EtaSeconds, FileSizeBytes, CreatedAtUtc, CompletedAtUtc, ErrorMessage,
                 OutputFilePath, NetworkFolderPath, DownloadCount, IsBookmarked,
-                StationIds, InEpochMs, OutEpochMs, CutMode, EstimatedSecondsRemaining
+                StationIds, InEpochMs, OutEpochMs, CutMode, EstimatedSecondsRemaining, CreatedBy, Notes
             ) VALUES (
                 @JobId, @FileName, @Status, @ProgressPercent, @StatusMessage, @SpeedMBps,
                 @EtaSeconds, @FileSizeBytes, @CreatedAtUtc, @CompletedAtUtc, @ErrorMessage,
                 @OutputFilePath, @NetworkFolderPath, @DownloadCount, @IsBookmarked,
-                @StationIds, @InEpochMs, @OutEpochMs, @CutMode, @EstimatedSecondsRemaining
+                @StationIds, @InEpochMs, @OutEpochMs, @CutMode, @EstimatedSecondsRemaining, @CreatedBy, @Notes
             )
             ON CONFLICT(JobId) DO UPDATE SET
                 Status = excluded.Status,
@@ -55,7 +55,9 @@ public sealed class AdvanceJobRepository : IAdvanceJobRepository
                 InEpochMs = excluded.InEpochMs,
                 OutEpochMs = excluded.OutEpochMs,
                 CutMode = excluded.CutMode,
-                EstimatedSecondsRemaining = excluded.EstimatedSecondsRemaining;
+                EstimatedSecondsRemaining = excluded.EstimatedSecondsRemaining,
+                CreatedBy = excluded.CreatedBy,
+                Notes = excluded.Notes;
         ";
 
         await db.ExecuteAsync(sql, job);

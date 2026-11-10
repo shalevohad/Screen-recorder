@@ -53,6 +53,31 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
         [DllImport("user32.dll")]
         private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct MSG
         {
@@ -195,11 +220,28 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
                     if (!string.IsNullOrEmpty(keyCombo))
                     {
                         long epochMs = _getSyncedEpochMs();
+                        int cursorX = 0;
+                        int cursorY = 0;
+
+                        IntPtr fg = GetForegroundWindow();
+                        if (fg != IntPtr.Zero && GetWindowRect(fg, out var r) && (r.Right > r.Left) && (r.Bottom > r.Top))
+                        {
+                            cursorX = (r.Left + r.Right) / 2;
+                            cursorY = (r.Top + r.Bottom) / 2;
+                        }
+                        else if (GetCursorPos(out var pt))
+                        {
+                            cursorX = pt.X;
+                            cursorY = pt.Y;
+                        }
+
                         KeystrokeCaptured?.Invoke(new KeystrokeEventDto
                         {
                             EpochMs = epochMs,
                             KeyCombination = keyCombo,
-                            TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime
+                            TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime,
+                            X = cursorX,
+                            Y = cursorY
                         });
                     }
                 }

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout';
 import './VirtualTopologyCanvas.scss';
 
@@ -7,27 +8,46 @@ export default function VirtualTopologyCanvas({
     station,
     activeDisplayId = 'canvas',
     onSelectDisplay,
+    onDisplayClick,
     isMuted = true,
     volume = 1,
     webrtcBaseUrl = '/api/v1/whep',
     isInteractive = false,
     onPlaying,
-    onStreamAvailable
+    onStreamAvailable,
+    keystrokes,
+    keystrokeMode = 'burn-in',
+    keystrokeVariant = 'viewport'
 }) {
     const stationHost = station?.hostname || station?.Hostname || station?.stationId || station?.StationId || '';
+    const activeKeystrokes = keystrokes || station?.recentKeystrokes || station?.keystrokes || station?.Keystrokes || [];
+    const activeKeystrokeMode = keystrokeMode || station?.keystrokeMode || 'burn-in';
 
     const displays = useMemo(() => {
         const raw = station?.displays || station?.Displays || station?.displayTopology?.displays || station?.DisplayTopology?.Displays;
         if (raw && raw.length > 0) {
-            return raw.map(d => ({
-                DisplayId: d.DisplayId || d.displayId || 'mon-0',
-                DisplayName: d.DisplayName || d.displayName || 'Display',
-                IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary),
-                X: d.X ?? d.x ?? 0,
-                Y: d.Y ?? d.y ?? 0,
-                Width: d.Width || d.width || 1920,
-                Height: d.Height || d.height || 1080
-            }));
+            const allZeroCoords = raw.length > 1 && raw.every(d => (d.X ?? d.x ?? 0) === 0 && (d.Y ?? d.y ?? 0) === 0);
+            let cumulativeX = 0;
+            return raw.map((d, idx) => {
+                const dWidth = d.Width || d.width || 1920;
+                const dHeight = d.Height || d.height || 1080;
+                const posX = allZeroCoords ? cumulativeX : (d.X ?? d.x ?? (idx * dWidth));
+                const posY = allZeroCoords ? 0 : (d.Y ?? d.y ?? 0);
+                if (allZeroCoords) cumulativeX += dWidth;
+
+                const dispId = (d.DisplayId || d.displayId || `mon-${idx}`).toLowerCase();
+                const dispName = d.DisplayName || d.displayName || `Screen ${idx + 1}`;
+
+                return {
+                    DisplayId: dispId,
+                    DisplayName: dispName,
+                    IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary ?? (idx === 0)),
+                    X: posX,
+                    Y: posY,
+                    Width: dWidth,
+                    Height: dHeight
+                };
+            });
         }
         return [
             {
@@ -50,7 +70,7 @@ export default function VirtualTopologyCanvas({
         const streamPath = stationHost ? `live/${stationHost}/${singleDisplay.DisplayId}` : '';
 
         return (
-            <div className="virtual-topology-solo-viewport single-display-pure">
+            <div className="virtual-topology-solo-viewport single-display-pure" style={{ position: 'relative', width: '100%', height: '100%' }}>
                 {streamPath && (
                     <WebRTCPlayer
                         streamPath={streamPath}
@@ -60,6 +80,16 @@ export default function VirtualTopologyCanvas({
                         showControls={false}
                         onPlaying={onPlaying}
                         onStreamAvailable={onStreamAvailable}
+                    />
+                )}
+                {activeKeystrokes.length > 0 && (
+                    <LiveKeystrokeOverlay
+                        keystrokes={activeKeystrokes}
+                        isLive={true}
+                        variant={keystrokeVariant}
+                        mode={activeKeystrokeMode}
+                        targetDisplayId={singleDisplay.DisplayId}
+                        displays={displays}
                     />
                 )}
             </div>
@@ -101,12 +131,15 @@ export default function VirtualTopologyCanvas({
                             pointerEvents: isHiddenSolo ? 'none' : 'auto',
                             zIndex: isThisSolo ? 10 : 2
                         }}
-                        onClick={() => {
-                            if (!isSoloMode && isInteractive && onSelectDisplay) {
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onDisplayClick) {
+                                onDisplayClick(d.DisplayId);
+                            } else if (!isSoloMode && isInteractive && onSelectDisplay) {
                                 onSelectDisplay(d.DisplayId);
                             }
                         }}
-                        title={!isSoloMode && isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined}
+                        title={onDisplayClick ? `Click to open ${d.DisplayName || d.DisplayId} in Fullscreen` : (!isSoloMode && isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined)}
                     >
                         {streamPath && (
                             <WebRTCPlayer
@@ -120,10 +153,21 @@ export default function VirtualTopologyCanvas({
                             />
                         )}
 
+                        {activeKeystrokes.length > 0 && !isHiddenSolo && (
+                            <LiveKeystrokeOverlay
+                                keystrokes={activeKeystrokes}
+                                isLive={true}
+                                variant={isSoloMode ? keystrokeVariant : "compact"}
+                                mode={activeKeystrokeMode}
+                                targetDisplayId={d.DisplayId}
+                                displays={displays}
+                            />
+                        )}
+
                         {!isSoloMode && (
                             <div className="sub-display-overlay">
                                 <span className="display-index-pill">
-                                    {d.IsPrimary ? '★ ' : ''}🖥 {index + 1}
+                                     {d.IsPrimary ? '★ ' : ''}🖥 {index + 1}
                                 </span>
                                 <span className="display-res-pill">
                                     {d.Width}x{d.Height}

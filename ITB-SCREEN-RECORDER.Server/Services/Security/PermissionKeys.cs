@@ -21,6 +21,7 @@ public static class PermissionKeys
     public const string SettingsAgents = "settings.agents";
     public const string SettingsStorage = "settings.storage";
     public const string SettingsMaintenance = "settings.maintenance";
+    public const string SettingsCluster = "settings.cluster";
 
     // User management and security policies
     public const string SecurityUsersManage = "security.users.manage";
@@ -40,6 +41,7 @@ public static class PermissionKeys
         SettingsAgents,
         SettingsStorage,
         SettingsMaintenance,
+        SettingsCluster,
         SecurityUsersManage,
         SecurityRolesManage
     };
@@ -60,6 +62,7 @@ public static class PermissionKeys
         new ITB_SCREEN_RECORDER.Server.Models.Security.PermissionItemDto(SettingsAgents, "Configure Agent Operations", "Settings & System", "Adjust default bitrate, FPS policies, and per-station tuning overrides."),
         new ITB_SCREEN_RECORDER.Server.Models.Security.PermissionItemDto(SettingsStorage, "Configure Storage & Retention", "Settings & System", "Update network storage directories, retention periods, and storage quotas."),
         new ITB_SCREEN_RECORDER.Server.Models.Security.PermissionItemDto(SettingsMaintenance, "System Maintenance & Diagnostics", "Settings & System", "Trigger database vacuum, disk health re-indexing, and cache purges."),
+        new ITB_SCREEN_RECORDER.Server.Models.Security.PermissionItemDto(SettingsCluster, "High Availability & Clustering", "Settings & System", "Configure Active-Active/Active-Standby clustering, Virtual IP (VIP), and manual failover promotion."),
 
         new ITB_SCREEN_RECORDER.Server.Models.Security.PermissionItemDto(SecurityUsersManage, "Manage User Accounts & Overrides", "Security & Access", "Provision local user accounts, reset passwords, and set granular overrides."),
         new ITB_SCREEN_RECORDER.Server.Models.Security.PermissionItemDto(SecurityRolesManage, "Manage Roles & LDAP Mappings", "Security & Access", "Create/edit operational roles, assign permissions, and map Active Directory groups.")

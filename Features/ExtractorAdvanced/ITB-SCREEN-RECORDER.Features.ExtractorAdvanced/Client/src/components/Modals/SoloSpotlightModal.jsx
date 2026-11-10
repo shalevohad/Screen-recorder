@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
+import { getCurrentOperatorName } from '../../utils/operatorStore.js';
 import TimelineBoard from '../Timeline/TimelineBoard.jsx';
 import TransportBar from '../TransportBar/TransportBar.jsx';
 import StudioVideoFeed from '../Player/StudioVideoFeed.jsx';
@@ -37,6 +38,7 @@ const formatCutDurationSMPTE = (durationMs, fps = 30) => {
 export default function SoloSpotlightModal({
     isOpen,
     station,
+    initialDisplayId = null,
     allStations = [],
     onSelectStation,
     onClose,
@@ -102,8 +104,50 @@ export default function SoloSpotlightModal({
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
     const hasMultipleDisplays = Boolean((station?.displays?.length > 1) || (station?.topology?.displays?.length > 1));
-    const [viewMode, setViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+
+    // Fullscreen / Solo viewMode determination:
+    // 1. If entered Fullscreen with an explicit screen clicked (initialDisplayId), select that screen!
+    // 2. Otherwise default automatically to 'canvas', while restoring the operator's last remembered layout choice.
+    const [viewMode, setViewModeState] = useState(() => {
+        if (!hasMultipleDisplays) return 'mon-0';
+        if (initialDisplayId) return initialDisplayId;
+        try {
+            const remembered = localStorage.getItem('itb_spotlight_viewmode');
+            if (remembered) return remembered;
+        } catch {}
+        return 'canvas';
+    });
+
+    const setViewMode = useCallback((val) => {
+        setViewModeState(prev => {
+            const next = typeof val === 'function' ? val(prev) : val;
+            try {
+                localStorage.setItem('itb_spotlight_viewmode', next);
+            } catch {}
+            return next;
+        });
+    }, []);
+
     const [isPipSwapped, setIsPipSwapped] = useState(false);
+
+    // Sync initialDisplayId and remembered layout when modal opens or station switches
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!hasMultipleDisplays) {
+            setViewModeState('mon-0');
+            return;
+        }
+        if (initialDisplayId) {
+            setViewModeState(initialDisplayId);
+        } else {
+            try {
+                const remembered = localStorage.getItem('itb_spotlight_viewmode');
+                setViewModeState(remembered || 'canvas');
+            } catch {
+                setViewModeState('canvas');
+            }
+        }
+    }, [isOpen, initialDisplayId, hasMultipleDisplays, station?.id]);
 
     const bottomIslandRef = useRef(null);
 
@@ -263,12 +307,10 @@ export default function SoloSpotlightModal({
         if (!station || Math.abs(outPointMs - inPointMs) < 1000) return;
 
         const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        let resolvedMode;
-        if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
-        else if (normMode === 'CAPTION') resolvedMode = 'Caption';
-        else resolvedMode = 'BurnIn';
+        const resolvedMode = (normMode === 'NONE' || normMode === 'OFF') ? 'None' : 'BurnIn';
 
         const payload = {
+            createdBy: getCurrentOperatorName(),
             stationIds: [station.id],
             stations: [station.id],
             stationId: station.id,
@@ -484,6 +526,10 @@ export default function SoloSpotlightModal({
                     currentEpochMs={currentCalculatedEpoch}
                     keystrokes={keystrokes}
                     keystrokeMode={keystrokeMode}
+                    targetStationId={station?.id || station?.hostname || station?.stationId}
+                    targetDisplayId={viewMode === 'canvas' || viewMode === 'all-displays' ? 'auto' : viewMode}
+                    displays={station?.displays || station?.Displays}
+                    directorPlan={directorPlan || station?.directorPlan}
                 />
 
                 <div className="canvas-scrim-top" />
@@ -565,19 +611,27 @@ export default function SoloSpotlightModal({
                             <span className="val">{formatCutDurationSMPTE(outPointMs - inPointMs)}</span>
                         </div>
 
-                        <button
-                            type="button"
-                            className="btn-export-cut-hero"
-                            onClick={handleTriggerExport}
-                            title={`Export Selected Cut Window as ${viewMode.toUpperCase()} (Ctrl+E)`}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="7 10 12 15 17 10" />
-                                <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                            <span>EXPORT CUT ({viewMode.toUpperCase()})</span>
-                        </button>
+                        {(() => {
+                            const viewModeLabel = viewMode === 'mon-0' ? 'SCREEN 1' :
+                                                  viewMode === 'mon-1' ? 'SCREEN 2' :
+                                                  viewMode.startsWith('mon-') ? `SCREEN ${parseInt(viewMode.slice(4)) + 1}` :
+                                                  viewMode.toUpperCase();
+                            return (
+                                <button
+                                    type="button"
+                                    className="btn-export-cut-hero"
+                                    onClick={handleTriggerExport}
+                                    title={`Export Selected Cut Window as ${viewModeLabel} (Ctrl+E)`}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                    </svg>
+                                    <span>{viewMode === 'all-displays' ? 'EXPORT ALL SCREENS & DIRECTOR' : `EXPORT CUT (${viewModeLabel})`}</span>
+                                </button>
+                            );
+                        })()}
                     </div>
 
                     <TransportBar

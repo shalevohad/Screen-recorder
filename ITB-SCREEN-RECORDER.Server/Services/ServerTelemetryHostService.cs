@@ -7,7 +7,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 
 namespace ITB_SCREEN_RECORDER.Server.Services
 {
@@ -16,18 +18,22 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly NetworkTelemetry _networkTelemetry;
         private readonly IStorageTelemetryService _storageService;
+        private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<ServerTelemetryHostService> _logger;
         private readonly DateTime _serverStartTime = DateTime.UtcNow;
+        private IClusterService? _clusterService;
 
         public ServerTelemetryHostService(
             TelemetryBroadcastService broadcastService,
             NetworkTelemetry networkTelemetry,
             IStorageTelemetryService storageService,
+            IServiceProvider serviceProvider,
             ILogger<ServerTelemetryHostService> logger)
         {
             _broadcastService = broadcastService;
             _networkTelemetry = networkTelemetry;
             _storageService = storageService;
+            _serviceProvider = serviceProvider;
             _logger = logger;
         }
 
@@ -58,6 +64,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 var net = _networkTelemetry.GetMetricsSnapshot();
                 var storage = _storageService.GetCurrentStorageTelemetry();
 
+                _clusterService ??= _serviceProvider.GetService<IClusterService>();
+                var clusterGrid = _clusterService?.GetClusterGridStatus();
+
                 var payload = new
                 {
                     cpuUsagePct = hw.HostCpuUsagePct,
@@ -72,7 +81,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     uptimeSeconds = Math.Round((DateTime.UtcNow - _serverStartTime).TotalSeconds, 0),
 
                     // Storage pool and IOPS telemetry broadcast directly to ServerTelemetryWidget in the header
-                    storage = storage
+                    storage = storage,
+
+                    // Live Cluster Grid telemetry and fleet-wide aggregates
+                    cluster = clusterGrid
                 };
 
                 await _broadcastService.BroadcastServerTelemetryAsync(payload);

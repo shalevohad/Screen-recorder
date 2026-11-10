@@ -69,6 +69,21 @@ public class StorageScannerParsingTests
     }
 
     [Fact]
+    public void TryParseStartEpoch_CompactFormat_WithLocalTimezone_ConvertsToUtc()
+    {
+        string fileName = "20260909_135108_235725Z.mp4";
+        var fallbackUtc = DateTime.UtcNow;
+
+        long epochMs = StorageScannerService.TryParseStartEpoch(fileName, fallbackUtc, "Israel Standard Time");
+
+        // In Israel (IDT, UTC+3), 13:51:08 local is 10:51:08 UTC
+        var expectedUtc = new DateTime(2026, 9, 9, 10, 51, 8, DateTimeKind.Utc);
+        long expectedMs = new DateTimeOffset(expectedUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+        Assert.Equal(expectedMs, epochMs);
+    }
+
+    [Fact]
     public void TryParseStartEpoch_UnrecognizedName_FallsBackToCreationTime()
     {
         string fileName = "arbitrary_recording_name.mp4";

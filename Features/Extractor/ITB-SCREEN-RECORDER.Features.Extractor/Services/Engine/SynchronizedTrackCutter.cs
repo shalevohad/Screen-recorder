@@ -72,13 +72,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 layoutMode = requestedDisplay;
             }
-            else if (!string.IsNullOrEmpty(plan.TargetDisplayId))
+            else if (!string.IsNullOrEmpty(plan.TargetDisplayId) && !string.Equals(plan.TargetDisplayId, "director", StringComparison.OrdinalIgnoreCase))
             {
                 layoutMode = plan.TargetDisplayId.Trim().ToLowerInvariant();
             }
 
             bool hasMultipleDisplays = chunksByDisplay.Count > 1;
-            bool isMultiDisplayLayout = hasMultipleDisplays && (layoutMode == "split" || layoutMode == "pip" || layoutMode == "canvas");
+            bool isMultiDisplayLayout = hasMultipleDisplays && (layoutMode == "split" || layoutMode == "pip" || layoutMode == "canvas" || layoutMode == "director");
 
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
@@ -312,6 +312,14 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                       $"color=c=0x070A10:s=1920x1080:d={maxDuration.ToString("0.00", CultureInfo.InvariantCulture)}[bg]; " +
                                       $"[bg][d0]overlay=16:277[tmp]; [tmp][d1]overlay=968:277[vbase];";
                     }
+                    else if (layoutMode == "director")
+                    {
+                        // Auto-Director Cut: dynamically switches between monitors according to plan.DirectorSegments with seamless millisecond dip-to-black transitions
+                        string dirFontClause = ResolveFontClause();
+                        var (dW, dH, dGraph) = BuildDirectorFilterGraph(
+                            plan.DirectorSegments, probe0, probe1, secondaryKey, plan.ActiveSegments, maxDuration, dirFontClause);
+                        filterGraph = dGraph;
+                    }
                     else
                     {
                         // Picture-in-Picture (PiP): Hero 1080p full display with 30% floating inset in bottom-right with tactical cyan border
@@ -338,7 +346,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                             segments.Add((new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds()));
                         }
 
-                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
+                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn || plan.KeystrokeMode == KeystrokeExportMode.Caption)
                         {
                             subtitleTempPath = await _srtGenerator.CreateAssKeycapsFileForSegmentsAsync(stationId, segments, ct);
                             if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
@@ -347,17 +355,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                 vfPost.Add($"subtitles='{escapedAss}'");
                             }
                         }
-                        else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
-                        {
-                            subtitleTempPath = await _srtGenerator.CreateSrtFileForSegmentsAsync(stationId, segments, ct);
-                            if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
-                            {
-                                subInputArgs = $"-i \"{subtitleTempPath.Replace('\\', '/')}\"";
-                                mapArgs += " -map 2:s -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
-                            }
-                        }
                     }
 
+                    double probeFps = probe0.Fps > 0 ? probe0.Fps : (probe1.Fps > 0 ? probe1.Fps : 30.0);
+                    if (probeFps < 20.0) probeFps = 30.0;
+                    string fpsStr = probeFps.ToString("0.##", CultureInfo.InvariantCulture);
+
+                    vfPost.Add($"fps=fps={fpsStr}:round=near");
                     vfPost.Add("format=yuv420p");
                     filterGraph += $"[vbase]{string.Join(",", vfPost)}[outv]";
 
@@ -373,7 +377,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                        $"-f concat -safe 0 -i \"{manifest0.Replace('\\', '/')}\" " +
                                        $"-f concat -safe 0 -i \"{manifest1.Replace('\\', '/')}\" " +
                                        $"{subInputArgs} -filter_complex \"{filterGraph}\" {mapArgs} " +
-                                       $"-c:v libx264 -preset veryfast -crf 20 -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
+                                       $"-c:v libx264 -preset fast -crf 17 -fps_mode cfr -r {fpsStr} -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
 
                     return await ExecuteFfmpegCommandAsync(ffmpegPath, arguments, outputPath, trackHasAudio, maxDuration, stationId, progress, ct);
                 }
@@ -455,7 +459,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                             segments.Add((new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds()));
                         }
 
-                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
+                        if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn || plan.KeystrokeMode == KeystrokeExportMode.Caption)
                         {
                             subtitleTempPath = await _srtGenerator.CreateAssKeycapsFileForSegmentsAsync(stationId, segments, ct);
                             if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
@@ -464,18 +468,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                 vfFilters.Add($"subtitles='{escapedAss}'");
                             }
                         }
-                        else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
-                        {
-                            subtitleTempPath = await _srtGenerator.CreateSrtFileForSegmentsAsync(stationId, segments, ct);
-                            if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
-                            {
-                                int subIndex = secondaryAudioManifest != null ? 2 : 1;
-                                subInputArgs = $"-i \"{subtitleTempPath.Replace('\\', '/')}\"";
-                                mapArgs = $"-map 0:v {(secondaryAudioManifest != null ? "-map 1:a?" : (trackHasAudio ? "-map 0:a?" : ""))} -map {subIndex}:s -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
-                            }
-                        }
                     }
 
+                    double trackFps = baselineProbe.Fps > 0 ? baselineProbe.Fps : 30.0;
+                    if (trackFps < 20.0) trackFps = 30.0;
+                    string fpsStr = trackFps.ToString("0.##", CultureInfo.InvariantCulture);
+
+                    vfFilters.Add($"fps=fps={fpsStr}:round=near");
                     vfFilters.Add("format=yuv420p");
                     string videoFilterArg = string.Join(",", vfFilters);
 
@@ -608,6 +607,174 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 try { ExtractorGarbageCollectorService.UntrackProcess(process.Id); } catch { }
             }
+        }
+        private static double MapEpochToOutputSeconds(long epochMs, List<TimeInterval>? activeSegments, double maxDuration)
+        {
+            if (activeSegments == null || activeSegments.Count == 0) return 0.0;
+
+            double accumulatedSec = 0.0;
+            DateTime epochUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
+
+            foreach (var activeSeg in activeSegments)
+            {
+                if (epochUtc <= activeSeg.StartUtc)
+                {
+                    return accumulatedSec;
+                }
+                else if (epochUtc >= activeSeg.EndUtc)
+                {
+                    accumulatedSec += activeSeg.DurationSeconds;
+                }
+                else
+                {
+                    accumulatedSec += (epochUtc - activeSeg.StartUtc).TotalSeconds;
+                    return Math.Min(maxDuration, accumulatedSec);
+                }
+            }
+
+            return Math.Min(maxDuration, accumulatedSec);
+        }
+
+        /// <summary>
+        /// Formulates deterministic filtergraph operations for Auto-Director multi-monitor switching with uniform canvas scaling and SAR normalization.
+        /// Prevents FFmpeg [Parsed_concat] parameter mismatch (ExitCode -22) when workstations combine ultrawide (3440x1440) and standard (1920x1080) displays.
+        /// </summary>
+        public static (int TargetWidth, int TargetHeight, string FilterGraph) BuildDirectorFilterGraph(
+            IReadOnlyList<DirectorCutSegmentDto>? dirSegments,
+            ProbedStationMetadata probe0,
+            ProbedStationMetadata probe1,
+            string secondaryKey,
+            List<TimeInterval>? activeSegments,
+            double maxDuration,
+            string? dirFontClause)
+        {
+            if (dirSegments == null || dirSegments.Count == 0)
+            {
+                return (1920, 1080, "[0:v]null[vbase];");
+            }
+
+            int targetW = probe0.Width > 0 ? probe0.Width : 1920;
+            int targetH = probe0.Height > 0 ? probe0.Height : 1080;
+            if (probe1.Width > targetW) targetW = probe1.Width;
+            if (probe1.Height > targetH) targetH = probe1.Height;
+            targetW -= (targetW % 2);
+            targetH -= (targetH % 2);
+
+            var segFilterOps = new List<string>();
+            var concatInputLabels = new List<string>();
+
+            for (int i = 0; i < dirSegments.Count; i++)
+            {
+                var seg = dirSegments[i];
+                double segStartSec = MapEpochToOutputSeconds(seg.StartEpochMs, activeSegments, maxDuration);
+                double segEndSec = MapEpochToOutputSeconds(seg.EndEpochMs, activeSegments, maxDuration);
+                double segDur = segEndSec - segStartSec;
+                if (segDur <= 0.05) continue;
+
+                bool isSecondary = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) ||
+                                   (seg.TargetDisplayId != null && seg.TargetDisplayId.EndsWith("-1", StringComparison.OrdinalIgnoreCase)) ||
+                                   seg.TargetDisplayNumber > 1;
+                int inIdx = isSecondary ? 1 : 0;
+                string segOutLabel = $"[v_seg_{i}]";
+
+                string startStr = segStartSec.ToString("0.00", CultureInfo.InvariantCulture);
+                string endStr = segEndSec.ToString("0.00", CultureInfo.InvariantCulture);
+
+                var segFilters = new List<string>
+                {
+                    $"trim=start={startStr}:end={endStr}",
+                    "setpts=PTS-STARTPTS",
+                    $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+                };
+
+                if (i > 0 && dirSegments.Count > 1)
+                {
+                    segFilters.Add("fade=type=in:start_time=0:duration=0.15");
+                }
+                if (i < dirSegments.Count - 1 && dirSegments.Count > 1)
+                {
+                    double outStart = Math.Max(0, segDur - 0.15);
+                    segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", CultureInfo.InvariantCulture)}:duration=0.15");
+                }
+
+                // Auto-Director Screen Orientation HUD & Physical Minimap Overlay
+                if (!string.IsNullOrEmpty(dirFontClause) && dirSegments.Count > 1)
+                {
+                    int displayNum = inIdx + 1;
+                    string displayAlias = (inIdx == 0) ? "MAIN" : "SECONDARY";
+                    int totalDisplays = 2;
+
+                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x0F172A@0.88:t=fill");
+                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x06B6D4@0.85:t=2");
+                    segFilters.Add($"drawtext={dirFontClause}text='⚡ AUTO-DIRECTOR':fontcolor=0x22D3EE:fontsize=10:x=34:y=30");
+                    segFilters.Add($"drawtext={dirFontClause}text='VIEWING\\: SCREEN {displayNum} ({displayAlias})':fontcolor=white:fontsize=13:x=34:y=46");
+
+                    for (int m = 0; m < totalDisplays; m++)
+                    {
+                        int boxX = 24 + 280 - 12 - (totalDisplays * 32) + (m * 32);
+                        string mColor = (m == inIdx) ? "0x06B6D4" : "0x334155";
+                        segFilters.Add($"drawbox=x={boxX}:y=36:w=26:h=18:color={mColor}:t=fill");
+                        segFilters.Add($"drawtext={dirFontClause}text='{m + 1}':fontcolor=white:fontsize=10:x={boxX + 9}:y=40");
+                    }
+
+                    if (i > 0)
+                    {
+                        segFilters.Add($"drawtext={dirFontClause}text='▶ SWITCHED TO SCREEN {displayNum} ({displayAlias})':enable='between(t,0,2.5)':fontcolor=0x10B981:fontsize=15:box=1:boxcolor=0x0F172A@0.92:boxborderw=6:x=(w-tw)/2:y=28");
+                    }
+                }
+
+                segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
+                concatInputLabels.Add(segOutLabel);
+            }
+
+            string filterGraph;
+            if (concatInputLabels.Count > 1)
+            {
+                filterGraph = $"{string.Join("; ", segFilterOps)}; {string.Join("", concatInputLabels)}concat=n={concatInputLabels.Count}:v=1:a=0[vbase];";
+            }
+            else if (concatInputLabels.Count == 1)
+            {
+                filterGraph = $"{segFilterOps[0]}; {concatInputLabels[0]}null[vbase];";
+            }
+            else
+            {
+                filterGraph = "[0:v]null[vbase];";
+            }
+
+            return (targetW, targetH, filterGraph);
+        }
+
+        private static string ResolveFontClause()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                string fontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                string[] winCandidates = {
+                    Path.Combine(fontsDir, "arial.ttf"),
+                    Path.Combine(fontsDir, "segoeui.ttf"),
+                    Path.Combine(fontsDir, "tahoma.ttf"),
+                    "C:/Windows/Fonts/arial.ttf"
+                };
+                foreach (var font in winCandidates)
+                {
+                    if (File.Exists(font))
+                    {
+                        string normalized = font.Replace("\\", "/").Replace(":", "\\:");
+                        return $"fontfile='{normalized}':";
+                    }
+                }
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                string[] linuxFonts = {
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+                };
+                var found = linuxFonts.FirstOrDefault(File.Exists);
+                if (found != null) return $"fontfile='{found}':";
+            }
+            return "";
         }
     }
 }

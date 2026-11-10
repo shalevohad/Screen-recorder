@@ -34,6 +34,9 @@ public interface ICatalogRepository : IKeystrokeRepository, IStationRoleProvider
     Task FinalizeChunkAsync(string filePath, long endEpochMs, long fileSizeBytes);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetChunksForWindowAsync(string stationId, long fromEpochMs, long toEpochMs);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit);
+    Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit, IEnumerable<string>? excludedFilePaths);
+    Task<IReadOnlyList<ChunkFinalizedEvent>> GetOldestCandidateChunksAsync(int batchLimit, IEnumerable<string>? excludedFilePaths = null);
+    Task<long> GetTotalRecordingSizeBytesAsync();
     Task RemoveChunksAsync(IEnumerable<string> filePaths);
 
     // Keystrokes Maintenance
@@ -54,11 +57,14 @@ public interface ICatalogRepository : IKeystrokeRepository, IStationRoleProvider
     Task UpsertOverrideAsync(string hostname, string? videoBitrate, int? targetFps);
     Task<bool> DeleteOverrideAsync(string hostname);
 
-    // Station Roles (Inherits GetAllStationRoleAliasesAsync from IStationRoleProvider)
+    // Station Roles (Inherits IStationRoleProvider)
     Task<HashSet<string>> GetAllKnownStationHostnamesAsync();
     Task SetStationRoleAliasAsync(string hostname, string? roleAlias);
+    Task SetStationRoleAliasAsync(string hostname, string? roleAlias, long? effectiveFromEpochMs);
     Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings);
+    Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings, long? effectiveFromEpochMs);
     Task SwapStationRoleAliasesAsync(string stationA, string stationB);
+    Task SwapStationRoleAliasesAsync(string stationA, string stationB, long? effectiveFromEpochMs);
 
     // Security & Policies
     Task<SecurityPolicyStateDto> GetSecurityPolicyAsync();

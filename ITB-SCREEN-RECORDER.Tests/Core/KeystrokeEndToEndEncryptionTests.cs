@@ -258,27 +258,10 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
 
         await catalogRepo.BulkInsertKeystrokesAsync(stationId, keys);
 
-        // Execute subtitle generator (SRT + ASS Keycaps)
+        // Execute tactical keycaps generator (ASS Keycaps Burn-In)
         var srtGenerator = new KeystrokeSrtGenerator(catalogRepo);
 
-        // 1. Generate SRT subtitle file
-        string? srtPath = await srtGenerator.CreateSrtFileAsync(stationId, baseEpoch, baseEpoch + 10000);
-        Assert.NotNull(srtPath);
-        Assert.True(File.Exists(srtPath));
-
-        try
-        {
-            string srtContent = await File.ReadAllTextAsync(srtPath);
-            Assert.Contains("[ Ctrl + Shift + Esc ]", srtContent);
-            Assert.Contains("[ Win + D ]", srtContent);
-            Assert.DoesNotContain(PayloadEncryptionManager.EnvelopePrefix, srtContent);
-        }
-        finally
-        {
-            if (File.Exists(srtPath)) File.Delete(srtPath);
-        }
-
-        // 2. Generate styled ASS Keycaps subtitle file
+        // Generate styled ASS Keycaps subtitle file
         string? assPath = await srtGenerator.CreateAssKeycapsFileAsync(stationId, baseEpoch, baseEpoch + 10000);
         Assert.NotNull(assPath);
         Assert.True(File.Exists(assPath));

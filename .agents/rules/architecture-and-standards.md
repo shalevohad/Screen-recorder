@@ -31,3 +31,8 @@ This rule file is automatically loaded by Antigravity and AI coding agents when 
 ## 6. Continuous System Book Synchronization
 - Maintain [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) as the active, authoritative developer handbook.
 - Any modifications to endpoints, contracts, video pipelines, storage schedules, or architecture must be updated in `SYSTEM_BOOK.md` in the same commit/task.
+
+## 7. Pre-Flight Dependency Vetting via Socket.dev
+- **Zero Unvetted Dependencies**: Before introducing or installing ANY new package (`npm`, `yarn`, `dotnet`), you MUST verify its security profile on [https://socket.dev/](https://socket.dev/) (supply chain risk, author changes, install scripts, and CVEs).
+- **Prohibited Dependencies**: Any package with Critical CVEs, malware flags, high supply chain risk, or malicious lifecycle hooks is strictly prohibited. Choose clean alternatives or use native platform APIs.
+- **Fail-Fast Build Gates**: Local `dotnet build` and CI workflows strictly abort on critical vulnerabilities.

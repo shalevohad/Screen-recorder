@@ -70,6 +70,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                 try
                 {
                     udpClient.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 4);
+                    udpClient.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastLoopback, true);
                 }
                 catch { /* Non-critical if socket option fails on specific OS stack */ }
 
@@ -81,86 +82,94 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
 
                 byte[] probeBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(probe));
 
-                // 1. Send Multicast Probe
-                try
-                {
-                    var multicastEp = new IPEndPoint(IPAddress.Parse(_multicastAddress), _discoveryPort);
-                    await udpClient.SendAsync(probeBytes, probeBytes.Length, multicastEp);
-                    _logger?.LogDebug("[DISCOVERY] Sent UDP multicast probe to {Address}:{Port}", _multicastAddress, _discoveryPort);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogDebug(ex, "[DISCOVERY] Failed to send multicast probe. Falling back to subnet broadcast.");
-                }
+                // Send initial probe burst
+                await SendDiscoveryProbesAsync(udpClient, probeBytes).ConfigureAwait(false);
 
-                // 2. Send Broadcast Probe (for flat networks or where multicast is restricted)
-                try
-                {
-                    var broadcastEp = new IPEndPoint(IPAddress.Parse(_broadcastAddress), _discoveryPort);
-                    await udpClient.SendAsync(probeBytes, probeBytes.Length, broadcastEp);
-                    _logger?.LogDebug("[DISCOVERY] Sent UDP broadcast probe to {Address}:{Port}", _broadcastAddress, _discoveryPort);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogDebug(ex, "[DISCOVERY] Failed to send broadcast probe to {Address}.", _broadcastAddress);
-                }
-
-                // 3. Listen for incoming responses until timeout
-                while (!cts.Token.IsCancellationRequested)
+                // Run background repeater to re-send probes if the server was mid-binding or packets dropped
+                using var repeaterCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                var repeaterTask = Task.Run(async () =>
                 {
                     try
                     {
-                        var receiveTask = udpClient.ReceiveAsync(cts.Token);
-                        var result = await receiveTask;
-
-                        string json = Encoding.UTF8.GetString(result.Buffer);
-                        var response = JsonSerializer.Deserialize<ServerDiscoveryResponse>(json, new JsonSerializerOptions
+                        await Task.Delay(250, repeaterCts.Token).ConfigureAwait(false);
+                        while (!repeaterCts.Token.IsCancellationRequested)
                         {
-                            PropertyNameCaseInsensitive = true
-                        });
-
-                        if (response != null && response.Magic == ServerDiscoveryConstants.ResponseMagic)
-                        {
-                            // If VirtualIp is present and enabled, ensure ApiBaseUrl and RtmpBaseUrl point directly to the VIP!
-                            if (response.EnableVirtualIp && !string.IsNullOrWhiteSpace(response.VirtualIp))
-                            {
-                                string vip = response.VirtualIp.Trim();
-                                response.ApiBaseUrl = $"https://{vip}:{response.HttpPort}";
-                                response.RtmpBaseUrl = $"rtmps://{vip}:{response.RtmpPort}/live";
-                            }
-                            else
-                            {
-                                // If ApiBaseUrl is relative or loopback, enrich with the actual remote IP that answered
-                                string respondingIp = result.RemoteEndPoint.Address.ToString();
-                                if (string.IsNullOrWhiteSpace(response.ApiBaseUrl) || response.ApiBaseUrl.Contains("127.0.0.1") || response.ApiBaseUrl.Contains("localhost"))
-                                {
-                                    response.ApiBaseUrl = $"https://{respondingIp}:{response.HttpPort}";
-                                }
-                                if (string.IsNullOrWhiteSpace(response.RtmpBaseUrl) || response.RtmpBaseUrl.Contains("127.0.0.1") || response.RtmpBaseUrl.Contains("localhost"))
-                                {
-                                    response.RtmpBaseUrl = $"rtmps://{respondingIp}:{response.RtmpPort}/live";
-                                }
-
-                                if (!response.ServerIps.Contains(respondingIp))
-                                {
-                                    response.ServerIps.Insert(0, respondingIp);
-                                }
-                            }
-
-                            string key = !string.IsNullOrWhiteSpace(response.ServerId) ? response.ServerId : response.ApiBaseUrl;
-                            discoveredServers.TryAdd(key, response);
-                            _logger?.LogInformation("[DISCOVERY] Discovered server '{Name}' at {Api} (VIP: {Vip}, Status: accepting={Accepting})",
-                                response.ServerName, response.ApiBaseUrl, response.VirtualIp ?? "None", response.AcceptingNewAgents);
+                            await SendDiscoveryProbesAsync(udpClient, probeBytes).ConfigureAwait(false);
+                            await Task.Delay(350, repeaterCts.Token).ConfigureAwait(false);
                         }
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException) { }
+                    catch { }
+                }, repeaterCts.Token);
+
+                try
+                {
+                    // Listen for incoming responses until timeout
+                    while (!cts.Token.IsCancellationRequested)
                     {
-                        break;
+                        try
+                        {
+                            var receiveTask = udpClient.ReceiveAsync(cts.Token);
+                            var result = await receiveTask;
+
+                            string json = Encoding.UTF8.GetString(result.Buffer);
+                            var response = JsonSerializer.Deserialize<ServerDiscoveryResponse>(json, new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true
+                            });
+
+                            if (response != null && response.Magic == ServerDiscoveryConstants.ResponseMagic)
+                            {
+                                // If VirtualIp is present and enabled, ensure ApiBaseUrl and RtmpBaseUrl point directly to the VIP!
+                                if (response.EnableVirtualIp && !string.IsNullOrWhiteSpace(response.VirtualIp))
+                                {
+                                    string vip = response.VirtualIp.Trim();
+                                    response.ApiBaseUrl = $"https://{vip}:{response.HttpPort}";
+                                    response.RtmpBaseUrl = $"rtmps://{vip}:{response.RtmpPort}/live";
+                                }
+                                else
+                                {
+                                    // If ApiBaseUrl is relative or loopback, enrich with the actual remote IP that answered
+                                    string respondingIp = result.RemoteEndPoint.Address.ToString();
+                                    if (string.IsNullOrWhiteSpace(response.ApiBaseUrl) || response.ApiBaseUrl.Contains("127.0.0.1") || response.ApiBaseUrl.Contains("localhost"))
+                                    {
+                                        response.ApiBaseUrl = $"https://{respondingIp}:{response.HttpPort}";
+                                    }
+                                    if (string.IsNullOrWhiteSpace(response.RtmpBaseUrl) || response.RtmpBaseUrl.Contains("127.0.0.1") || response.RtmpBaseUrl.Contains("localhost"))
+                                    {
+                                        response.RtmpBaseUrl = $"rtmps://{respondingIp}:{response.RtmpPort}/live";
+                                    }
+
+                                    if (!response.ServerIps.Contains(respondingIp))
+                                    {
+                                        response.ServerIps.Insert(0, respondingIp);
+                                    }
+                                }
+
+                                string key = !string.IsNullOrWhiteSpace(response.ServerId) ? response.ServerId : response.ApiBaseUrl;
+                                discoveredServers.TryAdd(key, response);
+                                _logger?.LogInformation("[DISCOVERY] Discovered server '{Name}' at {Api} (VIP: {Vip}, Status: accepting={Accepting})",
+                                    response.ServerName, response.ApiBaseUrl, response.VirtualIp ?? "None", response.AcceptingNewAgents);
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogDebug(ex, "[DISCOVERY] Error receiving UDP packet.");
+                        }
                     }
-                    catch (Exception ex)
+                }
+                finally
+                {
+                    try
                     {
-                        _logger?.LogDebug(ex, "[DISCOVERY] Error receiving UDP packet.");
+                        repeaterCts.Cancel();
+                        await repeaterTask.ConfigureAwait(false);
                     }
+                    catch { }
                 }
             }
             catch (Exception ex)
@@ -197,6 +206,45 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
             return servers.FirstOrDefault();
         }
 
+        private async Task SendDiscoveryProbesAsync(UdpClient udpClient, byte[] probeBytes)
+        {
+            // 1. Send Multicast Probe
+            try
+            {
+                var multicastEp = new IPEndPoint(IPAddress.Parse(_multicastAddress), _discoveryPort);
+                await udpClient.SendAsync(probeBytes, probeBytes.Length, multicastEp).ConfigureAwait(false);
+                _logger?.LogDebug("[DISCOVERY] Sent UDP multicast probe to {Address}:{Port}", _multicastAddress, _discoveryPort);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[DISCOVERY] Failed to send multicast probe. Falling back to subnet broadcast.");
+            }
+
+            // 2. Send Broadcast Probe (for flat networks or where multicast is restricted)
+            try
+            {
+                var broadcastEp = new IPEndPoint(IPAddress.Parse(_broadcastAddress), _discoveryPort);
+                await udpClient.SendAsync(probeBytes, probeBytes.Length, broadcastEp).ConfigureAwait(false);
+                _logger?.LogDebug("[DISCOVERY] Sent UDP broadcast probe to {Address}:{Port}", _broadcastAddress, _discoveryPort);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[DISCOVERY] Failed to send broadcast probe to {Address}.", _broadcastAddress);
+            }
+
+            // 3. Send Loopback Unicast Probe (guarantees discovery when client and server share host/container, or in virtualized CI runners)
+            try
+            {
+                var loopbackEp = new IPEndPoint(IPAddress.Loopback, _discoveryPort);
+                await udpClient.SendAsync(probeBytes, probeBytes.Length, loopbackEp).ConfigureAwait(false);
+                _logger?.LogDebug("[DISCOVERY] Sent UDP loopback probe to 127.0.0.1:{Port}", _discoveryPort);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[DISCOVERY] Failed to send loopback probe to 127.0.0.1.");
+            }
+        }
+
         /// <summary>
         /// Probes corporate DNS suffixes for configured server hostnames.
         /// </summary>
@@ -204,6 +252,9 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
         {
             try
             {
+                using var dnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                dnsCts.CancelAfter(1000); // Fail fast so DNS delays never stall overall discovery
+
                 string domain = string.Empty;
                 try
                 {
@@ -228,7 +279,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                 {
                     try
                     {
-                        var addresses = await Dns.GetHostAddressesAsync(host, ct);
+                        var addresses = await Dns.GetHostAddressesAsync(host, dnsCts.Token);
                         var validIp = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
                         if (validIp != null)
                         {
