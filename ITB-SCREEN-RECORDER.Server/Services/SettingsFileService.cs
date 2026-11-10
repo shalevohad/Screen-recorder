@@ -40,6 +40,14 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 discoveryDto.NodeRole = (string)(discovery["NodeRole"] ?? ServerDiscoveryConstants.RolePrimary);
                 discoveryDto.Priority = (int)(discovery["Priority"] ?? 1);
                 discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
+                if (discovery["ClusterPeerUrls"] is JsonArray peerArr)
+                {
+                    discoveryDto.ClusterPeerUrls = peerArr.Select(x => x?.ToString() ?? "").Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+                }
+                discoveryDto.MaxIngestStreamsCapacity = (int)(discovery["MaxIngestStreamsCapacity"] ?? 50);
+                discoveryDto.MaxConcurrentRenderJobs = (int)(discovery["MaxConcurrentRenderJobs"] ?? 2);
+                discoveryDto.AutoBalanceStreams = (bool)(discovery["AutoBalanceStreams"] ?? true);
+                discoveryDto.DistributedVideoProcessingEnabled = (bool)(discovery["DistributedVideoProcessingEnabled"] ?? true);
                 discoveryDto.AutoFailoverDashboard = (bool)(discovery["AutoFailoverDashboard"] ?? true);
                 discoveryDto.DashboardFailoverDelaySeconds = (int)(discovery["DashboardFailoverDelaySeconds"] ?? 8);
                 discoveryDto.HeartbeatIntervalSeconds = (int)(discovery["HeartbeatIntervalSeconds"] ?? 2);
@@ -121,6 +129,19 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     discNode["NodeRole"] = dto.Discovery.NodeRole;
                     discNode["Priority"] = dto.Discovery.Priority;
                     discNode["PartnerServerUrl"] = dto.Discovery.PartnerServerUrl ?? "";
+                    var peerArray = new JsonArray();
+                    if (dto.Discovery.ClusterPeerUrls != null)
+                    {
+                        foreach (var url in dto.Discovery.ClusterPeerUrls)
+                        {
+                            if (!string.IsNullOrWhiteSpace(url)) peerArray.Add(url.Trim());
+                        }
+                    }
+                    discNode["ClusterPeerUrls"] = peerArray;
+                    discNode["MaxIngestStreamsCapacity"] = dto.Discovery.MaxIngestStreamsCapacity;
+                    discNode["MaxConcurrentRenderJobs"] = dto.Discovery.MaxConcurrentRenderJobs;
+                    discNode["AutoBalanceStreams"] = dto.Discovery.AutoBalanceStreams;
+                    discNode["DistributedVideoProcessingEnabled"] = dto.Discovery.DistributedVideoProcessingEnabled;
                     discNode["AutoFailoverDashboard"] = dto.Discovery.AutoFailoverDashboard;
                     discNode["DashboardFailoverDelaySeconds"] = dto.Discovery.DashboardFailoverDelaySeconds;
                     discNode["HeartbeatIntervalSeconds"] = dto.Discovery.HeartbeatIntervalSeconds;

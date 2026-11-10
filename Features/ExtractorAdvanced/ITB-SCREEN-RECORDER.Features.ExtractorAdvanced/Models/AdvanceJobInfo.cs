@@ -48,10 +48,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public CustomCanvasLayoutDto? CanvasLayout { get; set; }
         public CanvasLayoutTimelineDto? CanvasLayoutTimeline { get; set; }
         public string? UtcClockPosition { get; set; } = "top-right";
+
+        [JsonPropertyName("executingNodeId")]
+        public string? ExecutingNodeId { get; set; }
+
+        [JsonPropertyName("executingNodeName")]
+        public string? ExecutingNodeName { get; set; }
     }
 
     public class AdvanceCutRequestDto
     {
+        [JsonPropertyName("dispatchedFromCluster")]
+        public bool DispatchedFromCluster { get; set; }
+
         [JsonPropertyName("stationIds")]
         public List<string> StationIds { get; set; } = new();
 

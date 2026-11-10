@@ -4961,17 +4961,43 @@ Exposed via [ClusterController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRec
 | Endpoint | Method | Permission | Description |
 | :--- | :--- | :--- | :--- |
 | `/api/v1/cluster/status` | `GET` | Authenticated | Retrieves comprehensive cluster topology, node state (`Active`/`Standby`), VIP status, partner health, uptime, and failover metrics. |
+| `/api/v1/cluster/grid` | `GET` | Authenticated / Local | Retrieves full Active-Active distributed compute grid metrics, node list, roles, active streams, and active jobs. |
 | `/api/v1/cluster/partner-health` | `GET` | Anonymous / Local | Ultra-lightweight endpoint for inter-server health polling. |
+| `/api/v1/cluster/nodes/heartbeat` | `POST` | Anonymous / Local | Worker node registration and periodic telemetry sync to Orchestrator. |
+| `/api/v1/cluster/orchestrator/transfer` | `POST` | `settings.cluster` | Manually hands over Orchestrator leadership to a specified online peer node. |
 | `/api/v1/cluster/acquire-vip` | `POST` | `settings.cluster` / `settings.write` | Manually acquires and binds the configured Virtual IP. |
 | `/api/v1/cluster/release-vip` | `POST` | `settings.cluster` / `settings.write` | Manually releases and unbinds the Virtual IP. |
 | `/api/v1/cluster/handover` | `POST` | `settings.cluster` / `settings.write` | Initiates or acknowledges fast handover between cluster nodes. |
+| `/api/v1/cluster/jobs/cluster-queue` | `GET` | Authenticated | Unified list of all video rendering jobs across all cluster nodes. |
+| `/api/v1/cluster/jobs/execute` | `POST` | Anonymous / Local | Executes an offloaded video cut/extraction job dispatched by the Orchestrator. |
+| `/api/v1/cluster/jobs/status-update` | `POST` | Anonymous / Local | Reports worker node job execution progress back to Orchestrator. |
 
-- **Tactical NOC Subpanel**:
-  - Displays real-time operational status card with state badge (`ACTIVE` green glow, `STANDBY` amber, `STANDALONE` cyan).
-  - Virtual IP status tag with bound indicator (`BOUND` / `NOT BOUND`).
-  - Partner health monitoring with live consecutive missed count badge.
-  - Interactive Action buttons: "Claim Virtual IP (Promote)" and "Release Virtual IP (Demote)".
-  - Configuration inputs for Clustering Mode, Node Role, Priority, Partner Server URL, Virtual IP, Subnet Mask, and Preemption.
+### 77.6 Active-Active Distributed Compute Grid & Commodity Hardware Clustering
+1. **The Commodity Edge Scaling Philosophy**:
+   - Rather than relying on a single, expensive enterprise mainframe to capture and process 70-100+ multi-monitor workstations, the Active-Active architecture clusters multiple low-cost commodity servers together (e.g. Intel Core i5/i7 workstations with QuickSync QSV or entry-level NVIDIA GTX/RTX GPUs).
+   - The nodes pool their GPU encoders, CPU cores, and network interfaces into a unified, horizontally scalable recording and video processing engine.
+2. **Dynamic Ingestion Workload Balancing**:
+   - Managed by [ClusterService.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ClusterService.cs) via `ResolveAssignedIngestNodeUrlAsync`.
+   - When workstations register via [AgentController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs), the Orchestrator evaluates the live stream load ratio across all online nodes:
+     $$\text{LoadRatio} = \frac{\text{ActiveStreamsCount}}{\text{MaxStreamsCapacity}}$$
+   - Stations are routed to the node with the lowest load ratio. Once assigned, stream affinity is maintained. If a node fails, orphaned stations automatically rebalance to surviving nodes on their next registration heartbeat.
+3. **Distributed Video Processing & Render Offloading**:
+   - Managed by [AdvanceJobManager.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/AdvanceJobManager.cs) and [IClusterJobRunner.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Jobs/IClusterJobRunner.cs).
+   - Video export and forensic cutting (FFmpeg compositing, canvas keyframe synthesis, keystroke burn-in) is computationally demanding.
+   - When local render capacity reaches `MaxConcurrentRenderJobs`, subsequent export jobs are automatically dispatched over HTTP to an idle compute peer (`POST /api/v1/cluster/jobs/execute`).
+   - Because all nodes share access to the NetApp UNC recording paths (Rule 2 & 10), any compute node can extract chunks, render the video using its local hardware encoder, and output the final MP4 to the shared exports storage.
+4. **Dynamic Orchestrator & Automated Leader Election**:
+   - One active node acts as the **Cluster Orchestrator** (Leader).
+   - Worker nodes send periodic telemetry pulses (`POST /api/v1/cluster/nodes/heartbeat`).
+   - If the Orchestrator node crashes or is disconnected, worker nodes detect the failure within $K_{\text{threshold}}$ missed cycles.
+   - **Deterministic Leader Election**: Alive nodes evaluate candidate priority ($\text{Priority}$) and machine name string tie-breakers. The winning node promotes itself to Orchestrator, claims the Virtual IP (VIP), broadcasts Gratuitous ARP, and assumes cluster dispatch duties without operator intervention.
+   - Operators can also manually trigger leadership handover anytime via `POST /api/v1/cluster/orchestrator/transfer` or the C2 Settings Dashboard.
+5. **Unified Centralized NOC Experience (Single Pane of Glass)**:
+   - Regardless of which physical node records a station or executes a cut job:
+     - `DashboardController.GetStationsSummary()` aggregates stations from all active nodes into a single unified grid.
+     - Each card displays a tactical hosting badge (e.g. `[● NODE-01]`, `[● NODE-02]`).
+     - [WhepProxyController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs) inspects the target station and transparently proxies WebRTC WHEP streams to the specific node hosting that stream, giving operators sub-second live viewing from a single VIP endpoint.
+     - The Global Jobs Queue displays all rendering jobs across the entire cluster.
 
 ---
 

@@ -24,16 +24,19 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? _clusterService;
         private readonly ILogger<WhepProxyController> _logger;
 
         public WhepProxyController(
             IHttpClientFactory httpClientFactory,
             IOptionsMonitor<SystemConfig> configMonitor,
-            ILogger<WhepProxyController> logger)
+            ILogger<WhepProxyController> logger,
+            ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? clusterService = null)
         {
             _httpClientFactory = httpClientFactory;
             _configMonitor = configMonitor;
             _logger = logger;
+            _clusterService = clusterService;
         }
 
         [HttpPost("{*streamPath}")]
@@ -56,7 +59,23 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     targetSubPath += "/whep";
                 }
 
-                string targetUrl = $"http://127.0.0.1:{webrtcPort}/{targetSubPath}";
+                // Resolve target cluster node host if streaming on peer node
+                string targetHost = "127.0.0.1";
+                if (_clusterService != null)
+                {
+                    string[] parts = rawPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    string? stationCandidate = (parts.Length > 1 && parts[0].Equals("live", StringComparison.OrdinalIgnoreCase)) ? parts[1] : null;
+                    if (!string.IsNullOrWhiteSpace(stationCandidate))
+                    {
+                        string? remoteHost = _clusterService.ResolveStreamNodeHost(stationCandidate);
+                        if (!string.IsNullOrWhiteSpace(remoteHost))
+                        {
+                            targetHost = remoteHost;
+                        }
+                    }
+                }
+
+                string targetUrl = $"http://{targetHost}:{webrtcPort}/{targetSubPath}";
 
                 var client = _httpClientFactory.CreateClient("WhepProxyClient");
                 client.Timeout = TimeSpan.FromSeconds(5);

@@ -73,7 +73,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 EnableVirtualIp = disc.EnableVirtualIp,
                 VirtualIp = disc.VirtualIp,
                 IsVipBoundLocally = clusterStatus?.IsVipBoundLocally ?? false,
-                FailoverCount = clusterStatus.FailoverCount
+                FailoverCount = clusterStatus?.FailoverCount ?? 0,
+                ClusterGrid = _clusterService?.GetClusterGridStatus()
             });
         }
 
@@ -81,7 +82,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         [AuthorizePermission(PermissionKeys.StationsView)]
         public async Task<IActionResult> GetStationsSummary()
         {
-            var agents = _telemetryState.GetAllAgents();
+            var agents = _clusterService != null 
+                ? await _clusterService.GetClusterStationsAsync() 
+                : _telemetryState.GetAllAgents();
+
             var aliases = await _catalogRepository.GetAllStationRoleAliasesAsync();
 
             var host = Request.Host.Value.Split(':')[0];
@@ -96,12 +100,21 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 var topology = agent.DisplayTopology;
                 var displays = topology?.Displays ?? new List<ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto>();
 
+                string streamHost = host;
+                if (_clusterService != null)
+                {
+                    string? remoteHost = _clusterService.ResolveStreamNodeHost(agent.Hostname);
+                    if (!string.IsNullOrWhiteSpace(remoteHost)) streamHost = remoteHost;
+                }
+
                 return new
                 {
                     agent.Hostname,
                     RoleAlias = roleAlias,
                     DisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : agent.Hostname,
                     agent.IpAddress,
+                    HostingNodeId = !string.IsNullOrWhiteSpace(agent.HostingNodeId) ? agent.HostingNodeId : Environment.MachineName,
+                    HostingNodeName = !string.IsNullOrWhiteSpace(agent.HostingNodeName) ? agent.HostingNodeName : (_configMonitor.CurrentValue?.Discovery?.ServerDisplayName ?? Environment.MachineName),
                     IsOnline = isOnline,
                     IsStreaming = isStreaming,
                     IsRecording = agent.IsRecording,
@@ -137,10 +150,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     DisplayTopology = topology,
                     Displays = displays,
 
-                    HlsUrl = $"{Request.Scheme}://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
+                    HlsUrl = $"{Request.Scheme}://{streamHost}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
-
 
             return Ok(result);
         }

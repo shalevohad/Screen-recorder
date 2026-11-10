@@ -31,6 +31,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public const string RolePrimary = "Primary";
         public const string RoleSecondary = "Secondary";
         public const string RoleAggregate = "Aggregate";
+        public const string RoleOrchestrator = "Orchestrator";
+        public const string RoleWorker = "Worker";
+        public const string RolePeer = "Peer";
     }
 
     public class ServerDiscoveryProbe
@@ -184,7 +187,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         Standby,
         Promoting,
         Demoting,
-        Degraded
+        Degraded,
+        Unreachable
     }
 
     public class ClusterStatusDto
@@ -285,5 +289,210 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("message")]
         public string Message { get; set; } = string.Empty;
+    }
+
+    public class ClusterNodeDescriptor
+    {
+        [JsonPropertyName("nodeId")]
+        public string NodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("displayName")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [JsonPropertyName("apiBaseUrl")]
+        public string ApiBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("rtmpBaseUrl")]
+        public string RtmpBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("hlsBaseUrl")]
+        public string HlsBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("whepPort")]
+        public int WhepPort { get; set; } = 8889;
+
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = ServerDiscoveryConstants.RoleWorker; // Orchestrator or Worker
+
+        [JsonPropertyName("state")]
+        public string State { get; set; } = ClusterNodeState.Active.ToString();
+
+        [JsonPropertyName("priority")]
+        public int Priority { get; set; } = 50;
+
+        [JsonPropertyName("activeStreamsCount")]
+        public int ActiveStreamsCount { get; set; }
+
+        [JsonPropertyName("maxStreamsCapacity")]
+        public int MaxStreamsCapacity { get; set; } = 50;
+
+        [JsonPropertyName("activeJobsCount")]
+        public int ActiveJobsCount { get; set; }
+
+        [JsonPropertyName("maxConcurrentJobs")]
+        public int MaxConcurrentJobs { get; set; } = 2;
+
+        [JsonPropertyName("hostCpuPct")]
+        public double HostCpuPct { get; set; }
+
+        [JsonPropertyName("gpuNvencPct")]
+        public double GpuNvencPct { get; set; }
+
+        [JsonPropertyName("processRamMb")]
+        public double ProcessRamMb { get; set; }
+
+        [JsonPropertyName("lastSeenUtc")]
+        public DateTime LastSeenUtc { get; set; } = DateTime.UtcNow;
+
+        [JsonPropertyName("assignedStations")]
+        public List<string> AssignedStations { get; set; } = new();
+
+        [JsonIgnore]
+        public bool IsOnline => (DateTime.UtcNow - LastSeenUtc).TotalSeconds <= 12;
+
+        [JsonIgnore]
+        public bool IsOrchestrator => string.Equals(Role, ServerDiscoveryConstants.RoleOrchestrator, StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(Role, ServerDiscoveryConstants.RolePrimary, StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
+        public double LoadRatio => MaxStreamsCapacity > 0 ? (double)ActiveStreamsCount / MaxStreamsCapacity : 1.0;
+    }
+
+    public class ClusterHeartbeatRequest
+    {
+        [JsonPropertyName("node")]
+        public ClusterNodeDescriptor Node { get; set; } = new();
+
+        [JsonPropertyName("stations")]
+        public List<AgentTelemetryReport> Stations { get; set; } = new();
+
+        [JsonPropertyName("reportedAtUtc")]
+        public DateTime ReportedAtUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterHeartbeatResponse
+    {
+        [JsonPropertyName("acknowledged")]
+        public bool Acknowledged { get; set; } = true;
+
+        [JsonPropertyName("orchestratorNodeId")]
+        public string OrchestratorNodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("isLocalNodeOrchestrator")]
+        public bool IsLocalNodeOrchestrator { get; set; }
+
+        [JsonPropertyName("activeNodes")]
+        public List<ClusterNodeDescriptor> ActiveNodes { get; set; } = new();
+
+        [JsonPropertyName("assignedStations")]
+        public List<string> AssignedStations { get; set; } = new();
+
+        [JsonPropertyName("serverUtcTime")]
+        public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterGridStatusDto
+    {
+        [JsonPropertyName("clusterMode")]
+        public string ClusterMode { get; set; } = ServerDiscoveryConstants.RoleActiveActive;
+
+        [JsonPropertyName("localNodeId")]
+        public string LocalNodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("localNodeRole")]
+        public string LocalNodeRole { get; set; } = ServerDiscoveryConstants.RoleOrchestrator;
+
+        [JsonPropertyName("orchestratorNodeId")]
+        public string OrchestratorNodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("isLocalNodeOrchestrator")]
+        public bool IsLocalNodeOrchestrator { get; set; }
+
+        [JsonPropertyName("totalNodes")]
+        public int TotalNodes { get; set; }
+
+        [JsonPropertyName("onlineNodesCount")]
+        public int OnlineNodesCount { get; set; }
+
+        [JsonPropertyName("totalIngestedStreams")]
+        public int TotalIngestedStreams { get; set; }
+
+        [JsonPropertyName("totalStreamsCapacity")]
+        public int TotalStreamsCapacity { get; set; }
+
+        [JsonPropertyName("totalActiveRenderJobs")]
+        public int TotalActiveRenderJobs { get; set; }
+
+        [JsonPropertyName("totalConcurrentJobsCapacity")]
+        public int TotalConcurrentJobsCapacity { get; set; }
+
+        [JsonPropertyName("enableVirtualIp")]
+        public bool EnableVirtualIp { get; set; }
+
+        [JsonPropertyName("virtualIp")]
+        public string? VirtualIp { get; set; }
+
+        [JsonPropertyName("isVipBoundLocally")]
+        public bool IsVipBoundLocally { get; set; }
+
+        [JsonPropertyName("nodes")]
+        public List<ClusterNodeDescriptor> Nodes { get; set; } = new();
+    }
+
+    public class ClusterJobDispatchRequest
+    {
+        [JsonPropertyName("jobId")]
+        public string JobId { get; set; } = Guid.NewGuid().ToString("N");
+
+        [JsonPropertyName("targetNodeId")]
+        public string? TargetNodeId { get; set; }
+
+        [JsonPropertyName("requestPayloadJson")]
+        public string RequestPayloadJson { get; set; } = string.Empty;
+
+        [JsonPropertyName("submittedBy")]
+        public string SubmittedBy { get; set; } = "Cluster Operator";
+
+        [JsonPropertyName("dispatchedAtUtc")]
+        public DateTime DispatchedAtUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ClusterJobStatusDto
+    {
+        [JsonPropertyName("jobId")]
+        public string JobId { get; set; } = string.Empty;
+
+        [JsonPropertyName("executingNodeId")]
+        public string ExecutingNodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("executingNodeName")]
+        public string ExecutingNodeName { get; set; } = string.Empty;
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = "Queued"; // Queued, Processing, Completed, Failed, Cancelled
+
+        [JsonPropertyName("progressPercent")]
+        public double ProgressPercent { get; set; }
+
+        [JsonPropertyName("speedMBps")]
+        public double SpeedMBps { get; set; }
+
+        [JsonPropertyName("statusMessage")]
+        public string StatusMessage { get; set; } = string.Empty;
+
+        [JsonPropertyName("outputFilePath")]
+        public string? OutputFilePath { get; set; }
+
+        [JsonPropertyName("outputFileName")]
+        public string? OutputFileName { get; set; }
+
+        [JsonPropertyName("fileSizeBytes")]
+        public long FileSizeBytes { get; set; }
+
+        [JsonPropertyName("errorMessage")]
+        public string? ErrorMessage { get; set; }
+
+        [JsonPropertyName("updatedAtUtc")]
+        public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     }
 }

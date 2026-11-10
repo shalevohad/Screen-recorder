@@ -8,6 +8,8 @@ using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +31,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         Task<object> EstimateCutJobAsync(AdvancedModels.AdvanceCutRequestDto request);
     }
 
-    public class AdvanceJobManager : ExportJobManager, IAdvanceJobManager
+    public class AdvanceJobManager : ExportJobManager, IAdvanceJobManager, ITB_SCREEN_RECORDER.Core.Contracts.Jobs.IClusterJobRunner
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
@@ -444,14 +446,138 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 CanvasLayoutTimeline = request.CanvasLayoutTimeline,
                 UtcClockPosition = request.UtcClockPosition ?? "top-right",
                 CreatedBy = !string.IsNullOrWhiteSpace(request.CreatedBy) ? request.CreatedBy : "Guest Operator",
-                Notes = !string.IsNullOrWhiteSpace(request.Notes) ? request.Notes.Trim() : null
+                Notes = !string.IsNullOrWhiteSpace(request.Notes) ? request.Notes.Trim() : null,
+                ExecutingNodeId = Environment.MachineName,
+                ExecutingNodeName = _systemConfig?.CurrentValue?.Discovery?.ServerDisplayName ?? Environment.MachineName
             };
 
             _jobs[job.JobId] = job;
             _ = _advanceRepository.UpsertJobAsync(job);
 
-            _ = Task.Run(() => ProcessSynchronizedExportAsync(job, startUtc, endUtc));
+            // Distributed Cluster Job Dispatching:
+            // If running in Active-Active and local capacity is saturated, dispatch to remote compute node
+            bool dispatchedRemotely = false;
+            var disc = _systemConfig?.CurrentValue?.Discovery;
+            if (!request.DispatchedFromCluster &&
+                disc != null &&
+                string.Equals(disc.Role, "Active-Active", StringComparison.OrdinalIgnoreCase) &&
+                disc.DistributedVideoProcessingEnabled)
+            {
+                int maxLocalJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2;
+                int currentLocalJobs = _jobs.Values.Count(j => (j.Status == "Processing" || j.Status == "Queued") && j.JobId != job.JobId);
+
+                if (currentLocalJobs >= maxLocalJobs)
+                {
+                    var peers = disc.ClusterPeerUrls?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList() ?? new List<string>();
+                    if (!string.IsNullOrWhiteSpace(disc.PartnerServerUrl)) peers.Add(disc.PartnerServerUrl);
+
+                    foreach (var peer in peers)
+                    {
+                        try
+                        {
+                            job.StatusMessage = $"Offloading to compute peer: {peer}...";
+                            var dispatchReq = new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobDispatchRequest
+                            {
+                                JobId = job.JobId,
+                                RequestPayloadJson = JsonSerializer.Serialize(request),
+                                SubmittedBy = job.CreatedBy
+                            };
+
+                            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                            var jsonContent = new StringContent(JsonSerializer.Serialize(dispatchReq), Encoding.UTF8, "application/json");
+                            var res = client.PostAsync($"{peer.TrimEnd('/')}/api/v1/cluster/jobs/execute", jsonContent).GetAwaiter().GetResult();
+                            if (res.IsSuccessStatusCode)
+                            {
+                                dispatchedRemotely = true;
+                                job.Status = "Processing";
+                                job.StatusMessage = $"Processing on compute peer: {peer}";
+                                job.ExecutingNodeName = peer;
+                                _advLogger.LogInformation("[CLUSTER DISPATCH] Successfully offloaded job '{JobId}' to remote peer '{Peer}'", job.JobId, peer);
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _advLogger.LogWarning(ex, "[CLUSTER DISPATCH] Could not offload job to {Peer}, attempting next peer or local fallback.", peer);
+                        }
+                    }
+                }
+            }
+
+            if (!dispatchedRemotely)
+            {
+                _ = Task.Run(() => ProcessSynchronizedExportAsync(job, startUtc, endUtc));
+            }
             return job;
+        }
+
+        public Task<ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto> ExecuteDispatchedJobAsync(
+            ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobDispatchRequest request,
+            CancellationToken ct = default)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.RequestPayloadJson))
+            {
+                return Task.FromResult(new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
+                {
+                    JobId = request?.JobId ?? Guid.NewGuid().ToString("N"),
+                    Status = "Failed",
+                    ErrorMessage = "Empty job dispatch request payload."
+                });
+            }
+
+            try
+            {
+                var cutRequest = JsonSerializer.Deserialize<AdvancedModels.AdvanceCutRequestDto>(request.RequestPayloadJson);
+                if (cutRequest == null) throw new InvalidOperationException("Failed to deserialize AdvanceCutRequestDto");
+
+                cutRequest.DispatchedFromCluster = true;
+                var job = EnqueueAdvanceCutJob(cutRequest);
+                if (!string.IsNullOrWhiteSpace(request.JobId))
+                {
+                    job.JobId = request.JobId;
+                }
+                job.ExecutingNodeId = Environment.MachineName;
+                job.ExecutingNodeName = _systemConfig?.CurrentValue?.Discovery?.ServerDisplayName ?? Environment.MachineName;
+
+                return Task.FromResult(new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
+                {
+                    JobId = job.JobId,
+                    ExecutingNodeId = Environment.MachineName,
+                    ExecutingNodeName = job.ExecutingNodeName,
+                    Status = job.Status,
+                    ProgressPercent = job.ProgressPercent,
+                    SpeedMBps = job.SpeedMBps,
+                    StatusMessage = job.StatusMessage,
+                    OutputFileName = job.FileName
+                });
+            }
+            catch (Exception ex)
+            {
+                _advLogger.LogError(ex, "[AdvanceJobManager] Failed to execute dispatched cluster job {JobId}", request.JobId);
+                return Task.FromResult(new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
+                {
+                    JobId = request.JobId,
+                    ExecutingNodeId = Environment.MachineName,
+                    Status = "Failed",
+                    ErrorMessage = ex.Message
+                });
+            }
+        }
+
+        public List<ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto> GetActiveJobs()
+        {
+            return _jobs.Values.Select(j => new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
+            {
+                JobId = j.JobId,
+                ExecutingNodeId = Environment.MachineName,
+                ExecutingNodeName = _systemConfig?.CurrentValue?.Discovery?.ServerDisplayName ?? Environment.MachineName,
+                Status = j.Status,
+                ProgressPercent = j.ProgressPercent,
+                SpeedMBps = j.SpeedMBps,
+                StatusMessage = j.StatusMessage,
+                OutputFileName = j.FileName,
+                FileSizeBytes = j.FileSizeBytes
+            }).ToList();
         }
 
         public override bool DismissJob(string jobId)

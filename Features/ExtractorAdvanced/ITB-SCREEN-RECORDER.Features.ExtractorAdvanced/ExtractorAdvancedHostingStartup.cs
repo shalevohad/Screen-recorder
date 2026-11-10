@@ -64,6 +64,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 services.AddSingleton<AdvanceJobManager>();
                 services.AddSingleton<IAdvanceJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
                 services.AddSingleton<IExportJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
+                services.AddSingleton<ITB_SCREEN_RECORDER.Core.Contracts.Jobs.IClusterJobRunner>(sp => sp.GetRequiredService<AdvanceJobManager>());
 
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorAdvancedHostingStartup).Assembly);

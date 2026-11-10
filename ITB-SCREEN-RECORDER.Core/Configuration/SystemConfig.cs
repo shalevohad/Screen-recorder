@@ -94,6 +94,33 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string? PartnerServerUrl { get; set; }
 
+        /// <summary>
+        /// Seed/peer cluster node endpoints for Active-Active multi-server federation (e.g. ["http://192.168.1.101:5090", "http://192.168.1.102:5090"]).
+        /// </summary>
+        public List<string> ClusterPeerUrls { get; set; } = new();
+
+        /// <summary>
+        /// Maximum concurrent ingest streams assigned to this node before load balancing diverts to other nodes.
+        /// </summary>
+        [Range(1, 200)]
+        public int MaxIngestStreamsCapacity { get; set; } = 50;
+
+        /// <summary>
+        /// Maximum concurrent video export/render jobs allowed on this node.
+        /// </summary>
+        [Range(1, 16)]
+        public int MaxConcurrentRenderJobs { get; set; } = 2;
+
+        /// <summary>
+        /// When true, Orchestrator automatically balances incoming agent streams across online cluster nodes.
+        /// </summary>
+        public bool AutoBalanceStreams { get; set; } = true;
+
+        /// <summary>
+        /// When true, video export and forensic cutting jobs are distributed across cluster nodes based on GPU/CPU availability.
+        /// </summary>
+        public bool DistributedVideoProcessingEnabled { get; set; } = true;
+
         public bool AutoFailoverDashboard { get; set; } = true;
 
         [Range(1, 60)]

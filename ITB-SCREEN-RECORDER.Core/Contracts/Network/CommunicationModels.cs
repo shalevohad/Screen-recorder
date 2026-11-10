@@ -140,6 +140,15 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("offlineFilesTotalSizeMb")]
         public long OfflineFilesTotalSizeMb { get; set; }
 
+        [JsonPropertyName("hostingNodeId")]
+        public string? HostingNodeId { get; set; }
+
+        [JsonPropertyName("hostingNodeName")]
+        public string? HostingNodeName { get; set; }
+
+        [JsonPropertyName("assignedRtmpUrl")]
+        public string? AssignedRtmpUrl { get; set; }
+
         [JsonPropertyName("nicTotalTxMbps")]
         public double NicTotalTxMbps { get; set; }
 

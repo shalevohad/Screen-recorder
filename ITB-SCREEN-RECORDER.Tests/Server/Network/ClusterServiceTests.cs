@@ -204,5 +204,208 @@ namespace ITB_SCREEN_RECORDER.Tests.Server.Network
 
             mockVip.Verify(v => v.ReleaseVirtualIpAsync("192.168.1.200", "Ethernet0", It.IsAny<CancellationToken>()), Times.Once);
         }
+
+        [Fact]
+        public async Task ActiveActive_ProcessNodeHeartbeat_RegistersWorkerAndReturnsGridStatus()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    NodeRole = "Orchestrator",
+                    Priority = 100
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            var workerReq = new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "SRV-WORKER-02",
+                    DisplayName = "Secondary Worker",
+                    ApiBaseUrl = "http://192.168.1.102:5090",
+                    RtmpBaseUrl = "rtmps://192.168.1.102:19350/live",
+                    Role = ServerDiscoveryConstants.RoleWorker,
+                    MaxStreamsCapacity = 60,
+                    ActiveStreamsCount = 10,
+                    MaxConcurrentJobs = 4,
+                    ActiveJobsCount = 1
+                }
+            };
+
+            var response = await service.ProcessNodeHeartbeatAsync(workerReq, CancellationToken.None);
+
+            Assert.True(response.Acknowledged);
+            Assert.True(response.IsLocalNodeOrchestrator);
+
+            var grid = service.GetClusterGridStatus();
+            Assert.Equal(2, grid.TotalNodes);
+            Assert.Equal(2, grid.OnlineNodesCount);
+            Assert.Contains(grid.Nodes, n => n.NodeId == "SRV-WORKER-02");
+        }
+
+        [Fact]
+        public async Task ActiveActive_ResolveAssignedIngestNodeUrl_BalancesStreamsAcrossNodes()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    NodeRole = "Orchestrator",
+                    Priority = 100
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Register Local Node as moderately loaded (25/50 = 50%)
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = Environment.MachineName,
+                    RtmpBaseUrl = $"rtmps://{Environment.MachineName.ToLowerInvariant()}:19350/live",
+                    MaxStreamsCapacity = 50,
+                    ActiveStreamsCount = 25
+                }
+            });
+
+            // Register Worker 1 (heavily loaded: 40/50 streams = 80%)
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-HEAVY",
+                    RtmpBaseUrl = "rtmps://node-heavy:19350/live",
+                    MaxStreamsCapacity = 50,
+                    ActiveStreamsCount = 40
+                }
+            });
+
+            // Register Worker 2 (lightly loaded: 5/50 streams = 10%)
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-LIGHT",
+                    RtmpBaseUrl = "rtmps://node-light:19350/live",
+                    MaxStreamsCapacity = 50,
+                    ActiveStreamsCount = 5
+                }
+            });
+
+            // Act: Ingest balancer routes new station
+            var assignedUrl = await service.ResolveAssignedIngestNodeUrlAsync("STATION-ALPHA", CancellationToken.None);
+
+            // Assert: Should route to NODE-LIGHT
+            Assert.Equal("rtmps://node-light:19350/live", assignedUrl);
+
+            // Repeated request for same station should maintain affinity
+            var recheckUrl = await service.ResolveAssignedIngestNodeUrlAsync("STATION-ALPHA", CancellationToken.None);
+            Assert.Equal("rtmps://node-light:19350/live", recheckUrl);
+        }
+
+        [Fact]
+        public async Task ActiveActive_SelectOptimalWorkerForJob_SelectsLeastLoadedNode()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    NodeRole = "Orchestrator",
+                    Priority = 100
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Local Node has 1 active job
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = Environment.MachineName,
+                    MaxConcurrentJobs = 2,
+                    ActiveJobsCount = 1,
+                    HostCpuPct = 45.0
+                }
+            });
+
+            // Node 1 is busy rendering 2/2 jobs
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-BUSY",
+                    MaxConcurrentJobs = 2,
+                    ActiveJobsCount = 2,
+                    HostCpuPct = 85.0
+                }
+            });
+
+            // Node 2 is idle with 0/2 jobs
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "NODE-IDLE",
+                    MaxConcurrentJobs = 2,
+                    ActiveJobsCount = 0,
+                    HostCpuPct = 12.0
+                }
+            });
+
+            var optimalNode = await service.SelectOptimalWorkerForJobAsync(CancellationToken.None);
+
+            Assert.NotNull(optimalNode);
+            Assert.Equal("NODE-IDLE", optimalNode.NodeId);
+        }
+
+        [Fact]
+        public async Task ActiveActive_TransferOrchestratorRole_ReleasesVipAndUpdatesRole()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    NodeRole = "Orchestrator",
+                    EnableVirtualIp = true,
+                    VirtualIp = "192.168.1.200",
+                    NetworkInterfaceName = "Ethernet0"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Register Target Worker
+            await service.ProcessNodeHeartbeatAsync(new ClusterHeartbeatRequest
+            {
+                Node = new ClusterNodeDescriptor
+                {
+                    NodeId = "SRV-WORKER-02",
+                    ApiBaseUrl = "http://192.168.1.102:5090"
+                }
+            });
+
+            // Transfer Orchestrator
+            var result = await service.TransferOrchestratorRoleAsync("SRV-WORKER-02", CancellationToken.None);
+
+            Assert.True(result.Success);
+            mockVip.Verify(v => v.ReleaseVirtualIpAsync("192.168.1.200", "Ethernet0", It.IsAny<CancellationToken>()), Times.Once);
+
+            var grid = service.GetClusterGridStatus();
+            Assert.Equal("SRV-WORKER-02", grid.OrchestratorNodeId);
+            Assert.False(grid.IsLocalNodeOrchestrator);
+        }
     }
 }

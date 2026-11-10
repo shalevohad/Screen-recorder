@@ -57,6 +57,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ICatalogRepository _catalogRepository;
         private readonly IVideoProbeService _probeService;
         private readonly ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? _keyRingService;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? _clusterService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -68,7 +69,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             ICatalogRepository catalogRepository,
             IVideoProbeService probeService,
             ILogger<AgentController> logger,
-            ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRingService = null)
+            ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRingService = null,
+            ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService? clusterService = null)
         {
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
@@ -79,6 +81,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _probeService = probeService;
             _logger = logger;
             _keyRingService = keyRingService;
+            _clusterService = clusterService;
         }
 
         [HttpPost("telemetry")]
@@ -257,6 +260,26 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             string requestHost = Request.Host.Host;
             var policy = await _telemetryState.GetAgentPolicyAsync(request.MachineName, requestHost);
+
+            // Active-Active Ingest Workload Balancing
+            if (_clusterService != null)
+            {
+                try
+                {
+                    var assignedRtmpBaseUrl = await _clusterService.ResolveAssignedIngestNodeUrlAsync(request.MachineName);
+                    if (!string.IsNullOrWhiteSpace(assignedRtmpBaseUrl))
+                    {
+                        policy.RtmpServerBaseUrl = assignedRtmpBaseUrl;
+                        _logger.LogInformation("[CLUSTER BALANCER] Ingest routed: Station '{Station}' -> RTMP Target '{RtmpUrl}'",
+                            request.MachineName, assignedRtmpBaseUrl);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[CLUSTER BALANCER] Failed to resolve cluster ingest assignment for '{Station}'", request.MachineName);
+                }
+            }
+
             string safeStreamKey = Uri.EscapeDataString(request.MachineName.Trim().Replace(" ", "_"));
 
             var response = new AgentRegistrationResponse

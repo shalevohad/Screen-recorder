@@ -16,6 +16,7 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
     const { isSystemRoot, hasPermission } = useAuth();
 
     const [clusterStatus, setClusterStatus] = useState(null);
+    const [clusterGrid, setClusterGrid] = useState(null);
     const [clusterLoading, setClusterLoading] = useState(false);
     const [clusterActionLoading, setClusterActionLoading] = useState(false);
     const [clusterFeedback, setClusterFeedback] = useState(null);
@@ -23,10 +24,17 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
     const fetchClusterStatus = useCallback(async () => {
         try {
             setClusterLoading(true);
-            const res = await fetch('/api/v1/cluster/status');
-            if (res.ok) {
-                const data = await res.json();
+            const [statusRes, gridRes] = await Promise.all([
+                fetch('/api/v1/cluster/status'),
+                fetch('/api/v1/cluster/grid')
+            ]);
+            if (statusRes.ok) {
+                const data = await statusRes.json();
                 setClusterStatus(data);
+            }
+            if (gridRes.ok) {
+                const gridData = await gridRes.json();
+                setClusterGrid(gridData);
             }
         } catch (err) {
             console.warn('[ClusterUI] Failed to load cluster status:', err);
@@ -37,9 +45,32 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
 
     useEffect(() => {
         fetchClusterStatus();
-        const interval = setInterval(fetchClusterStatus, 6000);
+        const interval = setInterval(fetchClusterStatus, 5000);
         return () => clearInterval(interval);
     }, [fetchClusterStatus]);
+
+    const handleTransferOrchestrator = async (targetNodeId) => {
+        try {
+            setClusterActionLoading(true);
+            setClusterFeedback(null);
+            const res = await fetch('/api/v1/cluster/orchestrator/transfer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetNodeId })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || `Orchestrator transferred to ${targetNodeId}` });
+                fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to transfer Orchestrator' });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
 
     const handleAcquireVip = async () => {
         try {
@@ -569,6 +600,101 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                     </div>
                 )}
 
+                {/* ACTIVE-ACTIVE DISTRIBUTED COMPUTE GRID & CLUSTER TOPOLOGY */}
+                {discovery.role === 'Active-Active' && clusterGrid && (
+                    <div style={{
+                        marginTop: '12px',
+                        marginBottom: '16px',
+                        padding: '12px 16px',
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        border: '1px solid rgba(6, 182, 212, 0.35)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 800 }}>ACTIVE-ACTIVE GRID</span>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38BDF8' }}>DISTRIBUTED VIDEO COMPUTE & RECORDING CLUSTER</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '10px', fontSize: '0.72rem', color: '#94A3B8', flexWrap: 'wrap' }}>
+                                <span>👑 Orchestrator: <strong style={{ color: '#FCD34D' }}>{clusterGrid.orchestratorNodeId || 'Electing...'}</strong></span>
+                                <span>💻 Nodes: <strong style={{ color: '#34D399' }}>{clusterGrid.onlineNodesCount} / {clusterGrid.totalNodes} Online</strong></span>
+                                <span>📹 Streams: <strong style={{ color: '#38BDF8' }}>{clusterGrid.totalIngestedStreams} / {clusterGrid.totalStreamsCapacity}</strong></span>
+                                <span>⚡ Active Jobs: <strong style={{ color: '#F472B6' }}>{clusterGrid.totalActiveRenderJobs} / {clusterGrid.totalConcurrentJobsCapacity}</strong></span>
+                            </div>
+                        </div>
+
+                        {/* Cluster Nodes Table / Cards */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                            {clusterGrid.nodes?.map(node => (
+                                <div key={node.nodeId} style={{
+                                    background: 'rgba(30, 41, 59, 0.5)',
+                                    border: `1px solid ${node.isOnline ? (node.isOrchestrator ? '#F59E0B' : '#06B6D4') : '#EF4444'}`,
+                                    borderRadius: '6px',
+                                    padding: '10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '6px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 800, fontSize: '0.78rem', color: '#F8FAFC' }}>
+                                            {node.displayName || node.nodeId}
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <span style={{
+                                                fontSize: '0.65rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                background: node.isOrchestrator ? 'rgba(245, 158, 11, 0.25)' : 'rgba(6, 182, 212, 0.2)',
+                                                color: node.isOrchestrator ? '#FCD34D' : '#38BDF8',
+                                                fontWeight: 800
+                                            }}>
+                                                {node.isOrchestrator ? '👑 ORCHESTRATOR' : '⚡ WORKER'}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.65rem',
+                                                color: node.isOnline ? '#10B981' : '#F43F5E',
+                                                fontWeight: 700
+                                            }}>
+                                                ● {node.isOnline ? 'ONLINE' : 'DOWN'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
+                                        <span>Streams: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
+                                        <span>Export Jobs: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                        <span>Priority: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
+                                    </div>
+
+                                    {clusterGrid.isLocalNodeOrchestrator && !node.isOrchestrator && node.isOnline && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTransferOrchestrator(node.nodeId)}
+                                            disabled={clusterActionLoading}
+                                            style={{
+                                                marginTop: '4px',
+                                                background: 'rgba(245, 158, 11, 0.15)',
+                                                border: '1px solid rgba(245, 158, 11, 0.4)',
+                                                color: '#FCD34D',
+                                                padding: '3px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.68rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Transfer Orchestrator Role
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="settings-fields-row">
                     <div className="settings-field">
                         <span>Cluster Deployment Role</span>
@@ -577,7 +703,7 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             onChange={e => updateDiscoveryField('role', e.target.value)}
                             className="tactical-select"
                         >
-                            <option value="Active-Active">Active-Active (Multi-Master Shared Load)</option>
+                            <option value="Active-Active">Active-Active (Distributed Compute Grid & Workload Partitioning)</option>
                             <option value="Active-Standby">Active-Standby (High Availability with Automatic Failover)</option>
                             <option value="Standalone">Standalone (Single Server)</option>
                         </select>
@@ -590,8 +716,10 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             onChange={e => updateDiscoveryField('nodeRole', e.target.value)}
                             className="tactical-select"
                         >
-                            <option value="Primary">Primary (Active Leader Node)</option>
-                            <option value="Secondary">Secondary (Standby Failover Node)</option>
+                            <option value="Orchestrator">Orchestrator (Leader / Workload & Ingest Coordinator)</option>
+                            <option value="Worker">Worker (Compute & Stream Ingest Node)</option>
+                            <option value="Primary">Primary (Active-Standby Leader Node)</option>
+                            <option value="Secondary">Secondary (Active-Standby Hot Standby Node)</option>
                         </select>
                     </div>
 
@@ -605,7 +733,7 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
                         />
                         <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                            עדיפות גבוהה יותר מכריעה מצבי Split-Brain במקרה של ניתוק הדדי.
+                            עדיפות גבוהה יותר קובעת את בחירת ה-Orchestrator במקרה של ניתוק או בחירות מנהיג (Leader Election).
                         </span>
                     </div>
 
@@ -621,6 +749,43 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                 </div>
 
                 <div className="settings-fields-row">
+                    <div className="settings-field" style={{ flex: '1 1 100%' }}>
+                        <span>Cluster Peer / Seed URLs (Comma-Separated for Multi-Server Active-Active)</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. http://192.168.1.101:5090, http://192.168.1.102:5090"
+                            value={Array.isArray(discovery.clusterPeerUrls) ? discovery.clusterPeerUrls.join(', ') : (discovery.clusterPeerUrls || '')}
+                            onChange={e => updateDiscoveryField('clusterPeerUrls', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        />
+                        <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                            הזן את כתובות השרתים הנוספים המשתתפים בעיבוד הוידאו ובהקלטה המשותפת בקלאסטר.
+                        </span>
+                    </div>
+                </div>
+
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>Max Ingest Streams Capacity (Per Node)</span>
+                        <input
+                            type="number"
+                            min="10"
+                            max="200"
+                            value={discovery.maxIngestStreamsCapacity ?? 50}
+                            onChange={e => updateDiscoveryField('maxIngestStreamsCapacity', Number(e.target.value))}
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Max Concurrent Render Jobs (Per Node)</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="16"
+                            value={discovery.maxConcurrentRenderJobs ?? 2}
+                            onChange={e => updateDiscoveryField('maxConcurrentRenderJobs', Number(e.target.value))}
+                        />
+                    </div>
+
                     <div className="settings-field">
                         <span>Heartbeat Interval (Seconds)</span>
                         <input
@@ -642,7 +807,9 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             onChange={e => updateDiscoveryField('heartbeatMissedThreshold', Number(e.target.value))}
                         />
                     </div>
+                </div>
 
+                <div className="settings-fields-row">
                     <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
                         <span>Virtual IP (VIP) Address</span>
                         <input
@@ -668,6 +835,24 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                     <label className="tactical-checkbox-label">
                         <input
                             type="checkbox"
+                            checked={discovery.autoBalanceStreams !== false}
+                            onChange={e => updateDiscoveryField('autoBalanceStreams', e.target.checked)}
+                        />
+                        <span>Auto-Balance Workstations across Cluster Nodes (Distributes recording streams across commodity hardware)</span>
+                    </label>
+
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={discovery.distributedVideoProcessingEnabled !== false}
+                            onChange={e => updateDiscoveryField('distributedVideoProcessingEnabled', e.target.checked)}
+                        />
+                        <span>Enable Distributed Video Extraction & Multi-Node Render Offloading (Combines multiple GPUs/CPUs for fast exports)</span>
+                    </label>
+
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
                             checked={Boolean(discovery.enableVirtualIp)}
                             onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
                         />
@@ -680,7 +865,7 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             checked={Boolean(discovery.preemptLowerPriority)}
                             onChange={e => updateDiscoveryField('preemptLowerPriority', e.target.checked)}
                         />
-                        <span>Preempt Lower Priority (Automatically reclaim VIP if Primary node recovers)</span>
+                        <span>Preempt Lower Priority (Automatically reclaim VIP/Orchestrator if Primary node recovers)</span>
                     </label>
                 </div>
             </div>
