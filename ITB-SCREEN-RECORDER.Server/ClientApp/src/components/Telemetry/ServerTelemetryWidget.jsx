@@ -54,27 +54,95 @@ const formatStorageBytes = (bytes) => {
 export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0 }) {
     const historyPoints = 40;
 
-    // CPU & RAM
-    const cpuPct = serverTelemetry?.cpuUsagePct ?? serverTelemetry?.hostCpuUsagePct ?? 0;
-    const appCpuPct = serverTelemetry?.appCpuUsagePct ?? serverTelemetry?.processCpuUsagePct ?? 0;
+    // Cluster detection & telemetry scope toggle
+    const cluster = serverTelemetry?.cluster;
+    const isClusterAvailable = Boolean(cluster && (cluster.totalNodes > 1 || (cluster.clusterMode && cluster.clusterMode !== 'Standalone')));
+    const [telemetryScope, setTelemetryScope] = useState('cluster');
+    const activeScope = isClusterAvailable ? telemetryScope : 'local';
 
-    const hostRamPct = serverTelemetry?.hostRamPct ?? serverTelemetry?.hostRamUsagePct ?? 0;
-    const appRamMb = serverTelemetry?.appRamMb ?? serverTelemetry?.processRamMb ?? 0;
-    const hostTotalRamMb = serverTelemetry?.hostTotalRamMb ?? 131072;
+    // Format helpers
+    const formatLinkSpeed = (mbps) => {
+        if (mbps >= 1000) {
+            const gbps = mbps / 1000;
+            return gbps % 1 === 0 ? `${gbps}G` : `${gbps.toFixed(1)}G`;
+        }
+        return `${Math.round(mbps)}M`;
+    };
+
+    const formatCurrentRate = (mbps) => {
+        if (mbps >= 1000) return `${(mbps / 1000).toFixed(1)}G`;
+        if (mbps >= 1) return `${mbps.toFixed(1)}M`;
+        const kbps = mbps * 1000;
+        return `${Math.round(kbps)}K`;
+    };
+
+    // CPU Metrics
+    const cpuPct = activeScope === 'cluster'
+        ? (cluster?.aggregateCpuPct ?? 0)
+        : (serverTelemetry?.cpuUsagePct ?? serverTelemetry?.hostCpuUsagePct ?? 0);
+
+    const appCpuPct = activeScope === 'cluster'
+        ? (cluster?.aggregateAppCpuPct ?? 0)
+        : (serverTelemetry?.appCpuUsagePct ?? serverTelemetry?.processCpuUsagePct ?? 0);
+
+    const cpuTitle = activeScope === 'cluster' ? 'CLUSTER CPU' : 'HOST CPU';
+    const cpuSub = activeScope === 'cluster'
+        ? `Avg of ${cluster?.onlineNodesCount || cluster?.totalNodes || 1} Nodes`
+        : `App ${appCpuPct.toFixed(1)}%`;
+
+    // RAM Metrics
+    const hostRamPct = activeScope === 'cluster'
+        ? (cluster?.aggregateRamPct ?? 0)
+        : (serverTelemetry?.hostRamPct ?? serverTelemetry?.hostRamUsagePct ?? 0);
+
+    const totalRamGb = activeScope === 'cluster'
+        ? (cluster?.aggregateTotalRamGb ?? 128)
+        : Math.round((serverTelemetry?.hostTotalRamMb ?? 131072) / 1024);
+
+    const usedRamGb = activeScope === 'cluster'
+        ? (cluster?.aggregateUsedRamGb ?? ((hostRamPct / 100) * totalRamGb))
+        : ((hostRamPct / 100) * totalRamGb);
+
+    const appRamMb = activeScope === 'cluster'
+        ? (cluster?.aggregateAppRamMb ?? 0)
+        : (serverTelemetry?.appRamMb ?? serverTelemetry?.processRamMb ?? 0);
+
     const appRamDisplay = appRamMb >= 1024 ? `${(appRamMb / 1024).toFixed(1)}G` : `${Math.round(appRamMb)}M`;
-    const totalRamGb = Math.round(hostTotalRamMb / 1024);
-    const totalRamDisplay = `${totalRamGb}G`;
-    const hostUsedRamDisplay = `${((hostRamPct / 100) * totalRamGb).toFixed(1)}G`;
+    const totalRamDisplay = `${Math.round(totalRamGb)}G`;
+    const hostUsedRamDisplay = `${usedRamGb.toFixed(1)}G`;
 
-    // NET
-    const netTxMbps = serverTelemetry?.nicTotalTxMbps ?? 0;
-    const netRxMbps = serverTelemetry?.nicTotalRxMbps ?? 0;
-    const totalNetMbps = netTxMbps + netRxMbps;
+    const ramTitle = activeScope === 'cluster' ? 'CLUSTER RAM' : 'HOST RAM';
+    const ramSub = activeScope === 'cluster'
+        ? `${hostUsedRamDisplay} / ${totalRamDisplay}`
+        : `App ${appRamDisplay}`;
+
+    // NET Metrics
+    const netTxMbps = activeScope === 'cluster'
+        ? (cluster?.aggregateNicTxMbps ?? 0)
+        : (serverTelemetry?.nicTotalTxMbps ?? 0);
+
+    const netRxMbps = activeScope === 'cluster'
+        ? (cluster?.aggregateNicRxMbps ?? 0)
+        : (serverTelemetry?.nicTotalRxMbps ?? 0);
+
+    const totalNetMbps = activeScope === 'cluster'
+        ? (cluster?.aggregateNicTotalMbps ?? (netTxMbps + netRxMbps))
+        : (netTxMbps + netRxMbps);
+
+    const linkSpeedMbps = activeScope === 'cluster'
+        ? (cluster?.aggregateLinkSpeedMbps ?? 1000)
+        : (serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000);
+
+    const netUtilPct = activeScope === 'cluster'
+        ? (cluster?.aggregateNicUtilizationPct ?? (totalNetMbps > 0 ? (totalNetMbps / linkSpeedMbps) * 100 : 0))
+        : (serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100));
+
+    const netTitle = activeScope === 'cluster' ? 'CLUSTER NET' : 'HOST NET';
+    const netSub = activeScope === 'cluster'
+        ? `${formatLinkSpeed(linkSpeedMbps)} FLEET`
+        : `${formatLinkSpeed(linkSpeedMbps)} MAX`;
+
     const c2Kbps = serverTelemetry?.telemetryTxKbps ?? fleetC2Kbps;
-
-    const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
-    const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
-
     const linkSpeedKbps = (linkSpeedMbps || 1000) * 1000;
     const txPct = calcTacticalBarPct(netTxMbps * 1000, linkSpeedKbps);
     const rxPct = calcTacticalBarPct(netRxMbps * 1000, linkSpeedKbps);
@@ -124,21 +192,6 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
         return () => clearTimeout(timer);
     }, [cpuPct, hostRamPct, netUtilPct, historyPoints]);
 
-    const formatCurrentRate = (mbps) => {
-        if (mbps >= 1000) return `${(mbps / 1000).toFixed(1)}G`;
-        if (mbps >= 1) return `${mbps.toFixed(1)}M`;
-        const kbps = mbps * 1000;
-        return `${Math.round(kbps)}K`;
-    };
-
-    const formatLinkSpeed = (mbps) => {
-        if (mbps >= 1000) {
-            const gbps = mbps / 1000;
-            return gbps % 1 === 0 ? `${gbps}G` : `${gbps.toFixed(1)}G`;
-        }
-        return `${Math.round(mbps)}M`;
-    };
-
     const linkCapacityDisplay = formatLinkSpeed(linkSpeedMbps);
     const c2Display = c2Kbps >= 1000 ? `${(c2Kbps / 1000).toFixed(1)}M` : `${Math.round(c2Kbps)}K`;
 
@@ -172,13 +225,69 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
         return `Storage Target: ${storagePath}\nAllocated: ${totalStorageDisplay} | Used: ${usedStorageDisplay} (${storageUsedPct.toFixed(1)}%)\nFree Available: ${freeStorageDisplay} (${storageFreePct.toFixed(1)}%)\nDisk IOPS: ${currentIops} IOPS`;
     };
 
+    const getCpuTooltip = () => {
+        if (activeScope === 'cluster' && cluster?.nodes?.length) {
+            const lines = cluster.nodes.map(n =>
+                `• ${n.displayName || n.nodeId} (${n.role || 'Node'}/${n.nodeMode || 'Active'}): ${Number(n.hostCpuPct || 0).toFixed(1)}% (${n.cpuCores || 4} cores${n.isOverloaded ? ' - OVERLOAD' : ''})`
+            );
+            return `CLUSTER CPU: ${cpuPct.toFixed(1)}% (Avg of ${cluster.onlineNodesCount || cluster.totalNodes} Nodes)\nTopology: ${cluster.clusterMode || 'Mesh'}\n\nNodes Breakdown:\n${lines.join('\n')}`;
+        }
+        return `Host CPU Load: ${cpuPct.toFixed(1)}%\nApp Process: ${appCpuPct.toFixed(1)}%`;
+    };
+
+    const getRamTooltip = () => {
+        if (activeScope === 'cluster' && cluster?.nodes?.length) {
+            const lines = cluster.nodes.map(n =>
+                `• ${n.displayName || n.nodeId}: ${Number(n.hostRamPct || 0).toFixed(1)}% (Total: ${Number(n.totalRamGb || 8).toFixed(0)} GB)`
+            );
+            return `CLUSTER RAM: ${hostUsedRamDisplay} Used / ${totalRamDisplay} Total (${hostRamPct.toFixed(1)}%)\nApp Overhead: ${appRamDisplay}\n\nNodes Breakdown:\n${lines.join('\n')}`;
+        }
+        return `Host Total: ${hostUsedRamDisplay} / ${totalRamDisplay} (${hostRamPct.toFixed(1)}%) | App: ${appRamDisplay}`;
+    };
+
+    const getNetTooltip = () => {
+        if (activeScope === 'cluster' && cluster?.nodes?.length) {
+            const lines = cluster.nodes.map(n =>
+                `• ${n.displayName || n.nodeId}: TX ${formatCurrentRate(n.nicTotalTxMbps || 0)} | RX ${formatCurrentRate(n.nicTotalRxMbps || 0)} (${n.activeStreamsCount || 0} streams, ${n.activeJobsCount || 0} cuts)`
+            );
+            return `CLUSTER NETWORK: ${formatCurrentRate(totalNetMbps)} Aggregate (${netUtilPct.toFixed(1)}%)\nFleet TX: ${formatCurrentRate(netTxMbps)} | Fleet RX: ${formatCurrentRate(netRxMbps)}\nFleet Link Capacity: ${formatLinkSpeed(linkSpeedMbps)}\nGrid Streams: ${cluster.totalIngestedStreams || 0} / ${cluster.totalStreamsCapacity || 0} Streams\nGrid Render Cuts: ${cluster.totalActiveRenderJobs || 0} / ${cluster.totalConcurrentJobsCapacity || 0} Cuts\n\nNodes Breakdown:\n${lines.join('\n')}`;
+        }
+        return `Host Network: ${formatCurrentRate(totalNetMbps)} (${netUtilPct.toFixed(1)}%)\nTX: ${formatCurrentRate(netTxMbps)} | RX: ${formatCurrentRate(netRxMbps)}\nLink Speed: ${formatLinkSpeed(linkSpeedMbps)}`;
+    };
+
     return (
         <div className="server-telemetry-widget layout-large">
+            {/* Tactical Scope Toggle: Cluster Aggregate vs Local Host */}
+            {isClusterAvailable && (
+                <div className="telemetry-scope-dock" role="group" aria-label="Telemetry Scope">
+                    <button
+                        type="button"
+                        className={`scope-pill-btn ${activeScope === 'cluster' ? 'is-active' : ''}`}
+                        onClick={() => setTelemetryScope('cluster')}
+                        title={`Displaying Fleet Aggregate Telemetry for ${cluster.onlineNodesCount || cluster.totalNodes} Nodes in ${cluster.clusterMode || 'Active-Active'} Topology`}
+                    >
+                        <span className="scope-indicator-dot cluster-dot" />
+                        <span className="scope-lbl">CLUSTER</span>
+                        <span className="scope-badge">{cluster.onlineNodesCount || cluster.totalNodes} NODES</span>
+                        <span className="scope-mode-sub">({cluster.clusterMode === 'Active-Active' ? 'ACT-ACT' : (cluster.clusterMode === 'Active-Standby' ? 'ACT-STBY' : 'GRID')})</span>
+                    </button>
+                    <button
+                        type="button"
+                        className={`scope-pill-btn ${activeScope === 'local' ? 'is-active' : ''}`}
+                        onClick={() => setTelemetryScope('local')}
+                        title={`Displaying Host-Local Telemetry for ${cluster.localNodeId || 'This Machine'}`}
+                    >
+                        <span className="scope-indicator-dot local-dot" />
+                        <span className="scope-lbl">LOCAL</span>
+                    </button>
+                </div>
+            )}
+
             {/* CPU Pod */}
-            <div className={`telemetry-pod ${getStatusClass(cpuPct)}`}>
+            <div className={`telemetry-pod ${getStatusClass(cpuPct)}`} title={getCpuTooltip()}>
                 <div className="pod-header">
-                    <span className="pod-title">CPU LOAD</span>
-                    <span className="pod-sub">App {appCpuPct.toFixed(1)}%</span>
+                    <span className="pod-title">{cpuTitle}</span>
+                    <span className="pod-sub">{cpuSub}</span>
                 </div>
                 <div className="pod-content-row">
                     <span className="pod-val">{cpuPct.toFixed(1)}%</span>
@@ -194,11 +303,11 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
             {/* RAM Pod */}
             <div
                 className={`telemetry-pod ${getStatusClass(hostRamPct)}`}
-                title={`Host Total: ${hostUsedRamDisplay} / ${totalRamDisplay} (${hostRamPct.toFixed(1)}%) | App: ${appRamDisplay}`}
+                title={getRamTooltip()}
             >
                 <div className="pod-header">
-                    <span className="pod-title">RAM USAGE</span>
-                    <span className="pod-sub">App {appRamDisplay}</span>
+                    <span className="pod-title">{ramTitle}</span>
+                    <span className="pod-sub">{ramSub}</span>
                 </div>
                 <div className="pod-content-row">
                     <span className="pod-val">{hostRamPct.toFixed(1)}%</span>
@@ -277,10 +386,10 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
             </div>
 
             {/* NET POD - Network utilization using modern RadialGauge cluster */}
-            <div className={`telemetry-pod net-pod-radial ${getStatusClass(netUtilPct)}`}>
+            <div className={`telemetry-pod net-pod-radial ${getStatusClass(netUtilPct)}`} title={getNetTooltip()}>
                 <div className="pod-header">
-                    <span className="pod-title">NET LOAD</span>
-                    <span className="pod-sub">{linkCapacityDisplay} MAX</span>
+                    <span className="pod-title">{netTitle}</span>
+                    <span className="pod-sub">{netSub}</span>
                 </div>
                 <div className="pod-content-row">
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>
@@ -301,16 +410,22 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                             ]}
                         />
 
-                        {/* Gauge 2: NET / C2 */}
+                        {/* Gauge 2: NET / Grid Streams */}
                         <RadialGauge
                             size={32}
                             strokeWidth={2.4}
-                            title={`NET: ${formatCurrentRate(totalNetMbps)} | C2: ${c2Display}`}
+                            title={activeScope === 'cluster'
+                                ? `Streams: ${cluster?.totalIngestedStreams || 0}/${cluster?.totalStreamsCapacity || 0} | Cuts: ${cluster?.totalActiveRenderJobs || 0}/${cluster?.totalConcurrentJobsCapacity || 0}`
+                                : `NET: ${formatCurrentRate(totalNetMbps)} | C2: ${c2Display}`
+                            }
                             concentricSegments={[
                                 { pct: netPct, color: 'var(--accent-cyan-light, #38BDF8)' },
                                 { pct: c2Pct, color: '#C084FC' }
                             ]}
-                            items={[
+                            items={activeScope === 'cluster' ? [
+                                { label: 'NET', value: formatCurrentRate(totalNetMbps), color: 'blue' },
+                                { label: 'STM', value: `${cluster?.totalIngestedStreams || 0}`, color: 'purple' }
+                            ] : [
                                 { label: 'NET', value: formatCurrentRate(totalNetMbps), color: 'blue' },
                                 { label: 'C2', value: c2Display, color: 'purple' }
                             ]}

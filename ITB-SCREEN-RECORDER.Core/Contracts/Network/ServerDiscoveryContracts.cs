@@ -353,6 +353,18 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("processRamMb")]
         public double ProcessRamMb { get; set; }
 
+        [JsonPropertyName("hostRamPct")]
+        public double HostRamPct { get; set; }
+
+        [JsonPropertyName("nicTotalTxMbps")]
+        public double NicTotalTxMbps { get; set; }
+
+        [JsonPropertyName("nicTotalRxMbps")]
+        public double NicTotalRxMbps { get; set; }
+
+        [JsonPropertyName("linkSpeedMbps")]
+        public double LinkSpeedMbps { get; set; } = 1000;
+
         [JsonPropertyName("lastSeenUtc")]
         public DateTime LastSeenUtc { get; set; } = DateTime.UtcNow;
 
@@ -476,6 +488,18 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("gpuNvencPct")]
         public double GpuNvencPct { get; set; }
+
+        [JsonPropertyName("hostRamPct")]
+        public double HostRamPct { get; set; }
+
+        [JsonPropertyName("nicTotalTxMbps")]
+        public double NicTotalTxMbps { get; set; }
+
+        [JsonPropertyName("nicTotalRxMbps")]
+        public double NicTotalRxMbps { get; set; }
+
+        [JsonPropertyName("linkSpeedMbps")]
+        public double LinkSpeedMbps { get; set; } = 1000;
 
         [JsonPropertyName("isVipBound")]
         public bool IsVipBound { get; set; }
@@ -686,6 +710,45 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("totalConcurrentJobsCapacity")]
         public int TotalConcurrentJobsCapacity { get; set; }
+
+        [JsonPropertyName("activeNodesCount")]
+        public int ActiveNodesCount { get; set; }
+
+        [JsonPropertyName("standbyNodesCount")]
+        public int StandbyNodesCount { get; set; }
+
+        [JsonPropertyName("aggregateCpuPct")]
+        public double AggregateCpuPct { get; set; }
+
+        [JsonPropertyName("aggregateAppCpuPct")]
+        public double AggregateAppCpuPct { get; set; }
+
+        [JsonPropertyName("aggregateRamPct")]
+        public double AggregateRamPct { get; set; }
+
+        [JsonPropertyName("aggregateTotalRamGb")]
+        public double AggregateTotalRamGb { get; set; }
+
+        [JsonPropertyName("aggregateUsedRamGb")]
+        public double AggregateUsedRamGb { get; set; }
+
+        [JsonPropertyName("aggregateAppRamMb")]
+        public double AggregateAppRamMb { get; set; }
+
+        [JsonPropertyName("aggregateNicTxMbps")]
+        public double AggregateNicTxMbps { get; set; }
+
+        [JsonPropertyName("aggregateNicRxMbps")]
+        public double AggregateNicRxMbps { get; set; }
+
+        [JsonPropertyName("aggregateNicTotalMbps")]
+        public double AggregateNicTotalMbps { get; set; }
+
+        [JsonPropertyName("aggregateLinkSpeedMbps")]
+        public double AggregateLinkSpeedMbps { get; set; }
+
+        [JsonPropertyName("aggregateNicUtilizationPct")]
+        public double AggregateNicUtilizationPct { get; set; }
 
         [JsonPropertyName("enableVirtualIp")]
         public bool EnableVirtualIp { get; set; }

@@ -30,6 +30,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         private readonly ILogger<ClusterService> _logger;
         private readonly ITelemetryStateService? _telemetryState;
         private readonly TelemetryBroadcastService? _broadcastService;
+        private readonly NetworkTelemetry? _networkTelemetry;
         private readonly DateTime _startTimeUtc = DateTime.UtcNow;
 
         private ClusterNodeState _state = ClusterNodeState.Standalone;
@@ -54,7 +55,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             IHostApplicationLifetime appLifetime,
             ILogger<ClusterService> logger,
             ITelemetryStateService? telemetryState = null,
-            TelemetryBroadcastService? broadcastService = null)
+            TelemetryBroadcastService? broadcastService = null,
+            NetworkTelemetry? networkTelemetry = null)
         {
             _configMonitor = configMonitor;
             _vipManager = vipManager;
@@ -62,6 +64,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             _logger = logger;
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
+            _networkTelemetry = networkTelemetry;
 
             var config = _configMonitor.CurrentValue;
             var disc = config?.Discovery ?? new DiscoverySettings();
@@ -149,8 +152,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 RecommendedConcurrentJobs = hwJobsCap,
                 ActiveJobsCount = GetActiveJobsCount(),
                 HostCpuPct = telemetry.HostCpuUsagePct,
+                HostRamPct = telemetry.HostRamUsagePct,
                 GpuNvencPct = telemetry.GpuNvencUsagePct,
                 ProcessRamMb = telemetry.ProcessRamMb,
+                NicTotalTxMbps = _networkTelemetry?.GetMetricsSnapshot()?.NicTotalTxMbps ?? 0,
+                NicTotalRxMbps = _networkTelemetry?.GetMetricsSnapshot()?.NicTotalRxMbps ?? 0,
+                LinkSpeedMbps = _networkTelemetry?.GetMetricsSnapshot()?.NicLinkSpeedMbps > 0 ? _networkTelemetry.GetMetricsSnapshot().NicLinkSpeedMbps : 1000,
                 CpuCores = cpuCores,
                 TotalRamGb = totalRamGb,
                 GpuModel = gpuModel,
@@ -259,6 +266,23 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             bool isVipBound = !string.IsNullOrWhiteSpace(cleanVip) &&
                               _vipManager.IsVirtualIpBoundLocallyAsync(cleanVip).GetAwaiter().GetResult();
 
+            var onlineNodes = nodesList.Where(n => n.IsOnline).ToList();
+            int activeNodes = onlineNodes.Count(n => string.Equals(n.NodeMode, ServerDiscoveryConstants.NodeModeActive, StringComparison.OrdinalIgnoreCase) ||
+                                                     string.Equals(n.Role, ServerDiscoveryConstants.RoleOrchestrator, StringComparison.OrdinalIgnoreCase));
+            int standbyNodes = onlineNodes.Count(n => string.Equals(n.NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase) ||
+                                                      string.Equals(n.Role, ServerDiscoveryConstants.RoleSecondary, StringComparison.OrdinalIgnoreCase));
+
+            double avgCpu = onlineNodes.Count > 0 ? Math.Round(onlineNodes.Average(n => n.HostCpuPct), 1) : 0;
+            double totalRamGb = onlineNodes.Sum(n => n.TotalRamGb);
+            double usedRamGb = Math.Round(onlineNodes.Sum(n => n.TotalRamGb * (n.HostRamPct / 100.0)), 1);
+            double ramPct = totalRamGb > 0 ? Math.Round((usedRamGb / totalRamGb) * 100.0, 1) : 0;
+            double appRamMb = Math.Round(onlineNodes.Sum(n => n.ProcessRamMb), 0);
+            double totalTx = Math.Round(onlineNodes.Sum(n => n.NicTotalTxMbps), 2);
+            double totalRx = Math.Round(onlineNodes.Sum(n => n.NicTotalRxMbps), 2);
+            double totalNet = Math.Round(totalTx + totalRx, 2);
+            double totalSpeed = onlineNodes.Sum(n => n.LinkSpeedMbps > 0 ? n.LinkSpeedMbps : 1000);
+            double netUtil = totalSpeed > 0 ? Math.Min(100.0, Math.Round((totalNet / totalSpeed) * 100.0, 1)) : 0;
+
             return new ClusterGridStatusDto
             {
                 ClusterMode = disc.Role,
@@ -269,11 +293,26 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 OrchestratorNodeId = !string.IsNullOrEmpty(_orchestratorNodeId) ? _orchestratorNodeId : (isLocalOrch ? localId : "Unknown"),
                 IsLocalNodeOrchestrator = isLocalOrch,
                 TotalNodes = nodesList.Count,
-                OnlineNodesCount = nodesList.Count(n => n.IsOnline),
+                OnlineNodesCount = onlineNodes.Count,
+                ActiveNodesCount = activeNodes,
+                StandbyNodesCount = standbyNodes,
                 TotalIngestedStreams = nodesList.Sum(n => n.ActiveStreamsCount),
                 TotalStreamsCapacity = nodesList.Sum(n => n.MaxStreamsCapacity),
                 TotalActiveRenderJobs = nodesList.Sum(n => n.ActiveJobsCount),
                 TotalConcurrentJobsCapacity = nodesList.Sum(n => n.MaxConcurrentJobs),
+
+                // Overall Cluster Telemetry Aggregates
+                AggregateCpuPct = avgCpu,
+                AggregateRamPct = ramPct,
+                AggregateTotalRamGb = Math.Round(totalRamGb, 1),
+                AggregateUsedRamGb = usedRamGb,
+                AggregateAppRamMb = appRamMb,
+                AggregateNicTxMbps = totalTx,
+                AggregateNicRxMbps = totalRx,
+                AggregateNicTotalMbps = totalNet,
+                AggregateLinkSpeedMbps = totalSpeed,
+                AggregateNicUtilizationPct = netUtil,
+
                 EnableVirtualIp = disc.EnableVirtualIp,
                 VirtualIp = disc.VirtualIp,
                 IsVipBoundLocally = isVipBound,
@@ -1049,6 +1088,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 MaxConcurrentJobs = effectiveJobsCap,
                 RecommendedConcurrentJobs = hwJobsCap,
                 HostCpuPct = localDesc?.HostCpuPct ?? 0,
+                HostRamPct = localDesc?.HostRamPct ?? 0,
+                NicTotalTxMbps = localDesc?.NicTotalTxMbps ?? 0,
+                NicTotalRxMbps = localDesc?.NicTotalRxMbps ?? 0,
+                LinkSpeedMbps = localDesc?.LinkSpeedMbps ?? 1000,
                 GpuNvencPct = localDesc?.GpuNvencPct ?? 0,
                 CpuCores = localDesc?.CpuCores ?? Environment.ProcessorCount,
                 TotalRamGb = localDesc?.TotalRamGb ?? 8.0,
@@ -1108,6 +1151,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             node.MaxConcurrentJobs = beacon.MaxConcurrentJobs > 0 ? beacon.MaxConcurrentJobs : peerHwJobsCap;
             node.RecommendedConcurrentJobs = beacon.RecommendedConcurrentJobs > 0 ? beacon.RecommendedConcurrentJobs : peerHwJobsCap;
             node.HostCpuPct = beacon.HostCpuPct;
+            node.HostRamPct = beacon.HostRamPct;
+            node.NicTotalTxMbps = beacon.NicTotalTxMbps;
+            node.NicTotalRxMbps = beacon.NicTotalRxMbps;
+            node.LinkSpeedMbps = beacon.LinkSpeedMbps > 0 ? beacon.LinkSpeedMbps : 1000;
             node.GpuNvencPct = beacon.GpuNvencPct;
             node.CpuCores = beacon.CpuCores;
             node.TotalRamGb = beacon.TotalRamGb;

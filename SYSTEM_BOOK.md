@@ -5245,6 +5245,34 @@ Regardless of which server node an operator connects to (via VIP or directly to 
 
 ---
 
+### 78.8 Dashboard Cluster Telemetry, Aggregate Fleet Metrics, and Tactical Scope Switching
+
+#### Operational Background
+In distributed multi-server environments (Active-Active Compute Grids or Active-Standby Failover clusters), presenting only the local host's CPU, RAM, and network throughput in the main tactical C2 dashboard creates an incomplete and misleading picture of operational capacity. Operators managing 70–100+ workstations across multiple nodes need an immediate, fleet-wide overview of total cluster workload, aggregate CPU utilization, pooled RAM capacity, total network ingest, and cluster topology status directly in the primary command center header.
+
+#### Architectural Solution: Unified Cluster Telemetry Pipeline
+1. **Fleet Aggregate Computation (`ClusterService.GetClusterGridStatus`)**:
+   - [`ClusterService.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ClusterService.cs) aggregates real-time hardware telemetry from all online cluster nodes into [`ClusterGridStatusDto`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Network/ServerDiscoveryContracts.cs):
+     - **Aggregate CPU %**: Mean CPU utilization across all online nodes.
+     - **Aggregate RAM**: Pooled used memory vs. total fleet memory in GB, and cluster-wide RAM percentage.
+     - **Aggregate Network**: Total fleet TX, RX, and combined throughput in Mbps, along with total aggregated link speed (e.g. 2 Gbps or 20 Gbps) and fleet network utilization percentage.
+     - **Grid Workload Capacity**: Total ingested video streams vs. cluster streams capacity, and active multi-cam render cuts vs. concurrent jobs capacity.
+2. **SignalR Broadcast Integration (`ServerTelemetryHostService.cs`)**:
+   - [`ServerTelemetryHostService.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/ServerTelemetryHostService.cs) calls `_clusterService.GetClusterGridStatus()` every 1000ms.
+   - The computed cluster grid object is embedded into the standard SignalR `ReceiveServerTelemetry` payload, broadcasting live cluster metrics to all connected C2 operator browsers with sub-second responsiveness.
+3. **Primary Header Cluster Indicator (`CommandCenterHeader.jsx`)**:
+   - An interactive `.cluster-nodes-indicator` pod anchors beside the fleet stations indicator in the top header ribbon whenever a cluster is active:
+     - Displays total online nodes vs. configured nodes (e.g. `2/2 NODES`).
+     - Dynamic topology chip: `ACT-ACT` (Active-Active Mesh) or `ACT-STBY` (Active-Standby Failover).
+     - Glowing `VIP` badge when the local host currently owns and serves the Cluster Virtual IP.
+     - Hover tooltip reveals orchestrator node ID, failover role, and node states.
+4. **Interactive Telemetry Scope Selector (`ServerTelemetryWidget.jsx`)**:
+   - The header telemetry widget features a dedicated, tactical scope dock (`.telemetry-scope-dock`):
+     - **`[ 🌐 CLUSTER (X NODES) ]` (Default)**: Visualizes fleet-wide aggregate CPU, pooled RAM, shared storage pool, and aggregated network throughput with real-time sparkline history. Hovering over any pod displays a rich breakdown of every individual server node in the cluster.
+     - **`[ 🖥️ LOCAL HOST ]`**: Instantly switches metrics to the physical machine currently serving the browser session, allowing operators to diagnose per-node anomalies with one click.
+
+---
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
