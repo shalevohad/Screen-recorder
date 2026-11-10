@@ -5260,12 +5260,10 @@ In distributed multi-server environments (Active-Active Compute Grids or Active-
 2. **SignalR Broadcast Integration (`ServerTelemetryHostService.cs`)**:
    - [`ServerTelemetryHostService.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/ServerTelemetryHostService.cs) calls `_clusterService.GetClusterGridStatus()` every 1000ms.
    - The computed cluster grid object is embedded into the standard SignalR `ReceiveServerTelemetry` payload, broadcasting live cluster metrics to all connected C2 operator browsers with sub-second responsiveness.
-3. **Primary Header Cluster Indicator (`CommandCenterHeader.jsx`)**:
-   - An interactive `.cluster-nodes-indicator` pod anchors beside the fleet stations indicator in the top header ribbon whenever a cluster is active:
-     - Displays total online nodes vs. configured nodes (e.g. `2/2 NODES`).
-     - Dynamic topology chip: `ACT-ACT` (Active-Active Mesh) or `ACT-STBY` (Active-Standby Failover).
-     - Glowing `VIP` badge when the local host currently owns and serves the Cluster Virtual IP.
-     - Hover tooltip reveals orchestrator node ID, failover role, and node states.
+3. **Operational Header Invariant & Clutter-Free Transparency (`CommandCenterHeader.jsx`)**:
+   - In alignment with the Single Unified Super-Server vision, all separate cluster/nodes indicator pills in the top navigation ribbon were completely removed.
+   - The header maintains pure operational clarity: displaying only the Server Clock, Session Controls, Telemetry Pods (`CLUSTER CPU`, `CLUSTER RAM`, `CLUSTER NETWORK`, `STORAGE POOL`), and `FLEET STATIONS`.
+   - Cluster topology and multi-node hardware management are strictly encapsulated within **Settings → Cluster & Nodes**, eliminating redundant badges from the surveillance view.
 4. **Interactive Telemetry Scope Selector (`ServerTelemetryWidget.jsx`)**:
    - The header telemetry widget features a dedicated, tactical scope dock (`.telemetry-scope-dock`):
      - **`[ 🌐 CLUSTER (X NODES) ]` (Default)**: Visualizes fleet-wide aggregate CPU, pooled RAM, shared storage pool, and aggregated network throughput with real-time sparkline history. Hovering over any pod displays a rich breakdown of every individual server node in the cluster.

@@ -70,10 +70,6 @@ export default function CommandCenterHeader({
     const onlineCount = onlineStations.length;
     const offlineCount = Math.max(0, totalCount - onlineCount);
 
-    // Cluster discovery & topology resolution
-    const cluster = serverTelemetry?.cluster || _clusterConfig;
-    const isClusterAvailable = Boolean(cluster && (cluster.totalNodes > 1 || (cluster.clusterMode && cluster.clusterMode !== 'Standalone')));
-
     const agentMetrics = useMemo(() => {
         const recordingCount = stations.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording'))).length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
@@ -127,36 +123,6 @@ export default function CommandCenterHeader({
                             {isExpanded ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
                         </svg>
                     </button>
-
-                    {isClusterAvailable && (
-                        <div
-                            className="cluster-nodes-indicator is-clickable"
-                            onClick={() => window.dispatchEvent(new CustomEvent('itb-navigate-settings', { detail: { tab: 'cluster' } }))}
-                            title={`Unified High-Availability Grid (${cluster.clusterMode || 'Active-Active'} Topology)\nVirtual IP: ${cluster.enableVirtualIp ? (cluster.virtualIp || 'Enabled') : 'Off'} ${cluster.isVipBoundLocally ? '(Held Locally)' : ''}\n\nClick to open Cluster Settings`}
-                        >
-                            <div className="indicator-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                                    <rect x="2" y="2" width="8" height="8" rx="2" />
-                                    <rect x="14" y="2" width="8" height="8" rx="2" />
-                                    <rect x="8" y="14" width="8" height="8" rx="2" />
-                                    <path d="M6 10v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2" />
-                                    <line x1="12" y1="14" x2="12" y2="12" />
-                                </svg>
-                                <span className={`status-beacon ${cluster.onlineNodesCount >= cluster.totalNodes ? 'online' : (cluster.onlineNodesCount > 0 ? 'partial' : 'offline')}`} />
-                            </div>
-
-                            <div className="indicator-data">
-                                <div className="data-title">UNIFIED SYSTEM</div>
-                                <div className="data-values">
-                                    <span className="stat-segment online-segment">
-                                        <span className="count-active">ONLINE</span>
-                                    </span>
-                                    <span className="cluster-mode-badge">{cluster.clusterMode === 'Active-Active' ? 'ACT-ACT' : (cluster.clusterMode === 'Active-Standby' ? 'ACT-STBY' : 'GRID')}</span>
-                                    {cluster.isVipBoundLocally && <span className="cluster-vip-badge" title="This host currently holds the Virtual IP">VIP</span>}
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     <div
                         className="fleet-nodes-indicator"
