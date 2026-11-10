@@ -639,6 +639,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("assignedStations")]
         public List<string> AssignedStations { get; set; } = new();
 
+        [JsonPropertyName("clusterStations")]
+        public List<AgentTelemetryReport>? ClusterStations { get; set; }
+
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
     }

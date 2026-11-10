@@ -371,8 +371,10 @@ function CommandCenterApp() {
                 if (prev <= 1) {
                     clearInterval(timer);
                     const isAlreadyOnVip = clusterConfig.virtualIp && window.location.hostname === clusterConfig.virtualIp;
-                    if (isAlreadyOnVip) {
-                        // User is already browsing via VIP address: VIP transitioned autonomously to next node, simple reload re-establishes connection
+                    const isDomainName = !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname) && window.location.hostname !== 'localhost';
+                    if (isAlreadyOnVip || isDomainName) {
+                        // User is browsing via VIP address or enterprise DNS domain name (which resolves to the VIP):
+                        // Floating VIP transitioned autonomously to surviving node, simple reload re-establishes connection while keeping the domain URL!
                         window.location.reload();
                     } else if (clusterConfig.enableVirtualIp && clusterConfig.virtualIp) {
                         const port = window.location.port ? `:${window.location.port}` : '';

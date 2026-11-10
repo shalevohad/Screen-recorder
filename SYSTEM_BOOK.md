@@ -5194,6 +5194,57 @@ Operators and system architects designing new deployments need to know exact min
 
 ---
 
+### 78.7 High-Availability Dashboard Architecture, Virtual IP (VIP), Static DNS Resolution & Real-Time Fleet Aggregation
+
+#### Operational Mission & User Vision
+In high-security, air-gapped command and control (C2) installations, operational operators and analysts must never need to remember or switch between individual physical server IP addresses (e.g., `192.168.1.10`, `192.168.1.11`). Operators expect a single, permanent DNS hostname (e.g., `http://c2.itb.internal:5090`) that always connects to the operational dashboard, displays the entire fleet of workstations seamlessly, and automatically survives physical server failures without requiring human intervention or browser URL alterations.
+
+#### 1. How the Dashboard is Served
+- **Host Process**: Each cluster node runs `ITB-SCREEN-RECORDER.Server` (ASP.NET Core 8 with Kestrel) listening on the configured HTTP port (default: `5090`).
+- **Static Assets (`wwwroot`)**: The single-page application (React 18 + Vite + SCSS) is compiled into static HTML/JS/CSS assets bundled inside each server's `wwwroot/` folder. Every node serves an identical, self-contained dashboard.
+- **Air-Gapped Invariant (Rule 14)**: 100% offline and self-contained; zero external CDNs, Google Fonts, or telemetry beacons. All scripts, fonts, and assets are delivered locally.
+
+#### 2. Virtual IP (VIP) & Enterprise DNS Resolution Architecture
+To guarantee transparent high availability and zero-touch failover:
+1. **Network Virtual IP (VIP)**:
+   - A single, unassigned static IPv4 address in the server subnet is designated as the Cluster Virtual IP (e.g., `192.168.1.200`, Subnet Mask `255.255.255.0`).
+   - This IP is **not** statically assigned to any physical network adapter by IT administrators. Instead, the platform's [`VirtualIpManager.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/VirtualIpManager.cs) dynamically binds and unbinds it on demand.
+2. **Enterprise DNS `A` Record**:
+   - In the organizational DNS server (Microsoft Windows Server Active Directory DNS or Linux BIND), administrators configure a single static `A` record pointing to the VIP:
+     ```text
+     c2.itb.internal.    IN    A    192.168.1.200
+     ```
+3. **Dynamic VIP Binding & Gratuitous ARP**:
+   - The cluster node currently elected as **Orchestrator** (or Primary in Active-Standby mode) automatically claims the Virtual IP via native operating system calls:
+     - **Windows**: `netsh interface ipv4 add address name="Ethernet" address=192.168.1.200 mask=255.255.255.0` (with fallback to PowerShell `New-NetIPAddress`).
+     - **Linux**: `ip addr add 192.168.1.200/24 dev eth0`.
+   - Immediately following IP binding, `VirtualIpManager` broadcasts **Gratuitous ARP** packets (`ipconfig /registerdns` on Windows, `arping -U -c 3` on Linux). Network L2/L3 switches immediately refresh their ARP/MAC tables, routing all traffic destined for `192.168.1.200` to the active host within milliseconds.
+4. **Autonomous Failover & URL Preservation**:
+   - If the active host suffers hardware failure or network severance, surviving nodes detect the missed heartbeats (default: 6–8 seconds) and elect a new leader.
+   - The newly promoted leader claims `192.168.1.200` and issues Gratuitous ARP.
+   - In [`App.jsx`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/App.jsx), the frontend detects the disconnection grace period. Because the browser URL is a domain name (e.g., `c2.itb.internal`), the browser executes `window.location.reload()`, reconnecting to the same URL without altering browser certificates, bookmarks, or tabs.
+
+#### 3. Cross-Cluster Station & Telemetry Synchronization
+Regardless of which server node an operator connects to (via VIP or directly to any physical node):
+1. **Station Aggregation (`GetClusterStationsAsync`)**:
+   - [`DashboardController.cs:GetStationsSummary`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/DashboardController.cs) queries `_clusterService.GetClusterStationsAsync()`, merging stations recording locally on the host with stations recording across all peer nodes (`_remoteStationTelemetry`).
+   - Every card on the station grid displays its host node (`HostingNodeId`, `HostingNodeName`).
+2. **Real-Time SignalR Telemetry Forwarding**:
+   - In [`ClusterService.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ClusterService.cs), incoming worker heartbeats containing `request.Stations` are immediately forwarded to [`TelemetryBroadcastService`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/TelemetryBroadcastService.cs).
+   - Telemetry reports are broadcasted over SignalR WebSocket (`ReceiveAgentMetrics`) to all connected dashboard browsers in real time, delivering live CPU %, GPU %, FPS, network bitrate, and recording indicators without page polling.
+3. **Bi-Directional Fleet Station Sync (`ClusterStations`)**:
+   - Worker nodes sending heartbeats to the orchestrator receive the complete aggregated fleet station list in `ClusterHeartbeatResponse.ClusterStations`.
+   - Consequently, even if an operator accesses a secondary worker node directly, that worker node possesses 100% full awareness of all stations in the cluster.
+4. **Sub-Second WebRTC Video Proxying (`WhepProxyController`)**:
+   - When a browser plays a workstation's live feed, it requests `/api/v1/whep/live/{hostname}/mon-0`.
+   - [`WhepProxyController.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs) inspects `_clusterService.ResolveStreamNodeHost(stationCandidate)`.
+   - If the station is captured on a remote cluster node, the controller proxies the SDP offer/answer to that node's MediaMTX instance (`http://{remoteHost}:8889/.../whep`). The browser establishes sub-second WebRTC video with zero manual configuration.
+5. **Shared Forensic Storage Access**:
+   - As mandated by **Rule 2**, continuous recording chunks write to `PrimaryNetAppUncPath` (`\\nas\recordings` or `/mnt/recordings`).
+   - All cluster nodes share direct read access (`FileShare.ReadWrite | FileShare.Delete`), enabling instant timeline scrubbing, frame extraction, and multi-cam NLE exports across any station from any server.
+
+---
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

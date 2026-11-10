@@ -29,6 +29,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<ClusterService> _logger;
         private readonly ITelemetryStateService? _telemetryState;
+        private readonly TelemetryBroadcastService? _broadcastService;
         private readonly DateTime _startTimeUtc = DateTime.UtcNow;
 
         private ClusterNodeState _state = ClusterNodeState.Standalone;
@@ -52,13 +53,15 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             IHttpClientFactory httpClientFactory,
             IHostApplicationLifetime appLifetime,
             ILogger<ClusterService> logger,
-            ITelemetryStateService? telemetryState = null)
+            ITelemetryStateService? telemetryState = null,
+            TelemetryBroadcastService? broadcastService = null)
         {
             _configMonitor = configMonitor;
             _vipManager = vipManager;
             _httpClientFactory = httpClientFactory;
             _logger = logger;
             _telemetryState = telemetryState;
+            _broadcastService = broadcastService;
 
             var config = _configMonitor.CurrentValue;
             var disc = config?.Discovery ?? new DiscoverySettings();
@@ -483,6 +486,23 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                                         _clusterNodes[activeNode.NodeId] = activeNode;
                                     }
                                 }
+
+                                // Sync all fleet stations from orchestrator
+                                if (hbResp.ClusterStations != null)
+                                {
+                                    foreach (var st in hbResp.ClusterStations)
+                                    {
+                                        if (!string.Equals(st.HostingNodeId, localId, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            _stationToNodeMap[st.Hostname] = st.HostingNodeId;
+                                            _remoteStationTelemetry[st.Hostname] = st;
+                                            if (_broadcastService != null)
+                                            {
+                                                _ = _broadcastService.BroadcastAgentUpdateAsync(st);
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -587,11 +607,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
         }
 
-        public Task<ClusterHeartbeatResponse> ProcessNodeHeartbeatAsync(ClusterHeartbeatRequest request, CancellationToken ct = default)
+        public async Task<ClusterHeartbeatResponse> ProcessNodeHeartbeatAsync(ClusterHeartbeatRequest request, CancellationToken ct = default)
         {
             if (request == null || request.Node == null || string.IsNullOrWhiteSpace(request.Node.NodeId))
             {
-                return Task.FromResult(new ClusterHeartbeatResponse { Acknowledged = false });
+                return new ClusterHeartbeatResponse { Acknowledged = false };
             }
 
             var node = request.Node;
@@ -622,11 +642,17 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                         station.HostingNodeName = node.DisplayName;
                         _stationToNodeMap[station.Hostname] = node.NodeId;
                         _remoteStationTelemetry[station.Hostname] = station;
+
+                        if (_broadcastService != null)
+                        {
+                            _ = _broadcastService.BroadcastAgentUpdateAsync(station);
+                        }
                     }
                 }
             }
 
             string localId = Environment.MachineName;
+            var allStations = await GetClusterStationsAsync();
             var response = new ClusterHeartbeatResponse
             {
                 Acknowledged = true,
@@ -634,10 +660,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 IsLocalNodeOrchestrator = string.Equals(_orchestratorNodeId, localId, StringComparison.OrdinalIgnoreCase),
                 ActiveNodes = _clusterNodes.Values.Where(n => n.IsOnline).ToList(),
                 AssignedStations = node.AssignedStations ?? new List<string>(),
+                ClusterStations = allStations,
                 ServerUtcTime = DateTime.UtcNow
             };
 
-            return Task.FromResult(response);
+            return response;
         }
 
         public static double CalculateIngestPressure(ClusterNodeDescriptor node)
