@@ -371,6 +371,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("encoderType")]
         public string EncoderType { get; set; } = "libx264";
 
+        [JsonPropertyName("osPlatform")]
+        public string OsPlatform { get; set; } = OperatingSystem.IsWindows() ? "Windows" : (OperatingSystem.IsLinux() ? "Linux" : "Other");
+
+        [JsonPropertyName("osDescription")]
+        public string OsDescription { get; set; } = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+
         [JsonPropertyName("hardwareCapabilityScore")]
         public int HardwareCapabilityScore { get; set; } = 200;
 
@@ -476,6 +482,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("encoderType")]
         public string EncoderType { get; set; } = "libx264";
+
+        [JsonPropertyName("osPlatform")]
+        public string OsPlatform { get; set; } = OperatingSystem.IsWindows() ? "Windows" : (OperatingSystem.IsLinux() ? "Linux" : "Other");
+
+        [JsonPropertyName("osDescription")]
+        public string OsDescription { get; set; } = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
 
         [JsonPropertyName("hardwareCapabilityScore")]
         public int HardwareCapabilityScore { get; set; } = 200;

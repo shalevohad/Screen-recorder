@@ -2,7 +2,7 @@
 
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Release: v1.0.70](https://img.shields.io/badge/Release-v1.0.70-06B6D4?logo=git&logoColor=white)](#)
+[![Release: v1.0.71](https://img.shields.io/badge/Release-v1.0.71-06B6D4?logo=git&logoColor=white)](#)
 [![MediaMTX](https://img.shields.io/badge/MediaMTX-v1.15.4-FF6F00?logo=fastapi&logoColor=white)](https://github.com/bluenviron/mediamtx)
 [![Air-Gapped: 100% Offline](https://img.shields.io/badge/Environment-Air--Gapped_Isolated-10B981?logo=shield&logoColor=white)](#)
 [![License: Proprietary](https://img.shields.io/badge/License-Enterprise_Proprietary-red)](#)

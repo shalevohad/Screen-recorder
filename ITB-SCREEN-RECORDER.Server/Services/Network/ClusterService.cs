@@ -148,6 +148,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 GpuModel = gpuModel,
                 EncoderType = configuredEncoder,
                 HardwareCapabilityScore = hwScore,
+                OsPlatform = OperatingSystem.IsWindows() ? "Windows" : (OperatingSystem.IsLinux() ? "Linux" : "Other"),
+                OsDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
                 LocalIps = ServerDiscoveryHostedService.GetActiveLocalIps(),
                 IsVipBound = isVipBound,
                 LastSeenUtc = DateTime.UtcNow
@@ -986,6 +988,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 GpuModel = localDesc?.GpuModel ?? "CPU Software",
                 EncoderType = localDesc?.EncoderType ?? "libx264",
                 HardwareCapabilityScore = localDesc?.HardwareCapabilityScore ?? 200,
+                OsPlatform = localDesc?.OsPlatform ?? (OperatingSystem.IsWindows() ? "Windows" : (OperatingSystem.IsLinux() ? "Linux" : "Other")),
+                OsDescription = localDesc?.OsDescription ?? System.Runtime.InteropServices.RuntimeInformation.OSDescription,
                 IsVipBound = isVipBound,
                 LocalIps = localIps,
                 AssignedStations = localDesc?.AssignedStations ?? new List<string>(),
@@ -1037,6 +1041,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             node.HardwareCapabilityScore = beacon.HardwareCapabilityScore > 0
                 ? beacon.HardwareCapabilityScore
                 : ClusterBeaconPacket.CalculateHardwareCapabilityScore(beacon.CpuCores, beacon.TotalRamGb, beacon.EncoderType, beacon.GpuModel);
+            node.OsPlatform = !string.IsNullOrWhiteSpace(beacon.OsPlatform) ? beacon.OsPlatform : "Unknown";
+            node.OsDescription = !string.IsNullOrWhiteSpace(beacon.OsDescription) ? beacon.OsDescription : string.Empty;
             node.EffectiveStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : Math.Clamp(node.HardwareCapabilityScore / 10, 10, 150);
             node.IngestPressureScore = CalculateIngestPressure(node);
             node.ComputeFitnessScore = CalculateComputeFitness(node);

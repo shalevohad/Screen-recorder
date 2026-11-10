@@ -593,7 +593,7 @@ export function generateAutoPackPlacements(feeds, W = 1920, H = 1080, borderColo
  * Invariant (Rule 13 & 2026-11-04 Update):
  * 1. Screen switches (cuts) within any gap region (local or global) are merged into preceding segments to eliminate mid-gap jitter.
  * 2. Auto-Director is strictly forbidden from selecting or covering GLOBAL GAP regions.
- *    Global gaps must remain completely unselected ('לא בחורים').
+ *    Global gaps must remain completely unselected.
  *    Local gaps (station-specific gaps with 'No Signal' synthetic slate) remain covered without cuts.
  */
 export function cleanDirectorSegmentsWithGaps(
@@ -644,7 +644,7 @@ export function cleanDirectorSegmentsWithGaps(
 
     // 1. Subtract GLOBAL GAPS completely:
     // Invariant: Auto-Director is strictly forbidden from selecting or covering GLOBAL GAP regions.
-    // Global gaps must remain completely unselected ('לא בחורים').
+    // Global gaps must remain completely unselected.
     const activeGlobalGaps = [];
     if (Array.isArray(globalGaps) && globalGaps.length > 0) {
         globalGaps.forEach(g => {

@@ -1,9 +1,11 @@
 // ==========================================
-// File: ClientApp/src/components/Settings/tabs/ClusterSettingsTab.jsx
+// File: Client/src/components/Settings/tabs/ClusterSettingsTab.jsx
 // ==========================================
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
+    const discovery = form?.discovery || {};
+
     const [clusterStatus, setClusterStatus] = useState(null);
     const [clusterGrid, setClusterGrid] = useState(null);
     const [clusterLoading, setClusterLoading] = useState(false);
@@ -12,22 +14,23 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
     const [showAdvancedVip, setShowAdvancedVip] = useState(false);
 
     const fetchClusterStatus = useCallback(async () => {
+        setClusterLoading(true);
         try {
-            setClusterLoading(true);
-            const [statusRes, gridRes] = await Promise.all([
+            const [statusRes, gridRes] = await Promise.allSettled([
                 fetch('/api/v1/cluster/status'),
                 fetch('/api/v1/cluster/grid')
             ]);
-            if (statusRes.ok) {
-                const data = await statusRes.json();
-                setClusterStatus(data);
+
+            if (statusRes.status === 'fulfilled' && statusRes.value.ok) {
+                const sData = await statusRes.value.json();
+                setClusterStatus(sData);
             }
-            if (gridRes.ok) {
-                const gridData = await gridRes.json();
-                setClusterGrid(gridData);
+            if (gridRes.status === 'fulfilled' && gridRes.value.ok) {
+                const gData = await gridRes.value.json();
+                setClusterGrid(gData);
             }
         } catch (err) {
-            console.warn('[ClusterSettingsTab] Failed to load cluster status:', err);
+            console.error('[ClusterSettingsTab] Failed fetching cluster topology:', err);
         } finally {
             setClusterLoading(false);
         }
@@ -39,10 +42,51 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         return () => clearInterval(interval);
     }, [fetchClusterStatus]);
 
-    const handleTransferOrchestrator = async (targetNodeId) => {
+    const handleAcquireVip = async () => {
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
         try {
-            setClusterActionLoading(true);
-            setClusterFeedback(null);
+            const res = await fetch('/api/v1/cluster/acquire-vip', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || 'VIP acquired and bound successfully.' });
+                await fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to acquire Virtual IP.' });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message || 'VIP acquisition request failed.' });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
+    const handleReleaseVip = async () => {
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
+        try {
+            const res = await fetch('/api/v1/cluster/release-vip', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || 'VIP released successfully.' });
+                await fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to release Virtual IP.' });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message || 'VIP release request failed.' });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
+    const handleTransferOrchestrator = async (targetNodeId) => {
+        if (!window.confirm(`Transfer Orchestrator leadership to node '${targetNodeId}'?`)) {
+            return;
+        }
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
+        try {
             const res = await fetch('/api/v1/cluster/orchestrator/transfer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -50,64 +94,17 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                setClusterFeedback({ type: 'success', message: data.message || `Orchestrator transferred to ${targetNodeId}` });
-                fetchClusterStatus();
+                setClusterFeedback({ type: 'success', message: data.message || 'Orchestrator leadership transferred.' });
+                await fetchClusterStatus();
             } else {
-                setClusterFeedback({ type: 'error', message: data.message || 'Failed to transfer Orchestrator' });
+                setClusterFeedback({ type: 'error', message: data.message || 'Failed to transfer leadership.' });
             }
         } catch (err) {
-            setClusterFeedback({ type: 'error', message: err.message });
+            setClusterFeedback({ type: 'error', message: err.message || 'Transfer request failed.' });
         } finally {
             setClusterActionLoading(false);
         }
     };
-
-    const handleAcquireVip = async () => {
-        try {
-            setClusterActionLoading(true);
-            setClusterFeedback(null);
-            const res = await fetch('/api/v1/cluster/failover/acquire-vip', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                setClusterFeedback({ type: 'success', message: data.message || 'Virtual IP acquired successfully!' });
-                fetchClusterStatus();
-            } else {
-                setClusterFeedback({ type: 'error', message: data.message || 'Failed to acquire Virtual IP' });
-            }
-        } catch (err) {
-            setClusterFeedback({ type: 'error', message: err.message });
-        } finally {
-            setClusterActionLoading(false);
-        }
-    };
-
-    const handleReleaseVip = async () => {
-        try {
-            setClusterActionLoading(true);
-            setClusterFeedback(null);
-            const res = await fetch('/api/v1/cluster/failover/release-vip', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                setClusterFeedback({ type: 'success', message: data.message || 'Virtual IP released successfully' });
-                fetchClusterStatus();
-            } else {
-                setClusterFeedback({ type: 'error', message: data.message || 'Failed to release Virtual IP' });
-            }
-        } catch (err) {
-            setClusterFeedback({ type: 'error', message: err.message });
-        } finally {
-            setClusterActionLoading(false);
-        }
-    };
-
-    if (!form) return null;
-    const discovery = form.discovery || {};
 
     const streamsUtilizationPct = clusterGrid && clusterGrid.totalStreamsCapacity > 0
         ? Math.round((clusterGrid.totalIngestedStreams / clusterGrid.totalStreamsCapacity) * 100)
@@ -118,7 +115,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         : 0;
 
     return (
-        <div className="tab-body-flow" dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="tab-body-flow" dir="ltr" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {/* Top Subpanel Header */}
             <div className="subpanel-header" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
@@ -127,11 +124,11 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             {discovery.role === 'Active-Standby' ? 'HA ACTIVE-STANDBY' : (discovery.role === 'Standalone' ? 'STANDALONE' : 'ACTIVE-ACTIVE GRID')}
                         </span>
                         <h4 style={{ margin: 0, color: '#38BDF8', fontSize: '1.05rem', fontWeight: 800 }}>
-                            אשכול שרתים מבוזר, ניתוב עומסים חומרי ו-Virtual IP (VIP)
+                            Distributed Server Cluster, Dynamic Hardware Balancing & Virtual IP (VIP)
                         </h4>
                     </div>
                     <span className="subpanel-desc" style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '2px', display: 'block' }}>
-                        איחוד שרתי הקלטה הטרוגניים לאשכול אחיד, איזון עומסי קליטת שידורים ועיבוד וידאו לפי כוח חומרה, ומנגנון יתירות VIP אוטומטי.
+                        Federate heterogeneous recording servers (Windows &amp; Linux) into a unified cluster, balance stream ingestion and NLE video processing based on hardware capability, with automated VIP failover.
                     </span>
                 </div>
 
@@ -153,7 +150,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         gap: '6px'
                     }}
                 >
-                    <span>{clusterLoading ? '🔄 מרענן...' : '🔄 רענן נתוני אשכול'}</span>
+                    <span>{clusterLoading ? '🔄 Refreshing...' : '🔄 Refresh Cluster State'}</span>
                 </button>
             </div>
 
@@ -174,15 +171,15 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         flexDirection: 'column',
                         gap: '4px'
                     }}>
-                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>שרתים פעילים באשכול</span>
+                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Active Cluster Nodes</span>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                             <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#38BDF8', fontFamily: 'monospace' }}>
                                 {clusterGrid.onlineNodesCount}
                             </span>
-                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalNodes} שרתים</span>
+                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalNodes} Nodes</span>
                         </div>
                         <span style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 700 }}>
-                            👑 מתזמר ראשי: {clusterGrid.orchestratorNodeId || 'בוחר...'}
+                            👑 Orchestrator: {clusterGrid.orchestratorNodeId || 'Electing...'}
                         </span>
                     </div>
 
@@ -197,7 +194,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         gap: '4px'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>עומס קליטת שידורים</span>
+                            <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Stream Ingestion Load</span>
                             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: streamsUtilizationPct > 75 ? '#F43F5E' : '#34D399' }}>
                                 {streamsUtilizationPct}%
                             </span>
@@ -206,7 +203,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#F8FAFC', fontFamily: 'monospace' }}>
                                 {clusterGrid.totalIngestedStreams}
                             </span>
-                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalStreamsCapacity} ערוצים</span>
+                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalStreamsCapacity} Channels</span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden' }}>
                             <div style={{
@@ -228,7 +225,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         gap: '4px'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>משימות עיבוד וידאו (NLE)</span>
+                            <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Video Render Jobs (NLE)</span>
                             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#F472B6' }}>
                                 {jobsUtilizationPct}%
                             </span>
@@ -237,7 +234,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#F8FAFC', fontFamily: 'monospace' }}>
                                 {clusterGrid.totalActiveRenderJobs}
                             </span>
-                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalConcurrentJobsCapacity} משימות במקביל</span>
+                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalConcurrentJobsCapacity} Concurrent Jobs</span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden' }}>
                             <div style={{
@@ -258,14 +255,14 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         flexDirection: 'column',
                         gap: '4px'
                     }}>
-                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>כתובת וירטואלית משותפת (VIP)</span>
+                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Virtual IP (VIP) Status</span>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                             <span style={{ fontSize: '1.05rem', fontWeight: 800, color: clusterStatus?.isVirtualIpBound ? '#34D399' : '#FDE047', fontFamily: 'monospace' }}>
-                                {discovery.virtualIp || 'לא הוגדר'}
+                                {discovery.virtualIp || 'Not Configured'}
                             </span>
                         </div>
                         <span style={{ fontSize: '0.68rem', color: clusterStatus?.isVirtualIpBound ? '#10B981' : '#94A3B8', fontWeight: 700 }}>
-                            ● {clusterStatus?.isVirtualIpBound ? 'משויכת פעילה לשרת זה' : (discovery.enableVirtualIp ? 'מנוהלת בעמית / Standby' : 'כבוי')}
+                            ● {clusterStatus?.isVirtualIpBound ? 'Acquired & Bound Locally' : (discovery.enableVirtualIp ? 'Managed by Peer / Standby' : 'Disabled')}
                         </span>
                     </div>
                 </div>
@@ -285,7 +282,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                     gap: '10px'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 700 }}>שרת נוכחי:</span>
+                        <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 700 }}>Local Node:</span>
                         <strong style={{ color: '#F8FAFC', fontSize: '0.85rem' }}>{clusterStatus.localNodeId}</strong>
 
                         <span style={{
@@ -310,7 +307,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 color: clusterStatus.isVipBoundLocally ? '#34D399' : '#94A3B8',
                                 border: `1px solid ${clusterStatus.isVipBoundLocally ? 'rgba(16, 185, 129, 0.4)' : 'rgba(148, 163, 184, 0.3)'}`
                             }}>
-                                VIP {clusterStatus.virtualIp}: {clusterStatus.isVipBoundLocally ? 'משויכת מקומית' : 'בהמתנה'}
+                                VIP {clusterStatus.virtualIp}: {clusterStatus.isVipBoundLocally ? 'Bound Locally' : 'Standby'}
                             </span>
                         )}
                     </div>
@@ -333,7 +330,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     cursor: 'pointer'
                                 }}
                             >
-                                משוך כתובת VIP (הפוך לשרת ראשי)
+                                Acquire VIP (Assume Primary)
                             </button>
                         )}
                         {clusterStatus.enableVirtualIp && clusterStatus.isVipBoundLocally && (
@@ -352,7 +349,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     cursor: 'pointer'
                                 }}
                             >
-                                שחרר כתובת VIP (וותר על הראשי)
+                                Release VIP (Cede Primary)
                             </button>
                         )}
                     </div>
@@ -387,14 +384,14 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>
-                                טופולוגיית אשכול
+                                CLUSTER TOPOLOGY
                             </span>
                             <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#38BDF8' }}>
-                                שרתים משתתפים, חלוקת עומסי שידור ומדדי כוח חישובי
+                                Participating Nodes, Stream Distribution &amp; Hardware Capability Index
                             </span>
                         </div>
                         <span style={{ fontSize: '0.72rem', color: '#34D399', fontWeight: 700 }}>
-                            📡 גילוי עמיתים אוטונומי פעיל ברשת LAN (קבוצה: {discovery.clusterGroup || 'Production'})
+                            📡 Autonomous Peer Discovery Active on LAN (Group: {discovery.clusterGroup || 'Production'})
                         </span>
                     </div>
 
@@ -402,6 +399,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         {clusterGrid.nodes?.map(node => {
                             const isStandbyNode = node.nodeMode === 'Standby' || node.role === 'Secondary';
                             const isOverloaded = node.isOverloaded || node.hostCpuPct >= 75.0;
+                            const isLinux = node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'));
 
                             return (
                                 <div key={node.nodeId} style={{
@@ -422,9 +420,21 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                             </span>
                                             {node.nodeId === clusterGrid.localNodeId && (
                                                 <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: '3px', background: 'rgba(148, 163, 184, 0.25)', color: '#CBD5E1', fontWeight: 700 }}>
-                                                    שרת נוכחי
+                                                    LOCAL NODE
                                                 </span>
                                             )}
+                                            {/* Cross-Platform OS Badge */}
+                                            <span style={{
+                                                fontSize: '0.62rem',
+                                                padding: '1px 5px',
+                                                borderRadius: '3px',
+                                                background: isLinux ? 'rgba(234, 179, 8, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                                                color: isLinux ? '#FDE047' : '#38BDF8',
+                                                fontWeight: 800,
+                                                border: `1px solid ${isLinux ? 'rgba(234, 179, 8, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`
+                                            }}>
+                                                {isLinux ? '🐧 Linux' : '🪟 Windows'}
+                                            </span>
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
@@ -484,38 +494,38 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                             background: (node.hardwareCapabilityScore || 200) >= 600 ? 'rgba(16, 185, 129, 0.25)' : ((node.hardwareCapabilityScore || 200) >= 300 ? 'rgba(6, 182, 212, 0.25)' : 'rgba(148, 163, 184, 0.2)'),
                                             color: (node.hardwareCapabilityScore || 200) >= 600 ? '#34D399' : ((node.hardwareCapabilityScore || 200) >= 300 ? '#38BDF8' : '#CBD5E1')
                                         }}>
-                                            ⚡ מדד כוח {node.hardwareCapabilityScore || 200}
+                                            ⚡ PWR {node.hardwareCapabilityScore || 200}
                                         </span>
                                     </div>
 
                                     {/* Streams & Jobs Capacity */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94A3B8' }}>
                                         <span>IP: <strong style={{ color: '#38BDF8', fontFamily: 'monospace' }}>{node.localIps?.[0] || 'Auto'}</strong></span>
-                                        <span>שידורים: <strong style={{ color: '#F8FAFC' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
-                                        <span>משימות NLE: <strong style={{ color: '#F8FAFC' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                        <span>Streams: <strong style={{ color: '#F8FAFC' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
+                                        <span>NLE Jobs: <strong style={{ color: '#F8FAFC' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
                                     </div>
 
                                     {/* CPU & GPU Telemetry */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
                                         <span>CPU: <strong style={{ color: isOverloaded ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong></span>
                                         <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
-                                        <span>עדיפות: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
+                                        <span>Priority: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
                                     </div>
 
                                     {/* Ingest Pressure & Overload Guard Bar */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.66rem' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94A3B8' }}>
                                             <span>
-                                                לחץ קליטה (Ingest): <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>
+                                                Ingest Pressure: <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>
                                                     {Math.round(node.ingestPressureScore || 0)} pts
                                                 </strong>
                                                 {isOverloaded && (
-                                                    <span style={{ color: '#F43F5E', fontWeight: 800, marginRight: '4px' }}>[מוגן מעומס יתר]</span>
+                                                    <span style={{ color: '#F43F5E', fontWeight: 800, marginLeft: '4px' }}>[THROTTLED - OVERLOAD GUARD]</span>
                                                 )}
                                             </span>
                                             <span>
-                                                התאמת עיבוד: <strong style={{ color: (node.computeFitnessScore || 0) > 0 ? '#34D399' : '#64748B' }}>
-                                                    {(node.computeFitnessScore || 0) > 0 ? Math.round(node.computeFitnessScore) : 'בהמתנה'}
+                                                Compute Fitness: <strong style={{ color: (node.computeFitnessScore || 0) > 0 ? '#34D399' : '#64748B' }}>
+                                                    {(node.computeFitnessScore || 0) > 0 ? Math.round(node.computeFitnessScore) : 'Standby'}
                                                 </strong>
                                             </span>
                                         </div>
@@ -547,7 +557,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                                 cursor: 'pointer'
                                             }}
                                         >
-                                            העבר תפקיד מתזמר ראשי לשרת זה
+                                            Transfer Orchestrator Leadership to this Node
                                         </button>
                                     )}
                                 </div>
@@ -560,25 +570,25 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
             {/* PRIMARY CLUSTER CONFIGURATION SETTINGS */}
             <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                    <span>תצורת פריסה (Cluster Mode)</span>
+                    <span>Cluster Deployment Mode</span>
                     <select
                         value={discovery.role || 'Active-Active'}
                         onChange={e => updateDiscoveryField('role', e.target.value)}
                         className="tactical-select"
                     >
-                        <option value="Active-Active">Active-Active (אשכול מבוזר - שיתוף עומסים ועיבוד וידאו מלא)</option>
-                        <option value="Active-Standby">Active-Standby (אשכול גיבוי חם - שרת ראשי ושרת משני)</option>
-                        <option value="Standalone">Standalone (שרת יחיד ללא אשכול)</option>
+                        <option value="Active-Active">Active-Active (Distributed Compute Grid - Load Balancing &amp; Offloading)</option>
+                        <option value="Active-Standby">Active-Standby (High Availability Failover - Primary &amp; Hot Backup)</option>
+                        <option value="Standalone">Standalone (Single Server - No Clustering)</option>
                     </select>
                     <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                        קובע האם השרת פועל כחלק מאשכול מבוזר או כשרת עצמאי.
+                        Defines whether this server operates within an autonomous cluster or as a standalone station.
                     </span>
                 </div>
 
                 {discovery.role !== 'Standalone' && (
                     <>
                         <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                            <span>אופי פעילות שרת זה (Node Mode)</span>
+                            <span>Node Operating Mode</span>
                             <select
                                 value={discovery.nodeMode || (discovery.nodeRole === 'Secondary' ? 'Standby' : 'Active')}
                                 onChange={e => {
@@ -588,16 +598,16 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 }}
                                 className="tactical-select"
                             >
-                                <option value="Active">🟢 שרת פעיל (Active - קולט שידורים, מקליט ומעבד וידאו)</option>
-                                <option value="Standby">🟡 שרת גיבוי חם (Standby - עומד בהמתנה, נכנס לפעולה בנפילה)</option>
+                                <option value="Active">🟢 Active Node (Ingests streams, records, and processes video)</option>
+                                <option value="Standby">🟡 Standby Node (Hot backup reserve - takes over upon peer failure)</option>
                             </select>
                             <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                                תצורה משולבת (Hybrid): שרתים פעילים מתחלקים בעומס, ושרת גיבוי נכנס לפעולה רק במידת הצורך.
+                                Hybrid topology: active nodes balance workloads dynamically while standby nodes remain in reserve.
                             </span>
                         </div>
 
                         <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                            <span>שם קבוצת האשכול (Cluster Group)</span>
+                            <span>Cluster Group Name</span>
                             <input
                                 type="text"
                                 placeholder="Production"
@@ -605,7 +615,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 onChange={e => updateDiscoveryField('clusterGroup', e.target.value)}
                             />
                             <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                                כל שרת ברשת המוגדר באותו שם קבוצה יזהה את עמיתיו ויצטרף לאשכול אוטומטית!
+                                Servers on the LAN configured with the same group name will auto-discover and federate automatically.
                             </span>
                         </div>
                     </>
@@ -625,16 +635,16 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h5 style={{ margin: 0, color: '#38BDF8', fontSize: '0.9rem', fontWeight: 800 }}>
-                            ⚙️ מדדי קיבולת, חלוקת עומסים והגנת שרתים חלשים
+                            ⚙️ Capacity Limits, Balancing &amp; Weak Node Overload Ceilings
                         </h5>
                         <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                            תקרת בטיחות: שרת עם מעבד מעל 75% ננעל אוטומטית מקבלת שידורים חדשים
+                            Safety Ceiling: Nodes exceeding 75% CPU are throttled from taking new ingest streams
                         </span>
                     </div>
 
                     <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
-                            <span>קיבולת שידורים מקסימלית לשרת</span>
+                            <span>Target Ingest Streams Capacity</span>
                             <input
                                 type="number"
                                 min="10"
@@ -643,12 +653,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 onChange={e => updateDiscoveryField('maxIngestStreamsCapacity', Number(e.target.value))}
                             />
                             <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                כמות מקסימלית של ערוצי וידאו חיים לשרת זה.
+                                Target concurrent live streams for this node.
                             </span>
                         </div>
 
                         <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
-                            <span>משימות עיבוד וידאו בו-זמנית</span>
+                            <span>Max Concurrent Video Render Jobs</span>
                             <input
                                 type="number"
                                 min="1"
@@ -657,12 +667,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 onChange={e => updateDiscoveryField('maxConcurrentRenderJobs', Number(e.target.value))}
                             />
                             <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                משימות יצוא NLE מקביליות לפני offload לעמית.
+                                Maximum concurrent NLE export jobs before dispatching to idle peers.
                             </span>
                         </div>
 
                         <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
-                            <span>עדיפות מנהיגות (Node Priority 1-100)</span>
+                            <span>Election Priority (1-100)</span>
                             <input
                                 type="number"
                                 min="1"
@@ -671,12 +681,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
                             />
                             <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                עדיפות גבוהה יותר נבחרת כמתזמר ראשי בנפילה.
+                                Higher priority node assumes Orchestrator leadership on failover.
                             </span>
                         </div>
 
                         <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
-                            <span>קצב פעימות לב (Heartbeat Sec)</span>
+                            <span>Heartbeat Interval (Sec)</span>
                             <input
                                 type="number"
                                 min="1"
@@ -685,7 +695,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 onChange={e => updateDiscoveryField('heartbeatIntervalSeconds', Number(e.target.value))}
                             />
                             <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                מרווח שניות בין שידורי UDP באשכול.
+                                Broadcast beacon interval in seconds over UDP.
                             </span>
                         </div>
                     </div>
@@ -697,7 +707,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 checked={discovery.autoBalanceStreams !== false}
                                 onChange={e => updateDiscoveryField('autoBalanceStreams', e.target.checked)}
                             />
-                            <span>איזון עומסים אוטומטי של עמדות שידור (Auto-Balance Streams)</span>
+                            <span>Auto-balance incoming agent streams across cluster nodes</span>
                         </label>
 
                         <label className="tactical-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#E2E8F0' }}>
@@ -706,7 +716,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 checked={discovery.distributedVideoProcessingEnabled !== false}
                                 onChange={e => updateDiscoveryField('distributedVideoProcessingEnabled', e.target.checked)}
                             />
-                            <span>עיבוד וידאו מבוזר באשכול (Offload NLE Render Jobs to Idle Peers)</span>
+                            <span>Offload NLE video render jobs to idle cluster peers</span>
                         </label>
 
                         <label className="tactical-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#E2E8F0' }}>
@@ -715,7 +725,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 checked={discovery.autoPeerDiscovery !== false}
                                 onChange={e => updateDiscoveryField('autoPeerDiscovery', e.target.checked)}
                             />
-                            <span>גילוי עמיתים אוטונומי ב-Multicast (UDP 239.210.1.5)</span>
+                            <span>Autonomous peer discovery via UDP Multicast (239.210.1.5)</span>
                         </label>
                     </div>
                 </div>
@@ -738,7 +748,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 FAILOVER VIP
                             </span>
                             <h5 style={{ margin: 0, color: '#FDE047', fontSize: '0.9rem', fontWeight: 800 }}>
-                                הגדרות כתובת וירטואלית משותפת (Virtual IP) ויתירות רשת
+                                Virtual IP (VIP) &amp; Network Failover Settings
                             </h5>
                         </div>
                         <button
@@ -753,7 +763,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 textDecoration: 'underline'
                             }}
                         >
-                            {showAdvancedVip ? 'הסתר הגדרות VIP מפורטות' : 'הצג הגדרות VIP מפורטות'}
+                            {showAdvancedVip ? 'Hide Detailed VIP Parameters' : 'Show Detailed VIP Parameters'}
                         </button>
                     </div>
 
@@ -764,14 +774,14 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 checked={Boolean(discovery.enableVirtualIp)}
                                 onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
                             />
-                            <span>הפעל כתובת וירטואלית משותפת (Virtual IP Failover)</span>
+                            <span>Enable Shared Virtual IP (VIP Failover)</span>
                         </label>
                     </div>
 
                     {(discovery.enableVirtualIp || showAdvancedVip) && (
                         <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                             <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                                <span>כתובת Virtual IP (IPv4)</span>
+                                <span>Virtual IP Address (IPv4)</span>
                                 <input
                                     type="text"
                                     placeholder="e.g. 192.168.1.200"
@@ -779,12 +789,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
                                 />
                                 <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                    הכתובת המשותפת אליה פונים עמדות ה-Agent ודפדפני ה-C2.
+                                    Shared Virtual IP accessed by capture agents and NOC operators.
                                 </span>
                             </div>
 
                             <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                                <span>מסכת רשת (Subnet Mask)</span>
+                                <span>Subnet Mask</span>
                                 <input
                                     type="text"
                                     placeholder="255.255.255.0"
@@ -794,15 +804,15 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             </div>
 
                             <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                                <span>שם כרטיס רשת (Interface Name)</span>
+                                <span>Network Interface Name</span>
                                 <input
                                     type="text"
-                                    placeholder="Auto (השאר ריק לבחירה אוטומטית)"
+                                    placeholder="Auto (Leave empty for auto-detection)"
                                     value={discovery.networkInterfaceName || ''}
                                     onChange={e => updateDiscoveryField('networkInterfaceName', e.target.value)}
                                 />
                                 <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                    למשל Ethernet או ens18. ברירת מחדל: אוטומטי לפי ה-NIC הפעיל.
+                                    e.g. Ethernet or ens18 / eth0. Default: auto-detected from active interface with gateway.
                                 </span>
                             </div>
                         </div>
@@ -811,7 +821,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                     {showAdvancedVip && (
                         <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                             <div className="settings-field" style={{ flex: '1 1 100%' }}>
-                                <span>כתובות עמיתים ידניות (Manual Seed Peers) — רק לרשתות שבהן חסום UDP Multicast</span>
+                                <span>Manual Seed Peer URLs — For subnets where UDP Multicast is disabled</span>
                                 <input
                                     type="text"
                                     placeholder="http://192.168.1.101:5090, http://192.168.1.102:5090"

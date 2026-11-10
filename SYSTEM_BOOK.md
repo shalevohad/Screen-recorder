@@ -1,8 +1,8 @@
 # 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
-> **Last Updated**: 2026-11-07
-> **Current Version**: v1.0.70
+> **Last Updated**: 2026-11-10
+> **Current Version**: v1.0.71
 > **Governing Rules**: Consult [RULES.md](./RULES.md) for behavioral invariants and strict system constraints.
 
 ---
@@ -5059,6 +5059,45 @@ Exposed via [ClusterController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRec
        - GPU NVENC Hardware acceleration status (`● NVENC 32%` or `○ CPU`).
        - Stream and render job allocation bars per node.
      - **One-Click Navigation**: Includes a quick-action button in the header (`Manage Cluster Grid ⚙️`) that seamlessly switches the settings view directly to the dedicated `ClusterSettingsTab`.
+
+---
+
+## 78. Enterprise Release v1.0.71: Cross-Platform Heterogeneous Linux/Windows Clustering & English-Only C2 Localization (2026-11-10)
+
+Release **v1.0.71** standardizes cross-platform clustering between mixed Windows and Linux server fleets and enforces 100% English-only localization across all C2 settings and operational dashboards.
+
+### 78.1 Cross-Platform Linux & Windows Cluster Node Federation
+1. **Heterogeneous Node Operating System Invariant**:
+   - The platform natively supports multi-server clusters consisting of both Windows (e.g. Windows Server / Windows 11) and Linux (e.g. Ubuntu, Debian, RHEL) nodes running simultaneously within the same `ClusterGroup`.
+   - `ClusterNodeDescriptor` and `ClusterBeaconPacket` are enhanced with `OsPlatform` (`"Windows"` / `"Linux"` / `"macOS"`) and detailed `OsDescription` (`RuntimeInformation.OSDescription`).
+   - Every 2-second UDP multicast beacon advertises the host node's operating system platform alongside its CPU cores, RAM, and GPU hardware encoder tier.
+2. **Dynamic Cross-Platform Tactical Badges**:
+   - Both the dedicated **Cluster & Nodes** hub ([`ClusterSettingsTab.jsx`](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/ClusterSettingsTab.jsx)) and the Server Health capacity view ([`SystemOverviewTab.jsx`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/tabs/SystemOverviewTab.jsx)) dynamically render OS badges on each node card:
+     - `🪟 Windows`: Cyan themed blade badge for Windows nodes.
+     - `🐧 Linux`: Amber/gold themed blade badge for Linux nodes.
+3. **Cross-Platform Storage & Media Paths**:
+   - Storage path resolution adheres to cross-platform POSIX and UNC normalization. Forward slashes `/` are enforced across MediaMTX path templates (`%path/%s_%f`), allowing continuous chunk extraction and NLE job execution regardless of whether the processing worker is Linux or Windows.
+   - Dual-path failover logic seamlessly handles Windows UNC network shares and Linux CIFS/NFS mount points.
+4. **Native Cross-Platform VIP & Gratuitous ARP Execution**:
+   - [VirtualIpManager.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/VirtualIpManager.cs) detects OS platform dynamically:
+     - Windows: Uses `netsh.exe interface ipv4 add/delete address` with fallback to PowerShell `New-NetIPAddress` / `Remove-NetIPAddress`, followed by `ipconfig.exe /registerdns`.
+     - Linux: Uses `ip addr add/del {vip}/{cidr} dev {iface}` followed by unsolicited gratuitous ARP broadcasts via `arping -U -c 3 -I {iface} {vip}`.
+
+### 78.2 Complete 100% English-Only C2 Localization Invariant
+- All settings tabs, subpanel headers, field labels, configuration tooltips, tactical KPI cards, modal dialogs (including `ServerRestartModal`), and alert notifications are normalized strictly to **100% English**.
+- Directionality is standardized to `dir="ltr"` across all settings modules to guarantee consistent typographical layout in enterprise NOCs and air-gapped SOC command centers.
+
+### 78.3 Solution-Wide Version Alignment (v1.0.71)
+| Artifact / Project | Path | Promoted Version |
+| :--- | :--- | :--- |
+| **Global MSBuild Definition** | `Directory.Build.props` | `1.0.71` |
+| **Agent Supervisor (Session 0)** | `AgentSupervisorService.cs` | `1.0.71` |
+| **Tactical Dashboard (Frontend)** | `ClientApp/package.json` & `package-lock.json` | `1.0.71` |
+| **Linux Agent Package** | `ITB-SCREEN-RECORDER.Agent.Linux.Installer.csproj` | `1.0.71` |
+| **Linux Server Package** | `ITB-SCREEN-RECORDER.Server.Linux.Installer.csproj` | `1.0.71` |
+| **Windows Agent MSI** | `ITB-SCREEN-RECORDER.Installer.wixproj` | `1.0.71` |
+| **Windows Server MSI** | `ITB-SCREEN-RECORDER.Server.Installer.wixproj` | `1.0.71` |
+| **Diagnostics Tool CLI** | `ITB-SCREEN-RECORDER.Diagnostics.csproj` | `1.0.71` |
 
 ---
 

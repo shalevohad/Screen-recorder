@@ -204,8 +204,8 @@ describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
         ];
 
         // Custom Title Assignment
-        const renamed = updatePlacementLabel(initialPlacements, 0, '  עמדת שליטה ראשית (Main HUD) [100%]  ');
-        assert.strictEqual(renamed[0].label, 'עמדת שליטה ראשית (Main HUD) [100%]');
+        const renamed = updatePlacementLabel(initialPlacements, 0, '  Main Tactical Workstation (Main HUD) [100%]  ');
+        assert.strictEqual(renamed[0].label, 'Main Tactical Workstation (Main HUD) [100%]');
         assert.strictEqual(renamed[1].label, null);
 
         // Fallback Resolution Logic
@@ -214,7 +214,7 @@ describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
         };
 
         const st = { displayName: 'Command Desk', id: 'OHAD-PC' };
-        assert.strictEqual(getEffectiveDisplayTitle(renamed[0], st), 'עמדת שליטה ראשית (Main HUD) [100%]');
+        assert.strictEqual(getEffectiveDisplayTitle(renamed[0], st), 'Main Tactical Workstation (Main HUD) [100%]');
         assert.strictEqual(getEffectiveDisplayTitle(renamed[1], st), 'Command Desk (mon-1)');
 
         // Clearing Title Resets to null (Restores Fallback)

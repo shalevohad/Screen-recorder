@@ -114,7 +114,7 @@ test('3. Audio Track Redesign & Clip Drag-and-Drop Invariants', async (t) => {
     });
 });
 
-test('4. Feature Settings Dynamic Secrecy (עקרון החשאיות)', async (t) => {
+test('4. Feature Settings Dynamic Secrecy', async (t) => {
     const settingsCtrlPath = path.resolve(__dirname, '../../../../../../ITB-SCREEN-RECORDER.Server/Controllers/SettingsController.cs');
     const settingsCtrl = fs.readFileSync(settingsCtrlPath, 'utf8');
 

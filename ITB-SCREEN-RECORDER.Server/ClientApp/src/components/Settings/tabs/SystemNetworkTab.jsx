@@ -361,10 +361,10 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>DEDICATED TAB</span>
-                                <h4 style={{ margin: 0, color: '#38BDF8' }}>אשכול שרתים מבוזר ואיזון עומסים (Cluster & Nodes)</h4>
+                                <h4 style={{ margin: 0, color: '#38BDF8' }}>Distributed Server Cluster & Load Balancing (Cluster & Nodes)</h4>
                             </div>
                             <span className="subpanel-desc" style={{ marginTop: '4px', display: 'block' }}>
-                                כלל הגדרות האשכול, ניתוב שידורים חכם, תקרות בטיחות 75% מעבד ויתירות VIP מרוכזות בטאב הייעודי <strong>"Cluster & Nodes"</strong>.
+                                All cluster topology, dynamic stream routing, 75% CPU safety ceilings, and VIP failover controls have moved to the dedicated tab <strong>"Cluster & Nodes"</strong>.
                             </span>
                         </div>
                     </div>
@@ -379,14 +379,14 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             color: '#38BDF8',
                             border: '1px solid rgba(6, 182, 212, 0.3)'
                         }}>
-                            מצב מוגדר: {discovery.role || 'Active-Active'} ({discovery.clusterGroup || 'Production'})
+                            Configured Mode: {discovery.role || 'Active-Active'} ({discovery.clusterGroup || 'Production'})
                         </span>
                     </div>
                 </div>
             </div>
 
             {/* STEALTH REPLAY STUDIO & AUTO-DIRECTOR ENGINE CONFIGURATION */}
-            {/* Principle of Secrecy (×¢×§×¨×•×Ÿ ×”×—×©××™×•×ª): Feature settings strictly exposed ONLY if server has feature active */}
+            {/* Principle of Secrecy: Feature settings strictly exposed ONLY if server has feature active */}
             {isStealthAuthorized && hasReplayStudioFeature && (
                 <div className="security-subpanel stealth-studio-subpanel" style={{ borderColor: 'rgba(6, 182, 212, 0.35)', background: 'rgba(6, 182, 212, 0.03)' }}>
                     <div className="subpanel-header">

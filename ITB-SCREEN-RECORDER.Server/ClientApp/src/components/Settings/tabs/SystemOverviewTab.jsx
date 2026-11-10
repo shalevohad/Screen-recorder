@@ -682,11 +682,11 @@ export default function SystemOverviewTab({
                                         {form?.discovery?.role === 'Active-Standby' ? 'HA ACTIVE-STANDBY CLUSTER' : 'ACTIVE-ACTIVE DISTRIBUTED GRID'}
                                     </span>
                                     <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#F8FAFC' }}>
-                                        טופולוגיית אשכול וקיבולת עיבוד מבוזרת
+                                        Distributed Cluster Topology &amp; Horizontal Capacity
                                     </h3>
                                 </div>
                                 <span style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '3px', display: 'block' }}>
-                                    ניטור חי של שרתי האשכול, חלוקת עומס קליטת שידורים ועיבוד וידאו (נוכחי מול מקסימלי), ומנגנון יתירות VIP
+                                    Real-time fleet monitoring, dynamic stream ingestion and video compute allocation (current load vs. max capacity), and VIP redundancy.
                                 </span>
                             </div>
                         </div>
@@ -709,7 +709,7 @@ export default function SystemOverviewTab({
                                     gap: '6px'
                                 }}
                             >
-                                <span>⚙️ מעבר להגדרות אשכול (Cluster Settings)</span>
+                                <span>⚙️ Manage Cluster &amp; Nodes</span>
                             </button>
                         </div>
                     </div>
@@ -728,10 +728,10 @@ export default function SystemOverviewTab({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
                                 <span style={{ color: '#E2E8F0', fontWeight: 700 }}>
-                                    📹 קיבולת שידורי וידאו באשכול (Ingest Channels)
+                                    📹 Ingest Streams Capacity (Channels)
                                 </span>
                                 <span style={{ fontFamily: 'monospace', fontWeight: 800, color: (clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) > 0.75 ? '#F43F5E' : '#34D399' }}>
-                                    {clusterGrid.totalIngestedStreams} / {clusterGrid.totalStreamsCapacity} ערוצים ({Math.round((clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) * 100)}%)
+                                    {clusterGrid.totalIngestedStreams} / {clusterGrid.totalStreamsCapacity} Channels ({Math.round((clusterGrid.totalIngestedStreams / Math.max(1, clusterGrid.totalStreamsCapacity)) * 100)}%)
                                 </span>
                             </div>
                             <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -743,8 +743,8 @@ export default function SystemOverviewTab({
                                 }} />
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
-                                <span>עומס נוכחי: {clusterGrid.totalIngestedStreams} תחנות מקליטות</span>
-                                <span>יתרת קיבולת פנויה: {Math.max(0, clusterGrid.totalStreamsCapacity - clusterGrid.totalIngestedStreams)} ערוצים</span>
+                                <span>Current Ingest: {clusterGrid.totalIngestedStreams} Active Streams</span>
+                                <span>Available Headroom: {Math.max(0, clusterGrid.totalStreamsCapacity - clusterGrid.totalIngestedStreams)} Free Channels</span>
                             </div>
                         </div>
 
@@ -752,10 +752,10 @@ export default function SystemOverviewTab({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
                                 <span style={{ color: '#E2E8F0', fontWeight: 700 }}>
-                                    ⚡ קיבולת משימות עיבוד וידאו מקביליות (NLE Render Jobs)
+                                    ⚡ NLE Video Render Jobs Capacity (Distributed Grid)
                                 </span>
                                 <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#F472B6' }}>
-                                    {clusterGrid.totalActiveRenderJobs} / {clusterGrid.totalConcurrentJobsCapacity} משימות ({Math.round((clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) * 100)}%)
+                                    {clusterGrid.totalActiveRenderJobs} / {clusterGrid.totalConcurrentJobsCapacity} Jobs ({Math.round((clusterGrid.totalActiveRenderJobs / Math.max(1, clusterGrid.totalConcurrentJobsCapacity)) * 100)}%)
                                 </span>
                             </div>
                             <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -767,8 +767,8 @@ export default function SystemOverviewTab({
                                 }} />
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
-                                <span>משימות פעילות ברשת: {clusterGrid.totalActiveRenderJobs}</span>
-                                <span>סלוטים פנויים באשכול: {Math.max(0, clusterGrid.totalConcurrentJobsCapacity - clusterGrid.totalActiveRenderJobs)} משימות</span>
+                                <span>Active Jobs in Fleet: {clusterGrid.totalActiveRenderJobs}</span>
+                                <span>Available Job Slots: {Math.max(0, clusterGrid.totalConcurrentJobsCapacity - clusterGrid.totalActiveRenderJobs)} Slots</span>
                             </div>
                         </div>
                     </div>
@@ -799,6 +799,18 @@ export default function SystemOverviewTab({
                                                     LOCAL
                                                 </span>
                                             )}
+                                            {/* Cross-Platform OS Badge */}
+                                            <span style={{
+                                                fontSize: '0.58rem',
+                                                padding: '1px 5px',
+                                                borderRadius: '3px',
+                                                background: (node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? 'rgba(234, 179, 8, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                                                color: (node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? '#FDE047' : '#38BDF8',
+                                                fontWeight: 800,
+                                                border: `1px solid ${(node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? 'rgba(234, 179, 8, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`
+                                            }}>
+                                                {(node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'))) ? '🐧 Linux' : '🪟 Windows'}
+                                            </span>
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -850,15 +862,15 @@ export default function SystemOverviewTab({
 
                                     {/* Load Metrics */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
-                                        <span>שידורים: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
-                                        <span>משימות NLE: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                        <span>Streams: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
+                                        <span>NLE Jobs: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
                                     </div>
 
                                     {/* Telemetry Bar */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
                                         <span>CPU: <strong style={{ color: isOverloaded ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong> {isOverloaded && <span style={{ color: '#F43F5E', fontWeight: 800 }}>[THROTTLED]</span>}</span>
                                         <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
-                                        <span>לחץ: <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>{Math.round(node.ingestPressureScore || 0)} pts</strong></span>
+                                        <span>Pressure: <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>{Math.round(node.ingestPressureScore || 0)} pts</strong></span>
                                     </div>
                                 </div>
                             );
@@ -1044,7 +1056,7 @@ export default function SystemOverviewTab({
                     <div className="nav-card-icon">👥</div>
                     <div className="nav-card-info">
                         <h4 className="nav-card-title">Stations & Operational Roles</h4>
-                        <p className="nav-card-desc">Map hostnames to tactical role aliases with CSV import/export and alias swapping (הצלבה).</p>
+                        <p className="nav-card-desc">Map hostnames to tactical role aliases with CSV import/export and alias swapping (Cross-Swap).</p>
                     </div>
                     <span className="nav-arrow">→</span>
                 </div>

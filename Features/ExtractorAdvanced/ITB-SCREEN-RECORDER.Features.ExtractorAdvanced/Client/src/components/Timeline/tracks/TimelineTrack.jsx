@@ -636,7 +636,7 @@ export default function TimelineTrack({
     }, [activeSegments, globalGaps, baseEpochMs, viewportDurationMs]);
 
     // Rule 13 & 2026-11-04 Update: Auto-Director is strictly forbidden from selecting or covering GLOBAL GAPS.
-    // Global gaps must remain completely unselected ('לא בחורים').
+    // Global gaps must remain completely unselected.
     // Only local gaps (station-specific gaps with 'No Signal' synthetic slate) remain covered without cuts.
     const gapCleanDirectorSegments = useMemo(() => {
         const cutStartEpoch = baseEpochMs + inPointMs;

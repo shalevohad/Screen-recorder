@@ -1153,7 +1153,7 @@ export default function MulticamViewport({
     };
 
     // -------------------------------------------------------------
-    // LAYER STACKING ACTIONS ("מי לפני מי" - מספור קדימות מוגדר ומדויק)
+    // LAYER STACKING ACTIONS: Explicit z-index priority and display ordering
     // -------------------------------------------------------------
     const reorderLayer = useCallback((idx, action) => {
         if (idx < 0 || !currentPlacements[idx]) return;
@@ -1351,7 +1351,7 @@ export default function MulticamViewport({
     }, [availableFeeds, currentPlacements, defaultStationFeeds, updateActivePlacements, virtualW, virtualH]);
 
     // -------------------------------------------------------------
-    // CUSTOM PRESETS: SAVE & LOAD ("לשמור אותו ולטעון אותו")
+    // CUSTOM PRESETS: Save & load layout configurations
     // -------------------------------------------------------------
     const handleSaveCurrentPreset = useCallback(() => {
         const name = presetNameInput.trim() || `Custom Layout ${savedPresets.length + 1}`;
@@ -3621,7 +3621,7 @@ export default function MulticamViewport({
                                 transformStyle = 'translateX(-100%)';
                             }
 
-                            // Position inspector at the TOP of the card ("מעל הכל"):
+                            // Position inspector at the top of the card:
                             // If card has headroom inside canvas (p.y >= 38), float directly above the card's top edge.
                             // If card is near or flush with top of canvas (p.y < 38), dock inside top of card below title bar (26px).
                             let topStyle;
