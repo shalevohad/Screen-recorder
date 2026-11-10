@@ -67,6 +67,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 {
                     udpServer = new UdpClient();
                     udpServer.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    try
+                    {
+                        udpServer.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastLoopback, true);
+                    }
+                    catch { }
                     udpServer.Client.Bind(new IPEndPoint(IPAddress.Any, port));
 
                     // Join the autonomous discovery multicast group from configuration

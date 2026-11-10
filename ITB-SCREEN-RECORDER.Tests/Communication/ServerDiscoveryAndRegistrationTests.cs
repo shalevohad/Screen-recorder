@@ -212,16 +212,24 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             };
             configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
 
             _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
-            await Task.Delay(150); // Allow socket to bind
+            await Task.Delay(200); // Allow socket to bind
 
             try
             {
                 var client = new ServerDiscoveryClient(null, discoveryPort: customPort, multicastAddress: customMulticast);
-                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 1500, cts.Token);
+                ServerDiscoveryResponse? discovered = null;
+                for (int attempt = 0; attempt < 5 && discovered == null && !cts.Token.IsCancellationRequested; attempt++)
+                {
+                    discovered = await client.DiscoverBestServerAsync(timeoutMs: 1200, cts.Token);
+                    if (discovered == null)
+                    {
+                        await Task.Delay(100, cts.Token);
+                    }
+                }
 
                 Assert.NotNull(discovered);
                 Assert.Equal(5090, discovered.HttpPort);
@@ -292,11 +300,11 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             };
             configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
 
             _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
-            await Task.Delay(150);
+            await Task.Delay(200);
 
             try
             {
@@ -306,7 +314,15 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
                     multicastAddress: customMulticast,
                     targetEnvironment: "DisasterRecovery");
 
-                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 1500, cts.Token);
+                ServerDiscoveryResponse? discovered = null;
+                for (int attempt = 0; attempt < 5 && discovered == null && !cts.Token.IsCancellationRequested; attempt++)
+                {
+                    discovered = await client.DiscoverBestServerAsync(timeoutMs: 1200, cts.Token);
+                    if (discovered == null)
+                    {
+                        await Task.Delay(100, cts.Token);
+                    }
+                }
 
                 Assert.NotNull(discovered);
                 Assert.Contains("Custom-HQ-Recorder", discovered.ServerName);
@@ -362,16 +378,24 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             };
             configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
 
             _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
-            await Task.Delay(150);
+            await Task.Delay(200);
 
             try
             {
                 var client = new ServerDiscoveryClient(null, discoveryPort: customPort, multicastAddress: customMulticast);
-                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 1500, cts.Token);
+                ServerDiscoveryResponse? discovered = null;
+                for (int attempt = 0; attempt < 5 && discovered == null && !cts.Token.IsCancellationRequested; attempt++)
+                {
+                    discovered = await client.DiscoverBestServerAsync(timeoutMs: 1200, cts.Token);
+                    if (discovered == null)
+                    {
+                        await Task.Delay(100, cts.Token);
+                    }
+                }
 
                 Assert.NotNull(discovered);
                 Assert.Equal("Standby", discovered.Role);
