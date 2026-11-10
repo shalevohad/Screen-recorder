@@ -865,6 +865,12 @@ export default function SystemOverviewTab({
                                         <span>Streams: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
                                         <span>NLE Jobs: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
                                     </div>
+                                    {node.recommendedStreamsCapacity > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.64rem', color: '#64748B', marginTop: '-2px' }}>
+                                            <span>Hardware Baseline:</span>
+                                            <span style={{ color: '#38BDF8', fontFamily: 'monospace' }}>{node.recommendedStreamsCapacity} Str • {node.recommendedConcurrentJobs} Jobs</span>
+                                        </div>
+                                    )}
 
                                     {/* Telemetry Bar */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>

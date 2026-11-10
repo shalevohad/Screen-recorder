@@ -71,6 +71,57 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         /// <summary>
+        /// Evaluates hardware sizing, minimum specifications, and capacity requirements for target stations and NLE jobs.
+        /// </summary>
+        [HttpPost("hardware-sizing")]
+        [AllowAnonymous]
+        public IActionResult CalculateHardwareSizing([FromBody] HardwareSizingRequest request)
+        {
+            try
+            {
+                var grid = _clusterService.GetClusterGridStatus();
+                var result = HardwareSizingCalculator.Calculate(request, grid);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CLUSTER API] Failed to calculate hardware sizing");
+                return StatusCode(500, new { Error = "Failed to calculate hardware sizing", Details = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Evaluates hardware sizing with query parameters (GET).
+        /// </summary>
+        [HttpGet("hardware-sizing")]
+        [AllowAnonymous]
+        public IActionResult GetHardwareSizing(
+            [FromQuery] int stations = 50,
+            [FromQuery] int jobs = 2,
+            [FromQuery] string mode = "Active-Active",
+            [FromQuery] string profile = "Auto")
+        {
+            try
+            {
+                var req = new HardwareSizingRequest
+                {
+                    TargetStations = stations,
+                    TargetConcurrentJobs = jobs,
+                    RedundancyMode = mode,
+                    HardwareProfile = profile
+                };
+                var grid = _clusterService.GetClusterGridStatus();
+                var result = HardwareSizingCalculator.Calculate(req, grid);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CLUSTER API] Failed to calculate hardware sizing");
+                return StatusCode(500, new { Error = "Failed to calculate hardware sizing", Details = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Inter-node heartbeat endpoint used by the partner cluster node for sub-second health checks.
         /// </summary>
         [HttpGet("partner-health")]

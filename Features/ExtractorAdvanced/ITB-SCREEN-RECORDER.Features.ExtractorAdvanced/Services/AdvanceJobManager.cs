@@ -91,10 +91,50 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     _jobs[job.JobId] = job;
                 }
                 _advLogger.LogInformation("[AdvanceJobManager] Restored {Count} jobs from advance_extractor.db", dbJobs.Count);
+                foreach (var job in _jobs.Values)
+                {
+                    SyncJobToCluster(job);
+                }
             }
             catch (Exception ex)
             {
                 _advLogger.LogError(ex, "[AdvanceJobManager] Failed to restore jobs from advance_extractor.db");
+            }
+        }
+
+        private void SyncJobToCluster(ExportJobInfo job)
+        {
+            if (job == null) return;
+            try
+            {
+                string executingNodeId = (job is AdvancedModels.AdvanceJobInfo adv && !string.IsNullOrEmpty(adv.ExecutingNodeId))
+                    ? adv.ExecutingNodeId
+                    : Environment.MachineName;
+
+                string executingNodeName = (job is AdvancedModels.AdvanceJobInfo advName && !string.IsNullOrEmpty(advName.ExecutingNodeName))
+                    ? advName.ExecutingNodeName
+                    : (_systemConfig?.CurrentValue?.Discovery?.ServerDisplayName ?? Environment.MachineName);
+
+                var clusterStatus = new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
+                {
+                    JobId = job.JobId,
+                    ExecutingNodeId = executingNodeId,
+                    ExecutingNodeName = executingNodeName,
+                    Status = job.Status,
+                    ProgressPercent = job.ProgressPercent,
+                    SpeedMBps = job.SpeedMBps,
+                    StatusMessage = job.StatusMessage,
+                    OutputFileName = job.FileName,
+                    OutputFilePath = job.OutputFilePath,
+                    FileSizeBytes = job.FileSizeBytes,
+                    ErrorMessage = job.ErrorMessage,
+                    UpdatedAtUtc = DateTime.UtcNow
+                };
+                _clusterWorkerSelector?.ReportJobStatus(clusterStatus);
+            }
+            catch (Exception ex)
+            {
+                _advLogger.LogDebug(ex, "[AdvanceJobManager] Failed to sync job {JobId} status to cluster", job.JobId);
             }
         }
 
@@ -456,6 +496,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             _jobs[job.JobId] = job;
             _ = _advanceRepository.UpsertJobAsync(job);
+            SyncJobToCluster(job);
 
             // Distributed Cluster Job Dispatching:
             // Hardware-aware worker selection: Route heavy compute to optimal nodes (NVENC/QSV/Cores) and protect overloaded nodes.
@@ -493,6 +534,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             job.ExecutingNodeName = optimalWorker.DisplayName;
                             _advLogger.LogInformation("[CLUSTER DISPATCH] Successfully offloaded job '{JobId}' to optimal node '{NodeId}' ({Url}, HW-Score: {Score})",
                                 job.JobId, optimalWorker.NodeId, optimalWorker.ApiBaseUrl, optimalWorker.HardwareCapabilityScore);
+                            SyncJobToCluster(job);
                         }
                     }
                 }
@@ -534,6 +576,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                     job.StatusMessage = $"Processing on compute peer: {peer}";
                                     job.ExecutingNodeName = peer;
                                     _advLogger.LogInformation("[CLUSTER DISPATCH] Successfully offloaded job '{JobId}' to fallback peer '{Peer}'", job.JobId, peer);
+                                    SyncJobToCluster(job);
                                     break;
                                 }
                             }
@@ -580,6 +623,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
                 job.ExecutingNodeId = Environment.MachineName;
                 job.ExecutingNodeName = _systemConfig?.CurrentValue?.Discovery?.ServerDisplayName ?? Environment.MachineName;
+                SyncJobToCluster(job);
 
                 return Task.FromResult(new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
                 {
@@ -626,6 +670,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             bool removed = base.DismissJob(jobId);
             _ = _advanceRepository.DeleteJobAsync(jobId);
+            try
+            {
+                _clusterWorkerSelector?.ReportJobStatus(new ITB_SCREEN_RECORDER.Core.Contracts.Network.ClusterJobStatusDto
+                {
+                    JobId = jobId,
+                    ExecutingNodeId = Environment.MachineName,
+                    Status = "Dismissed",
+                    UpdatedAtUtc = DateTime.UtcNow
+                });
+            }
+            catch { }
             return removed;
         }
 
@@ -795,6 +850,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             job.StatusMessage = $"Scanning timeline & chunks ({job.StationIds.Count} stations)...";
             job.ProgressPercent = 1;
             _ = _advanceRepository.UpsertJobAsync(job);
+            SyncJobToCluster(job);
 
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
             Directory.CreateDirectory(tempStagingDir);
@@ -1204,6 +1260,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     {
                         lastComposePersistUtc = DateTime.UtcNow;
                         _ = _advanceRepository.UpsertJobAsync(job);
+                        SyncJobToCluster(job);
                     }
                 });
 
@@ -1219,6 +1276,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.CompletedAtUtc = DateTime.UtcNow;
 
                 _ = _advanceRepository.UpsertJobAsync(job);
+                SyncJobToCluster(job);
                 _advLogger.LogInformation("[AdvanceJobManager] Master MP4 ready: {Path} ({Size} bytes)", finalMp4Path, job.FileSizeBytes);
             }
             catch (Exception ex)
@@ -1228,11 +1286,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.StatusMessage = "Export failed";
                 job.EstimatedSecondsRemaining = 0;
                 _ = _advanceRepository.UpsertJobAsync(job);
+                SyncJobToCluster(job);
                 _advLogger.LogError(ex, "[AdvanceJobManager] Export failed for job {JobId}", job.JobId);
             }
             finally
             {
                 _ = _advanceRepository.UpsertJobAsync(job);
+                SyncJobToCluster(job);
 
                 if (Directory.Exists(tempStagingDir))
                 {

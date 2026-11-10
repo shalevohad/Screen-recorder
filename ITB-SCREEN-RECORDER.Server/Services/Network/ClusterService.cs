@@ -123,7 +123,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             double totalRamGb = telemetry.HostTotalRamMb > 0 ? Math.Round(telemetry.HostTotalRamMb / 1024.0, 1) : 8.0;
             int cpuCores = Environment.ProcessorCount;
             int hwScore = ClusterBeaconPacket.CalculateHardwareCapabilityScore(cpuCores, totalRamGb, configuredEncoder, gpuModel);
-            int effectiveCap = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : Math.Clamp(hwScore / 10, 10, 150);
+            var (hwStreamsCap, hwJobsCap) = ClusterBeaconPacket.CalculateHardwareCapacities(cpuCores, totalRamGb, configuredEncoder, gpuModel);
+            int effectiveCap = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : hwStreamsCap;
+            int effectiveJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : hwJobsCap;
 
             var localNode = new ClusterNodeDescriptor
             {
@@ -139,7 +141,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 Priority = disc.Priority,
                 MaxStreamsCapacity = effectiveCap,
                 EffectiveStreamsCapacity = effectiveCap,
-                MaxConcurrentJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2,
+                RecommendedStreamsCapacity = hwStreamsCap,
+                MaxConcurrentJobs = effectiveJobs,
+                RecommendedConcurrentJobs = hwJobsCap,
+                ActiveJobsCount = GetActiveJobsCount(),
                 HostCpuPct = telemetry.HostCpuUsagePct,
                 GpuNvencPct = telemetry.GpuNvencUsagePct,
                 ProcessRamMb = telemetry.ProcessRamMb,
@@ -857,18 +862,42 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
         }
 
+        public int GetActiveJobsCount()
+        {
+            string localId = Environment.MachineName;
+            return _clusterJobs.Values.Count(j =>
+                (string.Equals(j.ExecutingNodeId, localId, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(j.ExecutingNodeId)) &&
+                (string.Equals(j.Status, "Processing", StringComparison.OrdinalIgnoreCase) || string.Equals(j.Status, "Queued", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        public void ReportJobStatus(ClusterJobStatusDto status)
+        {
+            UpdateJobStatus(status);
+        }
+
         public void UpdateJobStatus(ClusterJobStatusDto status)
         {
             if (status == null || string.IsNullOrWhiteSpace(status.JobId)) return;
             status.UpdatedAtUtc = DateTime.UtcNow;
             _clusterJobs[status.JobId] = status;
 
-            // Update node job counter
-            if (!string.IsNullOrEmpty(status.ExecutingNodeId) && _clusterNodes.TryGetValue(status.ExecutingNodeId, out var node))
+            string localId = Environment.MachineName;
+            string targetNodeId = !string.IsNullOrEmpty(status.ExecutingNodeId) ? status.ExecutingNodeId : localId;
+
+            // Update node job counter & fitness
+            if (_clusterNodes.TryGetValue(targetNodeId, out var node))
             {
                 node.ActiveJobsCount = _clusterJobs.Values.Count(j =>
                     j.ExecutingNodeId.Equals(node.NodeId, StringComparison.OrdinalIgnoreCase) &&
-                    (j.Status == "Processing" || j.Status == "Queued"));
+                    (string.Equals(j.Status, "Processing", StringComparison.OrdinalIgnoreCase) || string.Equals(j.Status, "Queued", StringComparison.OrdinalIgnoreCase)));
+                node.ComputeFitnessScore = CalculateComputeFitness(node);
+            }
+
+            // Keep local node active jobs count fresh
+            if (_clusterNodes.TryGetValue(localId, out var localNode))
+            {
+                localNode.ActiveJobsCount = GetActiveJobsCount();
+                localNode.ComputeFitnessScore = CalculateComputeFitness(localNode);
             }
         }
 
@@ -964,6 +993,15 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
             string role = isLocalOrchestrator ? ServerDiscoveryConstants.RoleOrchestrator : (isStandby ? ServerDiscoveryConstants.RoleSecondary : ServerDiscoveryConstants.RoleWorker);
 
+            var (hwStreamsCap, hwJobsCap) = ClusterBeaconPacket.CalculateHardwareCapacities(
+                localDesc?.CpuCores ?? Environment.ProcessorCount,
+                localDesc?.TotalRamGb ?? 8.0,
+                localDesc?.EncoderType ?? "libx264",
+                localDesc?.GpuModel ?? "CPU Software");
+
+            int effectiveStreamsCap = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : (localDesc?.MaxStreamsCapacity > 0 ? localDesc.MaxStreamsCapacity : hwStreamsCap);
+            int effectiveJobsCap = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : (localDesc?.MaxConcurrentJobs > 0 ? localDesc.MaxConcurrentJobs : hwJobsCap);
+
             return new ClusterBeaconPacket
             {
                 Magic = ServerDiscoveryConstants.ClusterBeaconMagic,
@@ -978,9 +1016,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 HlsBaseUrl = $"http://{primaryIp}:{hlsPort}/live",
                 WhepPort = 8889,
                 ActiveStreamsCount = localDesc?.ActiveStreamsCount ?? 0,
-                MaxStreamsCapacity = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : 50,
-                ActiveJobsCount = localDesc?.ActiveJobsCount ?? 0,
-                MaxConcurrentJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2,
+                MaxStreamsCapacity = effectiveStreamsCap,
+                RecommendedStreamsCapacity = hwStreamsCap,
+                ActiveJobsCount = localDesc?.ActiveJobsCount ?? GetActiveJobsCount(),
+                MaxConcurrentJobs = effectiveJobsCap,
+                RecommendedConcurrentJobs = hwJobsCap,
                 HostCpuPct = localDesc?.HostCpuPct ?? 0,
                 GpuNvencPct = localDesc?.GpuNvencPct ?? 0,
                 CpuCores = localDesc?.CpuCores ?? Environment.ProcessorCount,
@@ -1015,6 +1055,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 return;
             }
 
+            var (peerHwStreamsCap, peerHwJobsCap) = ClusterBeaconPacket.CalculateHardwareCapacities(
+                beacon.CpuCores,
+                beacon.TotalRamGb,
+                beacon.EncoderType,
+                beacon.GpuModel);
+
             // Update or register discovered peer node
             var node = _clusterNodes.GetOrAdd(beacon.NodeId, id => new ClusterNodeDescriptor { NodeId = id });
             node.DisplayName = !string.IsNullOrWhiteSpace(beacon.DisplayName) ? beacon.DisplayName : beacon.NodeId;
@@ -1029,9 +1075,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 : ClusterNodeState.Active.ToString();
             node.Priority = beacon.Priority;
             node.ActiveStreamsCount = beacon.ActiveStreamsCount;
-            node.MaxStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : 50;
+            node.MaxStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : peerHwStreamsCap;
+            node.RecommendedStreamsCapacity = beacon.RecommendedStreamsCapacity > 0 ? beacon.RecommendedStreamsCapacity : peerHwStreamsCap;
             node.ActiveJobsCount = beacon.ActiveJobsCount;
-            node.MaxConcurrentJobs = beacon.MaxConcurrentJobs > 0 ? beacon.MaxConcurrentJobs : 2;
+            node.MaxConcurrentJobs = beacon.MaxConcurrentJobs > 0 ? beacon.MaxConcurrentJobs : peerHwJobsCap;
+            node.RecommendedConcurrentJobs = beacon.RecommendedConcurrentJobs > 0 ? beacon.RecommendedConcurrentJobs : peerHwJobsCap;
             node.HostCpuPct = beacon.HostCpuPct;
             node.GpuNvencPct = beacon.GpuNvencPct;
             node.CpuCores = beacon.CpuCores;
@@ -1043,7 +1091,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 : ClusterBeaconPacket.CalculateHardwareCapabilityScore(beacon.CpuCores, beacon.TotalRamGb, beacon.EncoderType, beacon.GpuModel);
             node.OsPlatform = !string.IsNullOrWhiteSpace(beacon.OsPlatform) ? beacon.OsPlatform : "Unknown";
             node.OsDescription = !string.IsNullOrWhiteSpace(beacon.OsDescription) ? beacon.OsDescription : string.Empty;
-            node.EffectiveStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : Math.Clamp(node.HardwareCapabilityScore / 10, 10, 150);
+            node.EffectiveStreamsCapacity = node.MaxStreamsCapacity;
             node.IngestPressureScore = CalculateIngestPressure(node);
             node.ComputeFitnessScore = CalculateComputeFitness(node);
             node.IsVipBound = beacon.IsVipBound;

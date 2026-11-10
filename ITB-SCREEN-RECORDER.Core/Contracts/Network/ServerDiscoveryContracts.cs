@@ -332,11 +332,17 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("maxStreamsCapacity")]
         public int MaxStreamsCapacity { get; set; } = 50;
 
+        [JsonPropertyName("recommendedStreamsCapacity")]
+        public int RecommendedStreamsCapacity { get; set; }
+
         [JsonPropertyName("activeJobsCount")]
         public int ActiveJobsCount { get; set; }
 
         [JsonPropertyName("maxConcurrentJobs")]
         public int MaxConcurrentJobs { get; set; } = 2;
+
+        [JsonPropertyName("recommendedConcurrentJobs")]
+        public int RecommendedConcurrentJobs { get; set; }
 
         [JsonPropertyName("hostCpuPct")]
         public double HostCpuPct { get; set; }
@@ -453,11 +459,17 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("maxStreamsCapacity")]
         public int MaxStreamsCapacity { get; set; } = 50;
 
+        [JsonPropertyName("recommendedStreamsCapacity")]
+        public int RecommendedStreamsCapacity { get; set; }
+
         [JsonPropertyName("activeJobsCount")]
         public int ActiveJobsCount { get; set; }
 
         [JsonPropertyName("maxConcurrentJobs")]
         public int MaxConcurrentJobs { get; set; } = 2;
+
+        [JsonPropertyName("recommendedConcurrentJobs")]
+        public int RecommendedConcurrentJobs { get; set; }
 
         [JsonPropertyName("hostCpuPct")]
         public double HostCpuPct { get; set; }
@@ -533,6 +545,68 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
             score += (int)Math.Clamp(totalRamGb, 1.0, 128.0) * 5;
 
             return score;
+        }
+
+        /// <summary>
+        /// Derives recommended maximum ingest streams and concurrent NLE render jobs based on server hardware specifications.
+        /// </summary>
+        public static (int RecommendedStreams, int RecommendedConcurrentJobs) CalculateHardwareCapacities(int cpuCores, double totalRamGb, string encoderType, string? gpuModel)
+        {
+            bool isNvenc = string.Equals(encoderType, "h264_nvenc", StringComparison.OrdinalIgnoreCase) ||
+                           (!string.IsNullOrEmpty(gpuModel) && gpuModel.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase));
+            bool isQsv = string.Equals(encoderType, "h264_qsv", StringComparison.OrdinalIgnoreCase) ||
+                         (!string.IsNullOrEmpty(gpuModel) && gpuModel.Contains("Intel", StringComparison.OrdinalIgnoreCase));
+            bool isAmf = string.Equals(encoderType, "h264_amf", StringComparison.OrdinalIgnoreCase) ||
+                         (!string.IsNullOrEmpty(gpuModel) && gpuModel.Contains("AMD", StringComparison.OrdinalIgnoreCase));
+
+            int streams;
+            int jobs;
+
+            if (isNvenc)
+            {
+                // Dedicated NVIDIA GPU: High throughput hardware offload
+                // Streams: 15 streams per CPU core + 2 streams per GB RAM
+                streams = (cpuCores * 15) + (int)(totalRamGb * 2.0);
+                streams = Math.Clamp(streams, 15, 200);
+
+                // NLE Render Jobs: NVENC handles multiple concurrent sessions.
+                // Each job allocates ~2 CPU cores and ~4 GB RAM.
+                int jobByCpu = Math.Max(1, cpuCores / 2);
+                int jobByRam = Math.Max(1, (int)(totalRamGb / 4.0));
+                jobs = Math.Clamp(Math.Min(jobByCpu, jobByRam), 2, 8);
+            }
+            else if (isQsv || isAmf)
+            {
+                // Integrated Hardware GPU (Intel QuickSync / AMD AMF)
+                streams = (cpuCores * 10) + (int)(totalRamGb * 1.5);
+                streams = Math.Clamp(streams, 10, 120);
+
+                int jobByCpu = Math.Max(1, cpuCores / 3);
+                int jobByRam = Math.Max(1, (int)(totalRamGb / 4.0));
+                jobs = Math.Clamp(Math.Min(jobByCpu, jobByRam), 1, 4);
+            }
+            else
+            {
+                // CPU Software Encoder (libx264)
+                // Reserve CPU cycles for continuous recording without drops
+                streams = cpuCores * 4;
+                streams = Math.Clamp(streams, 5, 40);
+
+                if (cpuCores < 8 || totalRamGb < 16.0)
+                {
+                    jobs = 1;
+                }
+                else if (cpuCores < 16 || totalRamGb < 32.0)
+                {
+                    jobs = 2;
+                }
+                else
+                {
+                    jobs = 3;
+                }
+            }
+
+            return (streams, jobs);
         }
     }
 
@@ -678,5 +752,263 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("updatedAtUtc")]
         public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    public class HardwareSizingRequest
+    {
+        [JsonPropertyName("targetStations")]
+        public int TargetStations { get; set; } = 50;
+
+        [JsonPropertyName("targetConcurrentJobs")]
+        public int TargetConcurrentJobs { get; set; } = 2;
+
+        [JsonPropertyName("redundancyMode")]
+        public string RedundancyMode { get; set; } = "Active-Active"; // "Standalone", "Active-Standby", "Active-Active"
+
+        [JsonPropertyName("hardwareProfile")]
+        public string HardwareProfile { get; set; } = "Auto"; // "Auto", "NVENC", "QSV", "Software"
+    }
+
+    public class HardwareSizingResult
+    {
+        [JsonPropertyName("targetStations")]
+        public int TargetStations { get; set; } = 50;
+
+        [JsonPropertyName("targetConcurrentJobs")]
+        public int TargetConcurrentJobs { get; set; } = 2;
+
+        [JsonPropertyName("redundancyMode")]
+        public string RedundancyMode { get; set; } = "Active-Active";
+
+        [JsonPropertyName("recommendedNodeCount")]
+        public int RecommendedNodeCount { get; set; } = 2;
+
+        [JsonPropertyName("recommendedActiveNodes")]
+        public int RecommendedActiveNodes { get; set; } = 2;
+
+        [JsonPropertyName("recommendedStandbyNodes")]
+        public int RecommendedStandbyNodes { get; set; } = 0;
+
+        [JsonPropertyName("minCpuCoresPerNode")]
+        public int MinCpuCoresPerNode { get; set; } = 8;
+
+        [JsonPropertyName("minRamGbPerNode")]
+        public int MinRamGbPerNode { get; set; } = 32;
+
+        [JsonPropertyName("recommendedGpuTier")]
+        public string RecommendedGpuTier { get; set; } = "NVIDIA NVENC (GeForce RTX 3060/4060 or Quadro/RTX A2000)";
+
+        [JsonPropertyName("minNetworkSpeedMbps")]
+        public int MinNetworkSpeedMbps { get; set; } = 1000;
+
+        [JsonPropertyName("recommendedNetworkCard")]
+        public string RecommendedNetworkCard { get; set; } = "1 Gbps Dedicated LAN (Dual-Port LACP recommended)";
+
+        [JsonPropertyName("storageWriteRateMBps")]
+        public double StorageWriteRateMBps { get; set; } = 25.0;
+
+        [JsonPropertyName("storageRequirementsText")]
+        public string StorageRequirementsText { get; set; } = "Enterprise NVMe PCIe 4.0 or Dedicated NetApp/SAN with SSD caching (Sustained write >= 50 MB/s)";
+
+        [JsonPropertyName("currentClusterCapable")]
+        public bool CurrentClusterCapable { get; set; } = true;
+
+        [JsonPropertyName("currentClusterMaxStreams")]
+        public int CurrentClusterMaxStreams { get; set; }
+
+        [JsonPropertyName("currentClusterMaxJobs")]
+        public int CurrentClusterMaxJobs { get; set; }
+
+        [JsonPropertyName("evaluationSummary")]
+        public string EvaluationSummary { get; set; } = string.Empty;
+
+        [JsonPropertyName("evaluationStatus")]
+        public string EvaluationStatus { get; set; } = "Ready"; // "Ready", "Warning", "Deficit"
+
+        [JsonPropertyName("sizingReport")]
+        public string SizingReport { get; set; } = string.Empty;
+    }
+
+    public static class HardwareSizingCalculator
+    {
+        public static HardwareSizingResult Calculate(HardwareSizingRequest request, ClusterGridStatusDto? currentGrid = null)
+        {
+            var req = request ?? new HardwareSizingRequest();
+            int stations = Math.Max(1, req.TargetStations);
+            int jobs = Math.Max(1, req.TargetConcurrentJobs);
+            string mode = !string.IsNullOrWhiteSpace(req.RedundancyMode) ? req.RedundancyMode : "Active-Active";
+            string profile = !string.IsNullOrWhiteSpace(req.HardwareProfile) ? req.HardwareProfile : "Auto";
+
+            // Determine GPU profile
+            bool useNvenc = string.Equals(profile, "NVENC", StringComparison.OrdinalIgnoreCase) ||
+                           (string.Equals(profile, "Auto", StringComparison.OrdinalIgnoreCase) && stations >= 40);
+            bool useQsv = !useNvenc && (string.Equals(profile, "QSV", StringComparison.OrdinalIgnoreCase) ||
+                          (string.Equals(profile, "Auto", StringComparison.OrdinalIgnoreCase) && stations >= 20));
+
+            // Node count calculation
+            int activeNodes = 1;
+            int standbyNodes = 0;
+
+            if (string.Equals(mode, "Active-Standby", StringComparison.OrdinalIgnoreCase))
+            {
+                activeNodes = 1;
+                standbyNodes = 1;
+            }
+            else if (string.Equals(mode, "Active-Active", StringComparison.OrdinalIgnoreCase))
+            {
+                if (useNvenc)
+                {
+                    activeNodes = stations > 100 ? (int)Math.Ceiling(stations / 80.0) : (stations > 50 ? 2 : 1);
+                }
+                else if (useQsv)
+                {
+                    activeNodes = stations > 60 ? (int)Math.Ceiling(stations / 50.0) : (stations > 30 ? 2 : 1);
+                }
+                else
+                {
+                    activeNodes = (int)Math.Ceiling(stations / 25.0);
+                }
+                activeNodes = Math.Clamp(activeNodes, 1, 8);
+            }
+            else
+            {
+                // Standalone
+                activeNodes = 1;
+                standbyNodes = 0;
+            }
+
+            int stationsPerNode = (int)Math.Ceiling((double)stations / Math.Max(1, activeNodes));
+            int jobsPerNode = (int)Math.Ceiling((double)jobs / Math.Max(1, activeNodes));
+
+            // Minimum Hardware per node
+            int minCpuCores;
+            int minRamGb;
+            string gpuTier;
+
+            if (useNvenc)
+            {
+                minCpuCores = Math.Clamp((int)Math.Ceiling(stationsPerNode / 15.0) + (jobsPerNode * 2), 4, 32);
+                minRamGb = Math.Clamp((int)Math.Ceiling(stationsPerNode / 4.0) + (jobsPerNode * 4), 16, 128);
+                gpuTier = "NVIDIA NVENC (GeForce RTX 3060/4060 or Quadro/RTX A2000/A4000)";
+            }
+            else if (useQsv)
+            {
+                minCpuCores = Math.Clamp((int)Math.Ceiling(stationsPerNode / 10.0) + (jobsPerNode * 2), 6, 32);
+                minRamGb = Math.Clamp((int)Math.Ceiling(stationsPerNode / 3.0) + (jobsPerNode * 4), 16, 64);
+                gpuTier = "Intel QuickSync (Core i7/i9 11th Gen+ / Xeon with Intel Iris Xe or UHD GPU)";
+            }
+            else
+            {
+                minCpuCores = Math.Clamp((int)Math.Ceiling(stationsPerNode / 4.0) + (jobsPerNode * 4), 8, 64);
+                minRamGb = Math.Clamp((int)Math.Ceiling(stationsPerNode / 2.0) + (jobsPerNode * 6), 32, 256);
+                gpuTier = "CPU Software Encoding (libx264 - Multi-node Active-Active cluster strongly recommended)";
+            }
+
+            // Align CPU cores to standard even core counts (4, 6, 8, 12, 16, 24, 32, 64)
+            if (minCpuCores % 2 != 0) minCpuCores++;
+
+            // Align RAM to standard enterprise memory DIMM configurations
+            if (minRamGb <= 16) minRamGb = 16;
+            else if (minRamGb <= 32) minRamGb = 32;
+            else if (minRamGb <= 64) minRamGb = 64;
+            else if (minRamGb <= 128) minRamGb = 128;
+            else minRamGb = 256;
+
+            // Network throughput calculation
+            // Ingest: ~3.5 Mbps per station, plus WebRTC/HLS live viewing and cluster replication
+            double ingestMbps = stations * 3.5;
+            double totalBandwidthMbps = Math.Round(ingestMbps * 1.35, 1);
+            int minNetSpeed = totalBandwidthMbps > 700 ? 10000 : 1000;
+            string netCard = totalBandwidthMbps > 700
+                ? "10 Gbps SFP+ (High-Density Stream Aggregation)"
+                : "1 Gbps Dedicated LAN (Dual-Port LACP recommended)";
+
+            // Storage I/O
+            // 3.5 Mbps = ~440 KB/s per station write rate
+            double storageWriteMBps = Math.Round((stations * 0.44) + (jobs * 25.0), 1);
+            string storageText = storageWriteMBps > 50.0
+                ? $"High-Speed NVMe PCIe 4.0 SSD or 10GbE NetApp NAS (Sustained write >= {Math.Ceiling(storageWriteMBps * 1.5)} MB/s)"
+                : $"Enterprise SSD (SATA/NVMe) or Enterprise CIFS/SMB UNC path (Sustained write >= {Math.Ceiling(storageWriteMBps * 1.5)} MB/s)";
+
+            // Current Cluster Evaluation
+            bool capable = true;
+            string status = "Ready";
+            string summary;
+            int curStreams = currentGrid?.TotalStreamsCapacity ?? 0;
+            int curJobs = currentGrid?.TotalConcurrentJobsCapacity ?? 0;
+
+            if (currentGrid != null && currentGrid.TotalNodes > 0)
+            {
+                if (curStreams >= stations && curJobs >= jobs)
+                {
+                    int streamHeadroom = curStreams - stations;
+                    int jobHeadroom = curJobs - jobs;
+                    status = "Ready";
+                    capable = true;
+                    summary = $"Current cluster is fully qualified! Capacity: {curStreams} streams (+{streamHeadroom} headroom), {curJobs} NLE jobs (+{jobHeadroom} slots).";
+                }
+                else if (curStreams >= (int)(stations * 0.8) && curJobs >= (int)(jobs * 0.8))
+                {
+                    status = "Warning";
+                    capable = true;
+                    summary = $"Cluster is near operational threshold ({curStreams}/{stations} streams, {curJobs}/{jobs} jobs). Consider adding 1 Active node for safety margin.";
+                }
+                else
+                {
+                    status = "Deficit";
+                    capable = false;
+                    summary = $"Cluster capacity deficit detected! Current: {curStreams}/{stations} streams, {curJobs}/{jobs} jobs. Add {Math.Max(1, (int)Math.Ceiling((stations - curStreams) / 50.0))} more Active node(s) or upgrade GPU to NVENC.";
+                }
+            }
+            else
+            {
+                summary = "Standalone or unclustered host. Sizing recommendations displayed based on target specifications.";
+            }
+
+            var reportSb = new System.Text.StringBuilder();
+            reportSb.AppendLine("================================================================================");
+            reportSb.AppendLine("ITB SCREEN RECORDER — CLUSTER HARDWARE SIZING & FLEET SPECIFICATION");
+            reportSb.AppendLine("================================================================================");
+            reportSb.AppendLine($"Target Fleet Size:          {stations} Workstations (24/7 continuous capture)");
+            reportSb.AppendLine($"Simultaneous NLE Cuts:      {jobs} Concurrent Multi-Cam Render Jobs");
+            reportSb.AppendLine($"Cluster Architecture:       {mode} (Distributed Compute Grid)");
+            reportSb.AppendLine("--------------------------------------------------------------------------------");
+            reportSb.AppendLine("RECOMMENDED CLUSTER TOPOLOGY:");
+            reportSb.AppendLine($"• Total Cluster Nodes:      {activeNodes + standbyNodes} Nodes ({activeNodes} Active" + (standbyNodes > 0 ? $", {standbyNodes} Standby)" : ")"));
+            reportSb.AppendLine($"• Target Workload Per Node:  ~{stationsPerNode} Ingest Streams & ~{jobsPerNode} Concurrent NLE Cuts");
+            reportSb.AppendLine("--------------------------------------------------------------------------------");
+            reportSb.AppendLine("MINIMUM HARDWARE SPECIFICATIONS (PER NODE):");
+            reportSb.AppendLine($"• Processor (CPU):          {minCpuCores} Physical Cores ({minCpuCores * 2} vCPUs) @ 3.0GHz+");
+            reportSb.AppendLine($"• System Memory (RAM):       {minRamGb} GB DDR4/DDR5 ECC");
+            reportSb.AppendLine($"• Hardware GPU Encoder:     {gpuTier}");
+            reportSb.AppendLine($"• Network Interface (NIC):  {netCard} (Aggregated Peak: {totalBandwidthMbps} Mbps)");
+            reportSb.AppendLine($"• Storage Sustained I/O:    {storageText} (Write Rate: {storageWriteMBps} MB/s)");
+            reportSb.AppendLine("--------------------------------------------------------------------------------");
+            reportSb.AppendLine($"FLEET READINESS STATUS:     [{status.ToUpperInvariant()}] {summary}");
+            reportSb.AppendLine("================================================================================");
+
+            return new HardwareSizingResult
+            {
+                TargetStations = stations,
+                TargetConcurrentJobs = jobs,
+                RedundancyMode = mode,
+                RecommendedNodeCount = activeNodes + standbyNodes,
+                RecommendedActiveNodes = activeNodes,
+                RecommendedStandbyNodes = standbyNodes,
+                MinCpuCoresPerNode = minCpuCores,
+                MinRamGbPerNode = minRamGb,
+                RecommendedGpuTier = gpuTier,
+                MinNetworkSpeedMbps = minNetSpeed,
+                RecommendedNetworkCard = netCard,
+                StorageWriteRateMBps = storageWriteMBps,
+                StorageRequirementsText = storageText,
+                CurrentClusterCapable = capable,
+                CurrentClusterMaxStreams = curStreams,
+                CurrentClusterMaxJobs = curJobs,
+                EvaluationStatus = status,
+                EvaluationSummary = summary,
+                SizingReport = reportSb.ToString()
+            };
+        }
     }
 }

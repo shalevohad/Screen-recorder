@@ -16,5 +16,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Jobs
     {
         Task<ClusterNodeDescriptor?> SelectOptimalWorkerForJobAsync(CancellationToken ct = default);
         Task<string?> ResolveAssignedIngestNodeUrlAsync(string stationHostname, CancellationToken ct = default);
+        void ReportJobStatus(ClusterJobStatusDto status);
+        int GetActiveJobsCount();
     }
 }

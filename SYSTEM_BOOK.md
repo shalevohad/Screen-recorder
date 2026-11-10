@@ -5102,6 +5102,98 @@ Release **v1.0.71** standardizes cross-platform clustering between mixed Windows
 
 ---
 
+### 78.4 Real-Time NLE Export Telemetry Synchronization & Job Counter Fix (`ActiveJobsCount`)
+
+#### Operational Background
+Previously, when an operator initiated an export cut job in the forensic NLE workspace, the cluster dashboard and health tabs continued to show `0/2` active render jobs. This occurred because:
+1. `AdvanceJobManager.cs` executed and stored local export jobs in its internal repository without notifying the cluster supervisor.
+2. `ClusterService.cs:BuildLocalNodeDescriptor()` populated `ActiveStreamsCount` from telemetry state, but omitted populating `localNode.ActiveJobsCount`.
+3. Outbound UDP multicast beacons broadcasted `ActiveJobsCount: 0` to peer cluster nodes regardless of how many NLE rendering tasks were actively processing.
+
+#### Architectural Solution: Unified Job Telemetry Pipeline
+1. **Contract Expansion (`IClusterWorkerSelector.cs`)**:
+   - Expanded [`IClusterWorkerSelector`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Jobs/IClusterWorkerSelector.cs) with:
+     ```csharp
+     void ReportJobStatus(ClusterJobStatusDto status);
+     int GetActiveJobsCount();
+     ```
+2. **Lifecycle Sync in `AdvanceJobManager.cs`**:
+   - Implemented `SyncJobToCluster(ExportJobInfo job)` helper that converts any local or dispatched job into a `ClusterJobStatusDto`.
+   - Dispatches status notifications during all key lifecycle transitions:
+     - Job creation (`EnqueueAdvanceCutJob` $\to$ `Status = "Queued"`)
+     - Worker assignment (local vs optimal remote worker)
+     - Render initiation (`ProcessSynchronizedExportAsync` $\to$ `Status = "Processing"`)
+     - Periodic composition progress (`ProgressPercent`, `SpeedMBps`)
+     - Completion (`Status = "Completed"`) and failure (`Status = "Failed"`)
+     - Job dismissal (`DismissJob` $\to$ `Status = "Dismissed"`)
+     - Server boot recovery (`LoadAndRecoverAdvanceJobsAsync`)
+3. **Immediate Cluster Counter & Fitness Recalculation**:
+   - `ClusterService.UpdateJobStatus` stores jobs in `_clusterJobs` and immediately re-evaluates the executing node's `ActiveJobsCount` and `ComputeFitnessScore`.
+   - `localNode.ActiveJobsCount` dynamically reflects `GetActiveJobsCount()`.
+   - 2-second UDP multicast beacons propagate accurate job counts across the entire LAN, ensuring that all cluster nodes and dashboards display identical, real-time job counters.
+
+---
+
+### 78.5 Dynamic Hardware-Based Capacity Derivation
+
+#### Operational Background
+When cluster nodes were deployed without explicit operator overrides in `DiscoverySettings`, the system defaulted to static values: 50 streams and 2 concurrent jobs. This failed to reflect differences between powerful GPU nodes (e.g. 16-core CPU + NVIDIA RTX 4080) and low-resource or virtualized servers (e.g. 4-core CPU + software encoder), risking overload on weak machines and underutilization on strong machines.
+
+#### Architectural Solution: `CalculateHardwareCapacities`
+Implemented `ClusterBeaconPacket.CalculateHardwareCapacities(cpuCores, totalRamGb, encoderType, gpuModel)` in [`ServerDiscoveryContracts.cs`](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Contracts/Network/ServerDiscoveryContracts.cs):
+
+1. **Hardware Ingest Streams Capacity**:
+   - **Tier 1 (NVIDIA NVENC)**: $15 \times \text{CpuCores} + 2.0 \times \text{RamGB}$, clamped to $[15, 200]$.
+   - **Tier 2 (Intel QuickSync QSV / AMD AMF)**: $10 \times \text{CpuCores} + 1.5 \times \text{RamGB}$, clamped to $[10, 120]$.
+   - **Tier 4 (CPU Software libx264)**: $4 \times \text{CpuCores}$, clamped to $[5, 40]$ to protect CPU headroom for continuous recording.
+2. **Concurrent NLE Render Jobs Capacity**:
+   - **NVIDIA NVENC**: $\min(\lfloor\text{CpuCores}/2\rfloor, \lfloor\text{RamGB}/4.0\rfloor)$, clamped to $[2, 8]$.
+   - **Intel QSV / AMF**: $\min(\lfloor\text{CpuCores}/3\rfloor, \lfloor\text{RamGB}/4.0\rfloor)$, clamped to $[1, 4]$.
+   - **CPU Software**: Strictly 1 job for $<8$ cores or $<16\text{GB}$ RAM; max 2 jobs for $\ge 8$ cores and $\ge 16\text{GB}$; max 3 jobs for $\ge 16$ cores and $\ge 32\text{GB}$.
+3. **Dynamic Initialization & Display**:
+   - Nodes populate `RecommendedStreamsCapacity` and `RecommendedConcurrentJobs`.
+   - If `disc.MaxIngestStreamsCapacity <= 0`, the effective capacity automatically defaults to the hardware-derived capacity rather than static 50.
+   - If `disc.MaxConcurrentRenderJobs <= 0`, it defaults to the hardware-derived job capacity rather than static 2.
+   - Node cards display a `Hardware Baseline: ⚡ {streams} Str • {jobs} Jobs` chip alongside configured limits.
+
+---
+
+### 78.6 Interactive Hardware Sizing & Fleet Requirements Calculator
+
+#### Operational Background
+Operators and system architects designing new deployments need to know exact minimum hardware specifications (CPU cores, RAM, GPU model, NIC speed, and storage write throughput) required to support a target number of workstations and simultaneous forensic timeline exports.
+
+#### Architectural Solution: Enterprise Sizing Engine
+1. **Interactive UI Planner in `ClusterSettingsTab.jsx`**:
+   - Embedded subpanel `.sizing-calculator-subpanel` located above primary cluster configuration settings.
+   - **Interactive Inputs**:
+     - *Target Workstations (Streams)*: Slider and number input (10 to 200 workstations with tick marks at 10, 25, 50, 70, 100, 150, 200).
+     - *Concurrent NLE Export Cuts*: Slider and number input (1 to 10 simultaneous multi-cam jobs).
+     - *Redundancy Architecture*: Selector for `Active-Active (Distributed Compute Grid)`, `Active-Standby (N+1 Failover)`, or `Standalone (Single Host)`.
+     - *Hardware / GPU Profile*: Selector for `Auto (Auto-Detect Current Hardware)`, `NVIDIA NVENC`, `Intel QuickSync QSV`, or `CPU Software`.
+2. **Computed Specification Metrics**:
+   - **Recommended Cluster Topology**: Total nodes required, active vs standby breakdown, and workload distribution per node.
+   - **Per-Node Minimum Hardware Spec**:
+     - Processor: Minimum physical CPU cores and vCPUs (aligned to standard even core counts: 4, 6, 8, 12, 16, 24, 32, 64).
+     - Memory: Minimum RAM in GB (aligned to standard DIMM configurations: 16, 32, 64, 128, 256 GB).
+     - Hardware GPU Encoder: Recommended hardware tier (e.g. GeForce RTX 3060/4060 or Quadro RTX A2000/A4000).
+   - **Network & Storage Infrastructure**:
+     - Network: Aggregated bandwidth in Mbps ($\text{Ingest} \times 1.35$) and recommended NIC (`1 Gbps LAN` vs `10 Gbps SFP+`).
+     - Storage I/O: Sustained sequential write rate ($\text{Stations} \times 0.44\text{MB/s} + \text{Jobs} \times 25\text{MB/s}$) and drive media recommendation (Enterprise NVMe PCIe 4.0 vs NetApp 10GbE NAS).
+3. **Live Fleet Readiness Evaluation**:
+   - Evaluates the currently detected cluster grid against the target specifications:
+     - 🟢 `[FLEET QUALIFIED]`: Current cluster capacity exceeds target requirements; displays remaining headroom.
+     - 🟡 `[CAPACITY WARNING]`: Current cluster is operating between 80% and 100% capacity; recommends adding 1 active node.
+     - 🔴 `[HARDWARE DEFICIT]`: Current cluster capacity is insufficient for target; calculates exact shortfall and recommended node expansion.
+4. **Action Integrations**:
+   - `📋 COPY HARDWARE SPEC`: Copies a complete, formatted text specification report to the system clipboard for immediate inclusion in procurement RFPs, IT specifications, or architecture documentation.
+   - `⚡ APPLY RECOMMENDED TARGETS`: Automatically calculates the per-node stream and job targets and updates the node configuration sliders below with one click.
+5. **Backend Sizing Endpoints**:
+   - `POST /api/v1/cluster/hardware-sizing`: Evaluates sizing payload against live cluster state using `HardwareSizingCalculator.Calculate(request, grid)`.
+   - `GET /api/v1/cluster/hardware-sizing?stations=X&jobs=Y&mode=Z&profile=W`: Sizing evaluation via query parameters.
+
+---
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

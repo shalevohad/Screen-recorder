@@ -784,6 +784,114 @@ namespace ITB_SCREEN_RECORDER.Tests.Server.Network
             Assert.Equal(-1.0, weakFitness);
         }
 
+        [Fact]
+        public void CalculateHardwareCapacities_DerivesCapacitiesAccurately()
+        {
+            // 1. High-end NVIDIA GPU node (8 cores, 32GB RAM, NVENC)
+            var (nvStreams, nvJobs) = ClusterBeaconPacket.CalculateHardwareCapacities(8, 32.0, "h264_nvenc", "NVIDIA GeForce RTX 4070");
+            Assert.InRange(nvStreams, 150, 200);
+            Assert.InRange(nvJobs, 4, 8);
+
+            // 2. Intel QuickSync node (8 cores, 16GB RAM, QSV)
+            var (qsvStreams, qsvJobs) = ClusterBeaconPacket.CalculateHardwareCapacities(8, 16.0, "h264_qsv", "Intel Iris Xe");
+            Assert.InRange(qsvStreams, 80, 120);
+            Assert.InRange(qsvJobs, 2, 4);
+
+            // 3. CPU Software node (4 cores, 8GB RAM, libx264)
+            var (cpuStreams, cpuJobs) = ClusterBeaconPacket.CalculateHardwareCapacities(4, 8.0, "libx264", "CPU Software");
+            Assert.InRange(cpuStreams, 10, 25);
+            Assert.Equal(1, cpuJobs); // Weak CPU node strictly capped at 1 job
+        }
+
+        [Fact]
+        public void ReportJobStatus_UpdatesActiveJobsCountAndRecalculatesFitness()
+        {
+            var config = new SystemConfig();
+            config.Discovery.Role = ServerDiscoveryConstants.RoleActiveActive;
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            string localNodeId = Environment.MachineName;
+
+            // Initially 0 active jobs
+            Assert.Equal(0, service.GetActiveJobsCount());
+
+            // Enqueue job 1
+            service.ReportJobStatus(new ClusterJobStatusDto
+            {
+                JobId = "job-101",
+                ExecutingNodeId = localNodeId,
+                Status = "Queued"
+            });
+            Assert.Equal(1, service.GetActiveJobsCount());
+
+            // Job 1 transitions to Processing, enqueue job 2
+            service.ReportJobStatus(new ClusterJobStatusDto
+            {
+                JobId = "job-101",
+                ExecutingNodeId = localNodeId,
+                Status = "Processing"
+            });
+            service.ReportJobStatus(new ClusterJobStatusDto
+            {
+                JobId = "job-102",
+                ExecutingNodeId = localNodeId,
+                Status = "Processing"
+            });
+            Assert.Equal(2, service.GetActiveJobsCount());
+
+            // Job 1 completes, job 2 fails
+            service.ReportJobStatus(new ClusterJobStatusDto
+            {
+                JobId = "job-101",
+                ExecutingNodeId = localNodeId,
+                Status = "Completed"
+            });
+            Assert.Equal(1, service.GetActiveJobsCount());
+
+            service.ReportJobStatus(new ClusterJobStatusDto
+            {
+                JobId = "job-102",
+                ExecutingNodeId = localNodeId,
+                Status = "Failed"
+            });
+            Assert.Equal(0, service.GetActiveJobsCount());
+        }
+
+        [Fact]
+        public void HardwareSizingCalculator_CalculatesRequirementsCorrectly()
+        {
+            // Sizing for 70 workstations and 4 concurrent cuts in Active-Active mode
+            var request = new HardwareSizingRequest
+            {
+                TargetStations = 70,
+                TargetConcurrentJobs = 4,
+                RedundancyMode = "Active-Active",
+                HardwareProfile = "NVENC"
+            };
+
+            var grid = new ClusterGridStatusDto
+            {
+                TotalNodes = 2,
+                TotalStreamsCapacity = 100,
+                TotalConcurrentJobsCapacity = 4
+            };
+
+            var result = HardwareSizingCalculator.Calculate(request, grid);
+
+            Assert.NotNull(result);
+            Assert.Equal(70, result.TargetStations);
+            Assert.Equal(4, result.TargetConcurrentJobs);
+            Assert.True(result.RecommendedNodeCount >= 2);
+            Assert.True(result.MinCpuCoresPerNode >= 8);
+            Assert.True(result.MinRamGbPerNode >= 16);
+            Assert.True(result.StorageWriteRateMBps > 30.0);
+            Assert.Equal("Ready", result.EvaluationStatus);
+            Assert.True(result.CurrentClusterCapable);
+            Assert.Contains("ITB SCREEN RECORDER — CLUSTER HARDWARE SIZING", result.SizingReport);
+        }
+
         #endregion
     }
 }

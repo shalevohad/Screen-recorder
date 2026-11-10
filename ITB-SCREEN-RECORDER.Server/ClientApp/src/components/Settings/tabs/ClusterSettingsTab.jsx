@@ -13,6 +13,59 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
     const [clusterFeedback, setClusterFeedback] = useState(null);
     const [showAdvancedVip, setShowAdvancedVip] = useState(false);
 
+    // Hardware Sizing Calculator state
+    const [calcStations, setCalcStations] = useState(50);
+    const [calcJobs, setCalcJobs] = useState(2);
+    const [calcMode, setCalcMode] = useState('Active-Active');
+    const [calcProfile, setCalcProfile] = useState('Auto');
+    const [sizingResult, setSizingResult] = useState(null);
+    const [copiedSizing, setCopiedSizing] = useState(false);
+
+    const fetchSizing = useCallback(async (st, jb, md, pr) => {
+        try {
+            const res = await fetch('/api/v1/cluster/hardware-sizing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targetStations: st,
+                    targetConcurrentJobs: jb,
+                    redundancyMode: md,
+                    hardwareProfile: pr
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSizingResult(data);
+            }
+        } catch (err) {
+            console.error('[ClusterSettingsTab] Sizing API request failed:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchSizing(calcStations, calcJobs, calcMode, calcProfile);
+    }, [calcStations, calcJobs, calcMode, calcProfile, fetchSizing, clusterGrid]);
+
+    const handleCopySizing = () => {
+        if (!sizingResult?.sizingReport) return;
+        navigator.clipboard.writeText(sizingResult.sizingReport).then(() => {
+            setCopiedSizing(true);
+            setTimeout(() => setCopiedSizing(false), 2500);
+        });
+    };
+
+    const handleApplySizingTargets = () => {
+        if (!sizingResult) return;
+        const targetStreams = Math.ceil(calcStations / Math.max(1, sizingResult.recommendedActiveNodes));
+        const targetJobs = Math.ceil(calcJobs / Math.max(1, sizingResult.recommendedActiveNodes));
+        updateDiscoveryField('maxIngestStreamsCapacity', targetStreams);
+        updateDiscoveryField('maxConcurrentRenderJobs', targetJobs);
+        setClusterFeedback({
+            type: 'success',
+            message: `Applied recommended capacities to this node: ${targetStreams} Ingest Streams & ${targetJobs} Concurrent NLE Jobs. Click Save Settings to persist.`
+        });
+    };
+
     const fetchClusterStatus = useCallback(async () => {
         setClusterLoading(true);
         try {
@@ -137,6 +190,25 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         { val: 5, label: '5s' },
         { val: 10, label: '10s' },
         { val: 30, label: '30s' }
+    ];
+
+    const sizingStationTicks = [
+        { val: 10, label: '10' },
+        { val: 25, label: '25' },
+        { val: 50, label: '50' },
+        { val: 70, label: '70' },
+        { val: 100, label: '100' },
+        { val: 150, label: '150' },
+        { val: 200, label: '200' }
+    ];
+
+    const sizingJobTicks = [
+        { val: 1, label: '1' },
+        { val: 2, label: '2' },
+        { val: 4, label: '4' },
+        { val: 6, label: '6' },
+        { val: 8, label: '8' },
+        { val: 10, label: '10' }
     ];
 
     const renderSliderWithTicks = (value, min, max, step, onChange, ticks) => (
@@ -460,6 +532,14 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                         <span>Streams: <strong style={{ color: '#F8FAFC' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
                                         <span>NLE Jobs: <strong style={{ color: '#F8FAFC' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
                                     </div>
+                                    {node.recommendedStreamsCapacity > 0 && (
+                                        <div style={{ fontSize: '0.67rem', color: '#94A3B8', display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                                            <span>Hardware Baseline:</span>
+                                            <span style={{ color: '#38BDF8', fontFamily: 'monospace', fontWeight: 700 }}>
+                                                ⚡ {node.recommendedStreamsCapacity} Str • {node.recommendedConcurrentJobs} Jobs
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {/* CPU & GPU Telemetry */}
                                     <div className="blade-metrics-row" style={{ fontSize: '0.7rem' }}>
@@ -513,6 +593,156 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                     </div>
                 </div>
             )}
+
+            {/* HARDWARE SIZING & CAPACITY REQUIREMENTS CALCULATOR */}
+            <div className="sizing-calculator-subpanel">
+                <div className="calculator-header-strip">
+                    <div className="header-left">
+                        <span className="calculator-pill">SIZING &amp; CAPACITY PLANNER</span>
+                        <h4>HARDWARE REQUIREMENTS &amp; FLEET SIZING CALCULATOR</h4>
+                    </div>
+                    <div className="calculator-actions">
+                        {sizingResult && (
+                            <>
+                                <button
+                                    type="button"
+                                    className="btn-calc-action btn-copy"
+                                    onClick={handleCopySizing}
+                                    title="Copy complete hardware specification for RFPs and procurement"
+                                >
+                                    {copiedSizing ? '✓ SPECIFICATION COPIED' : '📋 COPY HARDWARE SPEC'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-calc-action btn-apply-targets"
+                                    onClick={handleApplySizingTargets}
+                                    title="Apply recommended per-node targets to this node's settings below"
+                                >
+                                    ⚡ APPLY RECOMMENDED TARGETS
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="calculator-inputs-grid">
+                    <div className="settings-field">
+                        <span>Target Workstations (Streams)</span>
+                        {renderSliderWithTicks(
+                            calcStations,
+                            10,
+                            200,
+                            5,
+                            val => setCalcStations(val),
+                            sizingStationTicks
+                        )}
+                        <span className="field-note">Active workstations continuously capturing &amp; streaming video.</span>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Concurrent NLE Export Cuts</span>
+                        {renderSliderWithTicks(
+                            calcJobs,
+                            1,
+                            10,
+                            1,
+                            val => setCalcJobs(val),
+                            sizingJobTicks
+                        )}
+                        <span className="field-note">Simultaneous forensic multi-station video timeline exports.</span>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Redundancy Architecture</span>
+                        <select
+                            className="tactical-select"
+                            value={calcMode}
+                            onChange={e => setCalcMode(e.target.value)}
+                        >
+                            <option value="Active-Active">Active-Active (Distributed Compute Grid)</option>
+                            <option value="Active-Standby">Active-Standby (N+1 Full Redundancy)</option>
+                            <option value="Standalone">Standalone (Single Host Non-Clustered)</option>
+                        </select>
+                        <span className="field-note">Topology distribution for compute and network failover.</span>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Hardware / GPU Profile</span>
+                        <select
+                            className="tactical-select"
+                            value={calcProfile}
+                            onChange={e => setCalcProfile(e.target.value)}
+                        >
+                            <option value="Auto">Auto (Auto-Detect Current Hardware)</option>
+                            <option value="NVENC">NVIDIA NVENC (Dedicated GPU - High Density)</option>
+                            <option value="QSV">Intel QuickSync QSV (Integrated Graphics)</option>
+                            <option value="Software">CPU Software (libx264 Software Only)</option>
+                        </select>
+                        <span className="field-note">Encoder tier to size compute power and memory requirements.</span>
+                    </div>
+                </div>
+
+                {sizingResult && (
+                    <div className="sizing-results-card">
+                        <div className={`readiness-banner ${sizingResult.evaluationStatus?.toLowerCase() || 'ready'}`}>
+                            <span>
+                                {sizingResult.evaluationStatus === 'Ready' && '🟢 [FLEET QUALIFIED] '}
+                                {sizingResult.evaluationStatus === 'Warning' && '🟡 [CAPACITY WARNING] '}
+                                {sizingResult.evaluationStatus === 'Deficit' && '🔴 [HARDWARE DEFICIT] '}
+                                {sizingResult.evaluationSummary}
+                            </span>
+                        </div>
+
+                        <div className="specs-matrix">
+                            <div className="spec-box">
+                                <span className="spec-lbl">Recommended Nodes</span>
+                                <span className="spec-val">
+                                    {sizingResult.recommendedNodeCount} Nodes
+                                </span>
+                                <span className="spec-sub">
+                                    {sizingResult.recommendedActiveNodes} Active
+                                    {sizingResult.recommendedStandbyNodes > 0 ? ` + ${sizingResult.recommendedStandbyNodes} Standby` : ' Grid'}
+                                </span>
+                            </div>
+
+                            <div className="spec-box">
+                                <span className="spec-lbl">Min CPU Cores</span>
+                                <span className="spec-val">{sizingResult.minCpuCoresPerNode} Cores</span>
+                                <span className="spec-sub">{sizingResult.minCpuCoresPerNode * 2} vCPUs @ 3.0GHz+</span>
+                            </div>
+
+                            <div className="spec-box">
+                                <span className="spec-lbl">Min System RAM</span>
+                                <span className="spec-val">{sizingResult.minRamGbPerNode} GB</span>
+                                <span className="spec-sub">DDR4 / DDR5 ECC</span>
+                            </div>
+
+                            <div className="spec-box">
+                                <span className="spec-lbl">GPU / Encoder Tier</span>
+                                <span className="spec-val" style={{ fontSize: '0.82rem' }}>
+                                    {sizingResult.recommendedGpuTier?.split('(')[0]?.trim() || 'NVIDIA NVENC'}
+                                </span>
+                                <span className="spec-sub">Hardware Offload</span>
+                            </div>
+                        </div>
+
+                        <div className="infra-requirements-row">
+                            <div className="infra-item">
+                                <strong>Network Throughput:</strong>
+                                <span>{sizingResult.recommendedNetworkCard} • Min Bandwidth: {sizingResult.minNetworkSpeedMbps >= 10000 ? '10 Gbps SFP+' : '1 Gbps LAN'}</span>
+                            </div>
+                            <div className="infra-item">
+                                <strong>Storage Sustained I/O:</strong>
+                                <span>{sizingResult.storageRequirementsText} (Write Rate: {sizingResult.storageWriteRateMBps} MB/s)</span>
+                            </div>
+                            <div className="infra-item">
+                                <strong>Workload Distribution:</strong>
+                                <span>~{Math.ceil(calcStations / Math.max(1, sizingResult.recommendedActiveNodes))} Stations &amp; ~{Math.ceil(calcJobs / Math.max(1, sizingResult.recommendedActiveNodes))} NLE Cuts per active node</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* PRIMARY CLUSTER CONFIGURATION SETTINGS */}
             <div className="security-subpanel">
