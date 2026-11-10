@@ -106,6 +106,85 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         }
     };
 
+    // Range Sliders Scale Tick Marks
+    const streamCapacityTicks = [
+        { val: 10, label: '10' },
+        { val: 25, label: '25' },
+        { val: 50, label: '50' },
+        { val: 100, label: '100' },
+        { val: 200, label: '200' }
+    ];
+
+    const jobCapacityTicks = [
+        { val: 1, label: '1' },
+        { val: 2, label: '2 (Def)' },
+        { val: 4, label: '4' },
+        { val: 8, label: '8' },
+        { val: 16, label: '16' }
+    ];
+
+    const priorityTicks = [
+        { val: 10, label: '10' },
+        { val: 30, label: '30' },
+        { val: 50, label: '50 (Def)' },
+        { val: 80, label: '80' },
+        { val: 100, label: '100 (Max)' }
+    ];
+
+    const heartbeatTicks = [
+        { val: 1, label: '1s' },
+        { val: 2, label: '2s (Def)' },
+        { val: 5, label: '5s' },
+        { val: 10, label: '10s' },
+        { val: 30, label: '30s' }
+    ];
+
+    const renderSliderWithTicks = (value, min, max, step, onChange, ticks) => (
+        <div className="range-with-input">
+            <div className="slider-input-inline-row">
+                <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={Math.max(min, Math.min(max, Number(value) || min))}
+                    onChange={e => onChange(Number(e.target.value))}
+                    className="tactical-range-slider"
+                />
+                <input
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={e => onChange(Number(e.target.value))}
+                    required
+                />
+            </div>
+
+            <div className="slider-ticks-track">
+                {ticks.map((tick) => {
+                    const THUMB_RADIUS = 12;
+                    const pct = ((tick.val - min) / (max - min)) * 100;
+                    const isCurrent = Number(value) === tick.val;
+                    return (
+                        <button
+                            key={tick.val}
+                            type="button"
+                            className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                            style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                            onClick={() => onChange(tick.val)}
+                            title={`Set ${tick.label}`}
+                        >
+                            <span className="tick-pip"></span>
+                            <span className="tick-text">{tick.label}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+
     const streamsUtilizationPct = clusterGrid && clusterGrid.totalStreamsCapacity > 0
         ? Math.round((clusterGrid.totalIngestedStreams / clusterGrid.totalStreamsCapacity) * 100)
         : 0;
@@ -115,279 +194,195 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         : 0;
 
     return (
-        <div className="tab-body-flow" dir="ltr" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Top Subpanel Header */}
-            <div className="subpanel-header" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '4px', background: '#06B6D4', color: '#020617', fontWeight: 900 }}>
-                            {discovery.role === 'Active-Standby' ? 'HA ACTIVE-STANDBY' : (discovery.role === 'Standalone' ? 'STANDALONE' : 'ACTIVE-ACTIVE GRID')}
+        <fieldset className="settings-fieldset cluster-settings-fieldset">
+            <legend>Distributed Server Cluster &amp; Nodes</legend>
+
+            {/* TOP SUBPANEL: CLUSTER STATUS & KPI SUMMARY */}
+            <div className="security-subpanel">
+                <div className="subpanel-header" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>
+                                {discovery.role === 'Active-Standby' ? 'HA ACTIVE-STANDBY' : (discovery.role === 'Standalone' ? 'STANDALONE' : 'ACTIVE-ACTIVE GRID')}
+                            </span>
+                            <h4 style={{ margin: 0 }}>CLUSTER TOPOLOGY &amp; VIRTUAL IP (VIP)</h4>
+                        </div>
+                        <span className="subpanel-desc">
+                            Federate heterogeneous recording servers (Windows &amp; Linux) into a unified cluster, balance stream ingestion and NLE video processing based on hardware capability, with automated VIP failover.
                         </span>
-                        <h4 style={{ margin: 0, color: '#38BDF8', fontSize: '1.05rem', fontWeight: 800 }}>
-                            Distributed Server Cluster, Dynamic Hardware Balancing & Virtual IP (VIP)
-                        </h4>
                     </div>
-                    <span className="subpanel-desc" style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '2px', display: 'block' }}>
-                        Federate heterogeneous recording servers (Windows &amp; Linux) into a unified cluster, balance stream ingestion and NLE video processing based on hardware capability, with automated VIP failover.
-                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            type="button"
+                            onClick={fetchClusterStatus}
+                            className="btn-refresh-telemetry"
+                            disabled={clusterLoading}
+                            title="Verify and refresh cluster state now"
+                            style={{ height: '32px', padding: '0 12px' }}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 13, height: 13 }}>
+                                <path d="M23 4v6h-6M1 20v-6h6" />
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                            </svg>
+                            <span>{clusterLoading ? 'Refreshing...' : 'Refresh Cluster'}</span>
+                        </button>
+                    </div>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={fetchClusterStatus}
-                    className="btn-sync-cluster"
-                    style={{
-                        background: 'rgba(30, 41, 59, 0.7)',
-                        border: '1px solid rgba(6, 182, 212, 0.35)',
-                        color: '#38BDF8',
-                        padding: '6px 14px',
+                {/* Cluster KPI Summary Cards */}
+                {clusterGrid && (
+                    <div className="cluster-kpi-grid">
+                        {/* KPI 1: Active Nodes */}
+                        <div className="cluster-kpi-card">
+                            <span className="kpi-title">Active Cluster Nodes</span>
+                            <div className="kpi-metric-row">
+                                <span className="kpi-main-val" style={{ color: '#38BDF8' }}>
+                                    {clusterGrid.onlineNodesCount}
+                                </span>
+                                <span className="kpi-sub-val">/ {clusterGrid.totalNodes} Nodes</span>
+                            </div>
+                            <span className="kpi-note" style={{ color: '#10B981' }}>
+                                👑 Orchestrator: {clusterGrid.orchestratorNodeId || 'Electing...'}
+                            </span>
+                        </div>
+
+                        {/* KPI 2: Streams Ingestion Load */}
+                        <div className="cluster-kpi-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span className="kpi-title">Stream Ingestion Load</span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: streamsUtilizationPct > 75 ? '#F43F5E' : '#34D399' }}>
+                                    {streamsUtilizationPct}%
+                                </span>
+                            </div>
+                            <div className="kpi-metric-row">
+                                <span className="kpi-main-val">
+                                    {clusterGrid.totalIngestedStreams}
+                                </span>
+                                <span className="kpi-sub-val">/ {clusterGrid.totalStreamsCapacity} Channels</span>
+                            </div>
+                            <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden', marginTop: '2px' }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.max(3, streamsUtilizationPct))}%`,
+                                    height: '100%',
+                                    background: streamsUtilizationPct > 75 ? '#F43F5E' : '#10B981'
+                                }} />
+                            </div>
+                        </div>
+
+                        {/* KPI 3: Video Render Jobs */}
+                        <div className="cluster-kpi-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span className="kpi-title">Video Render Jobs (NLE)</span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#F472B6' }}>
+                                    {jobsUtilizationPct}%
+                                </span>
+                            </div>
+                            <div className="kpi-metric-row">
+                                <span className="kpi-main-val">
+                                    {clusterGrid.totalActiveRenderJobs}
+                                </span>
+                                <span className="kpi-sub-val">/ {clusterGrid.totalConcurrentJobsCapacity} Concurrent Jobs</span>
+                            </div>
+                            <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden', marginTop: '2px' }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.max(3, jobsUtilizationPct))}%`,
+                                    height: '100%',
+                                    background: jobsUtilizationPct > 80 ? '#F43F5E' : '#F472B6'
+                                }} />
+                            </div>
+                        </div>
+
+                        {/* KPI 4: Virtual IP Status */}
+                        <div className="cluster-kpi-card">
+                            <span className="kpi-title">Virtual IP (VIP) Status</span>
+                            <div className="kpi-metric-row">
+                                <span className="kpi-main-val" style={{ fontSize: '1.05rem', color: clusterStatus?.isVirtualIpBound ? '#34D399' : '#FDE047' }}>
+                                    {discovery.virtualIp || 'Not Configured'}
+                                </span>
+                            </div>
+                            <span className="kpi-note" style={{ color: clusterStatus?.isVirtualIpBound ? '#10B981' : '#94A3B8' }}>
+                                ● {clusterStatus?.isVirtualIpBound ? 'Acquired & Bound Locally' : (discovery.enableVirtualIp ? 'Managed by Peer / Standby' : 'Disabled')}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Local Node Identity & Live VIP Actions Banner */}
+                {clusterStatus && (
+                    <div className="cluster-identity-banner" style={{ marginTop: '10px' }}>
+                        <div className="identity-info">
+                            <span className="node-id-label">Local Node:</span>
+                            <span className="node-id-val">{clusterStatus.localNodeId}</span>
+
+                            <span className={`node-badge ${clusterStatus.state === 'Active' ? 'active' : 'standby'}`}>
+                                ● {clusterStatus.state} ({clusterStatus.nodeRole})
+                            </span>
+
+                            {clusterStatus.enableVirtualIp && clusterStatus.virtualIp && (
+                                <span className={`vip-state-pill ${clusterStatus.isVipBoundLocally ? 'bound' : 'unbound'}`}>
+                                    VIP {clusterStatus.virtualIp}: {clusterStatus.isVipBoundLocally ? 'Bound Locally' : 'Standby'}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* VIP Promotion / Demotion Action Buttons */}
+                        <div className="identity-actions">
+                            {clusterStatus.enableVirtualIp && !clusterStatus.isVipBoundLocally && (
+                                <button
+                                    type="button"
+                                    onClick={handleAcquireVip}
+                                    disabled={clusterActionLoading}
+                                    className="btn-vip-action acquire"
+                                    title="Acquire and bind Virtual IP to this host"
+                                >
+                                    Acquire VIP (Assume Primary)
+                                </button>
+                            )}
+                            {clusterStatus.enableVirtualIp && clusterStatus.isVipBoundLocally && (
+                                <button
+                                    type="button"
+                                    onClick={handleReleaseVip}
+                                    disabled={clusterActionLoading}
+                                    className="btn-vip-action release"
+                                    title="Release Virtual IP from this host"
+                                >
+                                    Release VIP (Cede Primary)
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {clusterFeedback && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '8px 12px',
                         borderRadius: '6px',
                         fontSize: '0.75rem',
                         fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                    }}
-                >
-                    <span>{clusterLoading ? '🔄 Refreshing...' : '🔄 Refresh Cluster State'}</span>
-                </button>
+                        background: clusterFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                        color: clusterFeedback.type === 'success' ? '#34D399' : '#FDA4AF',
+                        border: `1px solid ${clusterFeedback.type === 'success' ? '#10B981' : '#F43F5E'}`
+                    }}>
+                        {clusterFeedback.message}
+                    </div>
+                )}
             </div>
 
-            {/* Cluster KPI Summary Cards */}
-            {clusterGrid && (
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '12px'
-                }}>
-                    {/* KPI 1: Active Nodes */}
-                    <div style={{
-                        background: 'rgba(15, 23, 42, 0.75)',
-                        border: '1px solid rgba(56, 189, 248, 0.2)',
-                        borderRadius: '8px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px'
-                    }}>
-                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Active Cluster Nodes</span>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                            <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#38BDF8', fontFamily: 'monospace' }}>
-                                {clusterGrid.onlineNodesCount}
-                            </span>
-                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalNodes} Nodes</span>
-                        </div>
-                        <span style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 700 }}>
-                            👑 Orchestrator: {clusterGrid.orchestratorNodeId || 'Electing...'}
-                        </span>
-                    </div>
-
-                    {/* KPI 2: Streams Ingestion Load */}
-                    <div style={{
-                        background: 'rgba(15, 23, 42, 0.75)',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                        borderRadius: '8px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Stream Ingestion Load</span>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: streamsUtilizationPct > 75 ? '#F43F5E' : '#34D399' }}>
-                                {streamsUtilizationPct}%
-                            </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                            <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#F8FAFC', fontFamily: 'monospace' }}>
-                                {clusterGrid.totalIngestedStreams}
-                            </span>
-                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalStreamsCapacity} Channels</span>
-                        </div>
-                        <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{
-                                width: `${Math.min(100, Math.max(3, streamsUtilizationPct))}%`,
-                                height: '100%',
-                                background: streamsUtilizationPct > 75 ? '#F43F5E' : '#10B981'
-                            }} />
-                        </div>
-                    </div>
-
-                    {/* KPI 3: Video Render Jobs */}
-                    <div style={{
-                        background: 'rgba(15, 23, 42, 0.75)',
-                        border: '1px solid rgba(244, 114, 182, 0.2)',
-                        borderRadius: '8px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Video Render Jobs (NLE)</span>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#F472B6' }}>
-                                {jobsUtilizationPct}%
-                            </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                            <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#F8FAFC', fontFamily: 'monospace' }}>
-                                {clusterGrid.totalActiveRenderJobs}
-                            </span>
-                            <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ {clusterGrid.totalConcurrentJobsCapacity} Concurrent Jobs</span>
-                        </div>
-                        <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{
-                                width: `${Math.min(100, Math.max(3, jobsUtilizationPct))}%`,
-                                height: '100%',
-                                background: jobsUtilizationPct > 80 ? '#F43F5E' : '#F472B6'
-                            }} />
-                        </div>
-                    </div>
-
-                    {/* KPI 4: Virtual IP Status */}
-                    <div style={{
-                        background: 'rgba(15, 23, 42, 0.75)',
-                        border: '1px solid rgba(234, 179, 8, 0.2)',
-                        borderRadius: '8px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px'
-                    }}>
-                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700 }}>Virtual IP (VIP) Status</span>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                            <span style={{ fontSize: '1.05rem', fontWeight: 800, color: clusterStatus?.isVirtualIpBound ? '#34D399' : '#FDE047', fontFamily: 'monospace' }}>
-                                {discovery.virtualIp || 'Not Configured'}
-                            </span>
-                        </div>
-                        <span style={{ fontSize: '0.68rem', color: clusterStatus?.isVirtualIpBound ? '#10B981' : '#94A3B8', fontWeight: 700 }}>
-                            ● {clusterStatus?.isVirtualIpBound ? 'Acquired & Bound Locally' : (discovery.enableVirtualIp ? 'Managed by Peer / Standby' : 'Disabled')}
-                        </span>
-                    </div>
-                </div>
-            )}
-
-            {/* Local Node Identity & Live VIP Actions Banner */}
-            {clusterStatus && (
-                <div style={{
-                    padding: '12px 16px',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    border: '1px solid rgba(56, 189, 248, 0.25)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '10px'
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 700 }}>Local Node:</span>
-                        <strong style={{ color: '#F8FAFC', fontSize: '0.85rem' }}>{clusterStatus.localNodeId}</strong>
-
-                        <span style={{
-                            padding: '2px 8px',
-                            borderRadius: '9999px',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            background: clusterStatus.state === 'Active' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(234, 179, 8, 0.2)',
-                            color: clusterStatus.state === 'Active' ? '#34D399' : '#FDE047',
-                            border: `1px solid ${clusterStatus.state === 'Active' ? '#10B981' : '#EAB308'}`
-                        }}>
-                            ● {clusterStatus.state} ({clusterStatus.nodeRole})
-                        </span>
-
-                        {clusterStatus.enableVirtualIp && clusterStatus.virtualIp && (
-                            <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '9999px',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                background: clusterStatus.isVipBoundLocally ? 'rgba(16, 185, 129, 0.2)' : 'rgba(148, 163, 184, 0.15)',
-                                color: clusterStatus.isVipBoundLocally ? '#34D399' : '#94A3B8',
-                                border: `1px solid ${clusterStatus.isVipBoundLocally ? 'rgba(16, 185, 129, 0.4)' : 'rgba(148, 163, 184, 0.3)'}`
-                            }}>
-                                VIP {clusterStatus.virtualIp}: {clusterStatus.isVipBoundLocally ? 'Bound Locally' : 'Standby'}
-                            </span>
-                        )}
-                    </div>
-
-                    {/* VIP Promotion / Demotion Action Buttons */}
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        {clusterStatus.enableVirtualIp && !clusterStatus.isVipBoundLocally && (
-                            <button
-                                type="button"
-                                onClick={handleAcquireVip}
-                                disabled={clusterActionLoading}
-                                style={{
-                                    background: 'rgba(16, 185, 129, 0.2)',
-                                    border: '1px solid #10B981',
-                                    color: '#34D399',
-                                    padding: '5px 12px',
-                                    borderRadius: '6px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Acquire VIP (Assume Primary)
-                            </button>
-                        )}
-                        {clusterStatus.enableVirtualIp && clusterStatus.isVipBoundLocally && (
-                            <button
-                                type="button"
-                                onClick={handleReleaseVip}
-                                disabled={clusterActionLoading}
-                                style={{
-                                    background: 'rgba(244, 63, 94, 0.2)',
-                                    border: '1px solid #F43F5E',
-                                    color: '#FDA4AF',
-                                    padding: '5px 12px',
-                                    borderRadius: '6px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Release VIP (Cede Primary)
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {clusterFeedback && (
-                <div style={{
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    background: clusterFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-                    color: clusterFeedback.type === 'success' ? '#34D399' : '#FDA4AF',
-                    border: `1px solid ${clusterFeedback.type === 'success' ? '#10B981' : '#F43F5E'}`
-                }}>
-                    {clusterFeedback.message}
-                </div>
-            )}
-
-            {/* CLUSTER NODES TOPOLOGY GRID */}
+            {/* PARTICIPATING NODES BLADE GRID */}
             {discovery.role !== 'Standalone' && clusterGrid && (
-                <div style={{
-                    padding: '14px 16px',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    border: '1px solid rgba(6, 182, 212, 0.3)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>
-                                CLUSTER TOPOLOGY
-                            </span>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#38BDF8' }}>
-                                Participating Nodes, Stream Distribution &amp; Hardware Capability Index
+                <div className="security-subpanel">
+                    <div className="subpanel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>
+                                    COMPUTE GRID
+                                </span>
+                                <h4 style={{ margin: 0 }}>PARTICIPATING NODES &amp; HARDWARE HORSEPOWER</h4>
+                            </div>
+                            <span className="subpanel-desc">
+                                Live node telemetry, cross-platform operating system, hardware horsepower rating (PWR), stream load, and compute fitness.
                             </span>
                         </div>
                         <span style={{ fontSize: '0.72rem', color: '#34D399', fontWeight: 700 }}>
@@ -395,73 +390,51 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         </span>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
+                    <div className="cluster-nodes-grid">
                         {clusterGrid.nodes?.map(node => {
                             const isStandbyNode = node.nodeMode === 'Standby' || node.role === 'Secondary';
                             const isOverloaded = node.isOverloaded || node.hostCpuPct >= 75.0;
                             const isLinux = node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'));
 
+                            let nodeClass = 'worker';
+                            if (!node.isOnline) nodeClass = 'offline';
+                            else if (node.isOrchestrator) nodeClass = 'orchestrator';
+                            else if (isStandbyNode) nodeClass = 'standby';
+
                             return (
-                                <div key={node.nodeId} style={{
-                                    background: 'rgba(30, 41, 59, 0.55)',
-                                    border: `1px solid ${node.isOnline ? (node.isOrchestrator ? '#F59E0B' : (isStandbyNode ? '#EAB308' : '#06B6D4')) : '#EF4444'}`,
-                                    borderRadius: '8px',
-                                    padding: '12px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px',
-                                    boxShadow: node.isOrchestrator ? '0 0 15px rgba(245, 158, 11, 0.15)' : 'none'
-                                }}>
+                                <div key={node.nodeId} className={`cluster-node-blade ${nodeClass}`}>
                                     {/* Top Line: Name + Badges */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#F8FAFC' }}>
+                                    <div className="blade-top-row">
+                                        <div className="node-title-group">
+                                            <span className="node-name">
                                                 {node.displayName || node.nodeId}
                                             </span>
                                             {node.nodeId === clusterGrid.localNodeId && (
-                                                <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: '3px', background: 'rgba(148, 163, 184, 0.25)', color: '#CBD5E1', fontWeight: 700 }}>
-                                                    LOCAL NODE
+                                                <span className="local-node-pill">
+                                                    LOCAL
                                                 </span>
                                             )}
                                             {/* Cross-Platform OS Badge */}
-                                            <span style={{
-                                                fontSize: '0.62rem',
-                                                padding: '1px 5px',
-                                                borderRadius: '3px',
-                                                background: isLinux ? 'rgba(234, 179, 8, 0.2)' : 'rgba(56, 189, 248, 0.2)',
-                                                color: isLinux ? '#FDE047' : '#38BDF8',
-                                                fontWeight: 800,
-                                                border: `1px solid ${isLinux ? 'rgba(234, 179, 8, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`
-                                            }}>
+                                            <span className={`os-platform-badge ${isLinux ? 'linux' : 'windows'}`}>
                                                 {isLinux ? '🐧 Linux' : '🪟 Windows'}
                                             </span>
                                         </div>
 
-                                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                                            <span style={{
-                                                fontSize: '0.65rem',
-                                                padding: '1px 6px',
-                                                borderRadius: '4px',
+                                        <div className="node-status-badges">
+                                            <span className="role-badge" style={{
                                                 background: isStandbyNode ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                                color: isStandbyNode ? '#FDE047' : '#34D399',
-                                                fontWeight: 800
+                                                color: isStandbyNode ? '#FDE047' : '#34D399'
                                             }}>
-                                                {isStandbyNode ? '🟡 STANDBY' : '🟢 ACTIVE'}
+                                                {isStandbyNode ? 'STANDBY' : 'ACTIVE'}
                                             </span>
-                                            <span style={{
-                                                fontSize: '0.65rem',
-                                                padding: '1px 6px',
-                                                borderRadius: '4px',
+                                            <span className="role-badge" style={{
                                                 background: node.isOrchestrator ? 'rgba(245, 158, 11, 0.25)' : 'rgba(6, 182, 212, 0.2)',
-                                                color: node.isOrchestrator ? '#FCD34D' : '#38BDF8',
-                                                fontWeight: 800
+                                                color: node.isOrchestrator ? '#FCD34D' : '#38BDF8'
                                             }}>
                                                 {node.isOrchestrator ? '👑 ORCHESTRATOR' : '⚡ WORKER'}
                                             </span>
-                                            <span style={{
-                                                fontSize: '0.65rem',
-                                                color: node.isOnline ? '#10B981' : '#F43F5E',
-                                                fontWeight: 800
+                                            <span className="online-indicator" style={{
+                                                color: node.isOnline ? '#10B981' : '#F43F5E'
                                             }}>
                                                 ● {node.isOnline ? 'ONLINE' : 'DOWN'}
                                             </span>
@@ -469,28 +442,11 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     </div>
 
                                     {/* Hardware Spec & Power Index */}
-                                    <div style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        background: 'rgba(15, 23, 42, 0.7)',
-                                        padding: '5px 8px',
-                                        borderRadius: '5px',
-                                        border: '1px solid rgba(56, 189, 248, 0.15)',
-                                        fontSize: '0.68rem'
-                                    }}>
-                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                            <span style={{ color: '#38BDF8', fontWeight: 700 }}>
-                                                {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`}
-                                            </span>
-                                            <span style={{ color: '#64748B' }}>•</span>
-                                            <span style={{ color: '#94A3B8' }}>{node.encoderType || 'libx264'}</span>
-                                        </div>
-                                        <span style={{
-                                            padding: '1px 6px',
-                                            borderRadius: '3px',
-                                            fontWeight: 900,
-                                            fontSize: '0.65rem',
+                                    <div className="hardware-spec-strip">
+                                        <span className="spec-text">
+                                            {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`} • {node.encoderType || 'libx264'}
+                                        </span>
+                                        <span className="pwr-rating-pill" style={{
                                             background: (node.hardwareCapabilityScore || 200) >= 600 ? 'rgba(16, 185, 129, 0.25)' : ((node.hardwareCapabilityScore || 200) >= 300 ? 'rgba(6, 182, 212, 0.25)' : 'rgba(148, 163, 184, 0.2)'),
                                             color: (node.hardwareCapabilityScore || 200) >= 600 ? '#34D399' : ((node.hardwareCapabilityScore || 200) >= 300 ? '#38BDF8' : '#CBD5E1')
                                         }}>
@@ -499,22 +455,22 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     </div>
 
                                     {/* Streams & Jobs Capacity */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94A3B8' }}>
+                                    <div className="blade-metrics-row">
                                         <span>IP: <strong style={{ color: '#38BDF8', fontFamily: 'monospace' }}>{node.localIps?.[0] || 'Auto'}</strong></span>
                                         <span>Streams: <strong style={{ color: '#F8FAFC' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
                                         <span>NLE Jobs: <strong style={{ color: '#F8FAFC' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
                                     </div>
 
                                     {/* CPU & GPU Telemetry */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
+                                    <div className="blade-metrics-row" style={{ fontSize: '0.7rem' }}>
                                         <span>CPU: <strong style={{ color: isOverloaded ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong></span>
                                         <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
                                         <span>Priority: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
                                     </div>
 
                                     {/* Ingest Pressure & Overload Guard Bar */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.66rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94A3B8' }}>
+                                    <div className="pressure-meter-block">
+                                        <div className="meter-header">
                                             <span>
                                                 Ingest Pressure: <strong style={{ color: isOverloaded ? '#F43F5E' : '#38BDF8' }}>
                                                     {Math.round(node.ingestPressureScore || 0)} pts
@@ -529,13 +485,14 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                                 </strong>
                                             </span>
                                         </div>
-                                        <div style={{ width: '100%', height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                                            <div style={{
-                                                width: `${Math.min(100, Math.max(4, Math.round(node.ingestPressureScore || 0)))}%`,
-                                                height: '100%',
-                                                background: isOverloaded ? '#F43F5E' : ((node.ingestPressureScore || 0) > 50 ? '#F59E0B' : '#10B981'),
-                                                transition: 'width 0.4s ease'
-                                            }} />
+                                        <div className="meter-track">
+                                            <div
+                                                className="meter-fill"
+                                                style={{
+                                                    width: `${Math.min(100, Math.max(4, Math.round(node.ingestPressureScore || 0)))}%`,
+                                                    background: isOverloaded ? '#F43F5E' : ((node.ingestPressureScore || 0) > 50 ? '#F59E0B' : '#10B981')
+                                                }}
+                                            />
                                         </div>
                                     </div>
 
@@ -545,17 +502,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                             type="button"
                                             onClick={() => handleTransferOrchestrator(node.nodeId)}
                                             disabled={clusterActionLoading}
-                                            style={{
-                                                marginTop: '4px',
-                                                background: 'rgba(245, 158, 11, 0.15)',
-                                                border: '1px solid rgba(245, 158, 11, 0.4)',
-                                                color: '#FCD34D',
-                                                padding: '4px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '0.7rem',
-                                                fontWeight: 800,
-                                                cursor: 'pointer'
-                                            }}
+                                            className="btn-transfer-leader"
                                         >
                                             Transfer Orchestrator Leadership to this Node
                                         </button>
@@ -568,140 +515,147 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
             )}
 
             {/* PRIMARY CLUSTER CONFIGURATION SETTINGS */}
-            <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                    <span>Cluster Deployment Mode</span>
-                    <select
-                        value={discovery.role || 'Active-Active'}
-                        onChange={e => updateDiscoveryField('role', e.target.value)}
-                        className="tactical-select"
-                    >
-                        <option value="Active-Active">Active-Active (Distributed Compute Grid - Load Balancing &amp; Offloading)</option>
-                        <option value="Active-Standby">Active-Standby (High Availability Failover - Primary &amp; Hot Backup)</option>
-                        <option value="Standalone">Standalone (Single Server - No Clustering)</option>
-                    </select>
-                    <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                        Defines whether this server operates within an autonomous cluster or as a standalone station.
+            <div className="security-subpanel">
+                <div className="subpanel-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>
+                            TOPOLOGY
+                        </span>
+                        <h4 style={{ margin: 0 }}>CLUSTER DEPLOYMENT MODE &amp; NODE IDENTITY</h4>
+                    </div>
+                    <span className="subpanel-desc">
+                        Configure cluster clustering model, local node operational role, and discovery group.
                     </span>
                 </div>
 
-                {discovery.role !== 'Standalone' && (
-                    <>
-                        <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                            <span>Node Operating Mode</span>
-                            <select
-                                value={discovery.nodeMode || (discovery.nodeRole === 'Secondary' ? 'Standby' : 'Active')}
-                                onChange={e => {
-                                    const mode = e.target.value;
-                                    updateDiscoveryField('nodeMode', mode);
-                                    updateDiscoveryField('nodeRole', mode === 'Standby' ? 'Secondary' : 'Primary');
-                                }}
-                                className="tactical-select"
-                            >
-                                <option value="Active">🟢 Active Node (Ingests streams, records, and processes video)</option>
-                                <option value="Standby">🟡 Standby Node (Hot backup reserve - takes over upon peer failure)</option>
-                            </select>
-                            <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                                Hybrid topology: active nodes balance workloads dynamically while standby nodes remain in reserve.
-                            </span>
-                        </div>
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>Cluster Deployment Mode</span>
+                        <select
+                            value={discovery.role || 'Active-Active'}
+                            onChange={e => updateDiscoveryField('role', e.target.value)}
+                            className="tactical-select"
+                        >
+                            <option value="Active-Active">Active-Active (Distributed Compute Grid - Load Balancing &amp; Offloading)</option>
+                            <option value="Active-Standby">Active-Standby (High Availability Failover - Primary &amp; Hot Backup)</option>
+                            <option value="Standalone">Standalone (Single Server - No Clustering)</option>
+                        </select>
+                        <span className="field-note">
+                            Defines whether this server operates within an autonomous cluster or as a standalone station.
+                        </span>
+                    </div>
 
-                        <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
-                            <span>Cluster Group Name</span>
-                            <input
-                                type="text"
-                                placeholder="Production"
-                                value={discovery.clusterGroup || 'Production'}
-                                onChange={e => updateDiscoveryField('clusterGroup', e.target.value)}
-                            />
-                            <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                                Servers on the LAN configured with the same group name will auto-discover and federate automatically.
-                            </span>
-                        </div>
-                    </>
-                )}
+                    {discovery.role !== 'Standalone' && (
+                        <>
+                            <div className="settings-field">
+                                <span>Node Operating Mode</span>
+                                <select
+                                    value={discovery.nodeMode || (discovery.nodeRole === 'Secondary' ? 'Standby' : 'Active')}
+                                    onChange={e => {
+                                        const mode = e.target.value;
+                                        updateDiscoveryField('nodeMode', mode);
+                                        updateDiscoveryField('nodeRole', mode === 'Standby' ? 'Secondary' : 'Primary');
+                                    }}
+                                    className="tactical-select"
+                                >
+                                    <option value="Active">🟢 Active Node (Ingests streams, records, and processes video)</option>
+                                    <option value="Standby">🟡 Standby Node (Hot backup reserve - takes over upon peer failure)</option>
+                                </select>
+                                <span className="field-note">
+                                    Hybrid topology: active nodes balance workloads dynamically while standby nodes remain in reserve.
+                                </span>
+                            </div>
+
+                            <div className="settings-field">
+                                <span>Cluster Group Name</span>
+                                <input
+                                    type="text"
+                                    placeholder="Production"
+                                    value={discovery.clusterGroup || 'Production'}
+                                    onChange={e => updateDiscoveryField('clusterGroup', e.target.value)}
+                                />
+                                <span className="field-note">
+                                    Servers on the LAN configured with the same group name will auto-discover and federate automatically.
+                                </span>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
 
-            {/* CAPACITY, BALANCING & OVERLOAD CEILINGS */}
+            {/* CAPACITY LIMITS, BALANCING & SAFETY CEILINGS */}
             {discovery.role !== 'Standalone' && (
-                <div style={{
-                    padding: '14px 16px',
-                    background: 'rgba(15, 23, 42, 0.65)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h5 style={{ margin: 0, color: '#38BDF8', fontSize: '0.9rem', fontWeight: 800 }}>
-                            ⚙️ Capacity Limits, Balancing &amp; Weak Node Overload Ceilings
-                        </h5>
-                        <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
+                <div className="security-subpanel">
+                    <div className="subpanel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 900 }}>
+                                BALANCING
+                            </span>
+                            <h4 style={{ margin: 0 }}>CAPACITY LIMITS, BALANCING &amp; OVERLOAD CEILINGS</h4>
+                        </div>
+                        <span className="subpanel-desc">
                             Safety Ceiling: Nodes exceeding 75% CPU are throttled from taking new ingest streams
                         </span>
                     </div>
 
-                    <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
+                    <div className="settings-fields-row">
+                        <div className="settings-field">
                             <span>Target Ingest Streams Capacity</span>
-                            <input
-                                type="number"
-                                min="10"
-                                max="200"
-                                value={discovery.maxIngestStreamsCapacity ?? 50}
-                                onChange={e => updateDiscoveryField('maxIngestStreamsCapacity', Number(e.target.value))}
-                            />
-                            <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                Target concurrent live streams for this node.
-                            </span>
+                            {renderSliderWithTicks(
+                                discovery.maxIngestStreamsCapacity ?? 50,
+                                10,
+                                200,
+                                5,
+                                val => updateDiscoveryField('maxIngestStreamsCapacity', val),
+                                streamCapacityTicks
+                            )}
+                            <span className="field-note">Target concurrent live streams for this node.</span>
                         </div>
 
-                        <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
+                        <div className="settings-field">
                             <span>Max Concurrent Video Render Jobs</span>
-                            <input
-                                type="number"
-                                min="1"
-                                max="16"
-                                value={discovery.maxConcurrentRenderJobs ?? 2}
-                                onChange={e => updateDiscoveryField('maxConcurrentRenderJobs', Number(e.target.value))}
-                            />
-                            <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                Maximum concurrent NLE export jobs before dispatching to idle peers.
-                            </span>
-                        </div>
-
-                        <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
-                            <span>Election Priority (1-100)</span>
-                            <input
-                                type="number"
-                                min="1"
-                                max="100"
-                                value={discovery.priority ?? 50}
-                                onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
-                            />
-                            <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                Higher priority node assumes Orchestrator leadership on failover.
-                            </span>
-                        </div>
-
-                        <div className="settings-field" style={{ flex: '1 1 calc(25% - 10px)' }}>
-                            <span>Heartbeat Interval (Sec)</span>
-                            <input
-                                type="number"
-                                min="1"
-                                max="30"
-                                value={discovery.heartbeatIntervalSeconds ?? 2}
-                                onChange={e => updateDiscoveryField('heartbeatIntervalSeconds', Number(e.target.value))}
-                            />
-                            <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                                Broadcast beacon interval in seconds over UDP.
-                            </span>
+                            {renderSliderWithTicks(
+                                discovery.maxConcurrentRenderJobs ?? 2,
+                                1,
+                                16,
+                                1,
+                                val => updateDiscoveryField('maxConcurrentRenderJobs', val),
+                                jobCapacityTicks
+                            )}
+                            <span className="field-note">Maximum concurrent NLE export jobs before dispatching to idle peers.</span>
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', paddingTop: '6px' }}>
-                        <label className="tactical-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#E2E8F0' }}>
+                    <div className="settings-fields-row" style={{ marginTop: '8px' }}>
+                        <div className="settings-field">
+                            <span>Election Priority (1-100)</span>
+                            {renderSliderWithTicks(
+                                discovery.priority ?? 50,
+                                1,
+                                100,
+                                1,
+                                val => updateDiscoveryField('priority', val),
+                                priorityTicks
+                            )}
+                            <span className="field-note">Higher priority node assumes Orchestrator leadership on failover.</span>
+                        </div>
+
+                        <div className="settings-field">
+                            <span>Heartbeat Interval (Sec)</span>
+                            {renderSliderWithTicks(
+                                discovery.heartbeatIntervalSeconds ?? 2,
+                                1,
+                                30,
+                                1,
+                                val => updateDiscoveryField('heartbeatIntervalSeconds', val),
+                                heartbeatTicks
+                            )}
+                            <span className="field-note">Broadcast beacon interval in seconds over UDP.</span>
+                        </div>
+                    </div>
+
+                    <div className="settings-fields-row" style={{ marginTop: '14px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <label className="tactical-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={discovery.autoBalanceStreams !== false}
@@ -710,7 +664,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             <span>Auto-balance incoming agent streams across cluster nodes</span>
                         </label>
 
-                        <label className="tactical-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#E2E8F0' }}>
+                        <label className="tactical-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={discovery.distributedVideoProcessingEnabled !== false}
@@ -719,7 +673,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                             <span>Offload NLE video render jobs to idle cluster peers</span>
                         </label>
 
-                        <label className="tactical-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#E2E8F0' }}>
+                        <label className="tactical-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={discovery.autoPeerDiscovery !== false}
@@ -733,23 +687,15 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
 
             {/* VIRTUAL IP (VIP) & NETWORKING ADVANCED CONTROLS */}
             {discovery.role !== 'Standalone' && (
-                <div style={{
-                    padding: '14px 16px',
-                    background: 'rgba(15, 23, 42, 0.65)',
-                    border: '1px solid rgba(234, 179, 8, 0.25)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="security-subpanel">
+                    <div className="subpanel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#EAB308', color: '#0F172A', fontWeight: 900 }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '4px', background: '#EAB308', color: '#0F172A', fontWeight: 900 }}>
                                 FAILOVER VIP
                             </span>
-                            <h5 style={{ margin: 0, color: '#FDE047', fontSize: '0.9rem', fontWeight: 800 }}>
-                                Virtual IP (VIP) &amp; Network Failover Settings
-                            </h5>
+                            <h4 style={{ margin: 0, color: '#FDE047' }}>
+                                VIRTUAL IP (VIP) &amp; NETWORK REDUNDANCY
+                            </h4>
                         </div>
                         <button
                             type="button"
@@ -767,8 +713,8 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         </button>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <label className="tactical-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#F8FAFC', fontWeight: 700 }}>
+                    <div className="settings-fields-row" style={{ marginTop: '4px' }}>
+                        <label className="tactical-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={Boolean(discovery.enableVirtualIp)}
@@ -779,8 +725,8 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                     </div>
 
                     {(discovery.enableVirtualIp || showAdvancedVip) && (
-                        <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                            <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
+                        <div className="settings-fields-row" style={{ marginTop: '10px' }}>
+                            <div className="settings-field">
                                 <span>Virtual IP Address (IPv4)</span>
                                 <input
                                     type="text"
@@ -788,12 +734,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     value={discovery.virtualIp || ''}
                                     onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
                                 />
-                                <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
+                                <span className="field-note">
                                     Shared Virtual IP accessed by capture agents and NOC operators.
                                 </span>
                             </div>
 
-                            <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
+                            <div className="settings-field">
                                 <span>Subnet Mask</span>
                                 <input
                                     type="text"
@@ -803,7 +749,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                 />
                             </div>
 
-                            <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
+                            <div className="settings-field">
                                 <span>Network Interface Name</span>
                                 <input
                                     type="text"
@@ -811,7 +757,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     value={discovery.networkInterfaceName || ''}
                                     onChange={e => updateDiscoveryField('networkInterfaceName', e.target.value)}
                                 />
-                                <span className="field-note" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
+                                <span className="field-note">
                                     e.g. Ethernet or ens18 / eth0. Default: auto-detected from active interface with gateway.
                                 </span>
                             </div>
@@ -819,7 +765,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                     )}
 
                     {showAdvancedVip && (
-                        <div className="settings-fields-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <div className="settings-fields-row" style={{ marginTop: '10px' }}>
                             <div className="settings-field" style={{ flex: '1 1 100%' }}>
                                 <span>Manual Seed Peer URLs — For subnets where UDP Multicast is disabled</span>
                                 <input
@@ -828,11 +774,14 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     value={Array.isArray(discovery.clusterPeerUrls) ? discovery.clusterPeerUrls.join(', ') : (discovery.clusterPeerUrls || '')}
                                     onChange={e => updateDiscoveryField('clusterPeerUrls', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
                                 />
+                                <span className="field-note">
+                                    Comma-separated list of peer server base URLs.
+                                </span>
                             </div>
                         </div>
                     )}
                 </div>
             )}
-        </div>
+        </fieldset>
     );
 }

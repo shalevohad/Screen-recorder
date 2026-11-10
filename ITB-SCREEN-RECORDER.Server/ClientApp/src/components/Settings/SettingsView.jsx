@@ -22,6 +22,7 @@ import './styles/_stationOverrides.scss';
 import './styles/_maintenanceTab.scss';
 import './styles/_stationsRolesTab.scss';
 import './styles/_securityAccessTab.scss';
+import './styles/_clusterSettings.scss';
 
 export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const { isSystemRoot, hasPermission } = useAuth();
