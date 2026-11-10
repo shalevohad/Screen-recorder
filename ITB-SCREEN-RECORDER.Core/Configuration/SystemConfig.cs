@@ -87,7 +87,24 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string Role { get; set; } = "Active-Active"; // "Active-Active", "Active-Standby", "Standalone", "Aggregate"
 
-        public string NodeRole { get; set; } = "Primary"; // "Primary", "Secondary", "Peer"
+        public string NodeRole { get; set; } = "Primary"; // "Primary", "Secondary", "Orchestrator", "Worker"
+
+        /// <summary>
+        /// Node operational mode in the cluster: "Active" (ingest & compute) or "Standby" (hot backup spare).
+        /// Allows hybrid topologies where some nodes are Active and some are Standby.
+        /// </summary>
+        public string NodeMode { get; set; } = "Active"; // "Active", "Standby"
+
+        /// <summary>
+        /// Logical cluster group identifier. Nodes broadcasting this group ID autonomously merge into the same cluster grid.
+        /// </summary>
+        public string ClusterGroup { get; set; } = "Production";
+
+        /// <summary>
+        /// When true, enables autonomous peer auto-discovery via UDP Multicast and Subnet Broadcast.
+        /// Eliminates the need to manually configure peer IP addresses or seed URLs.
+        /// </summary>
+        public bool AutoPeerDiscovery { get; set; } = true;
 
         [Range(0, 100)]
         public int Priority { get; set; } = 1;

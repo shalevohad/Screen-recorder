@@ -25,6 +25,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         Task<ClusterNodeDescriptor?> SelectOptimalWorkerForJobAsync(CancellationToken ct = default);
         Task<ClusterFailoverResultDto> TransferOrchestratorRoleAsync(string targetNodeId, CancellationToken ct = default);
         
+        // Zero-Configuration Autonomous Multicast/Broadcast Beacon Discovery
+        Task ProcessClusterBeaconAsync(ClusterBeaconPacket beacon, CancellationToken ct = default);
+        ClusterBeaconPacket CreateLocalBeaconPacket();
+
         // Distributed Jobs & Unified Telemetry
         void UpdateJobStatus(ClusterJobStatusDto status);
         List<ClusterJobStatusDto> GetAllClusterJobs();

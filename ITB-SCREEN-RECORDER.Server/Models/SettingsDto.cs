@@ -54,6 +54,12 @@ namespace ITB_SCREEN_RECORDER.Server.Models
 
         public string NodeRole { get; set; } = "Primary";
 
+        public string NodeMode { get; set; } = "Active";
+
+        public string ClusterGroup { get; set; } = "Production";
+
+        public bool AutoPeerDiscovery { get; set; } = true;
+
         public int Priority { get; set; } = 1;
 
         public string? PartnerServerUrl { get; set; }

@@ -20,6 +20,7 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
     const [clusterLoading, setClusterLoading] = useState(false);
     const [clusterActionLoading, setClusterActionLoading] = useState(false);
     const [clusterFeedback, setClusterFeedback] = useState(null);
+    const [showAdvancedClusterSettings, setShowAdvancedClusterSettings] = useState(false);
 
     const fetchClusterStatus = useCallback(async () => {
         try {
@@ -600,8 +601,8 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                     </div>
                 )}
 
-                {/* ACTIVE-ACTIVE DISTRIBUTED COMPUTE GRID & CLUSTER TOPOLOGY */}
-                {discovery.role === 'Active-Active' && clusterGrid && (
+                {/* ACTIVE-ACTIVE / CLUSTER DISTRIBUTED COMPUTE GRID & CLUSTER TOPOLOGY */}
+                {discovery.role !== 'Standalone' && clusterGrid && (
                     <div style={{
                         marginTop: '12px',
                         marginBottom: '16px',
@@ -615,8 +616,12 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 800 }}>ACTIVE-ACTIVE GRID</span>
-                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38BDF8' }}>DISTRIBUTED VIDEO COMPUTE & RECORDING CLUSTER</span>
+                                <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#06B6D4', color: '#0F172A', fontWeight: 800 }}>
+                                    {discovery.role === 'Active-Standby' ? 'HA CLUSTER GRID' : 'ACTIVE-ACTIVE GRID'}
+                                </span>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38BDF8' }}>
+                                    DISTRIBUTED VIDEO COMPUTE & RECORDING CLUSTER
+                                </span>
                             </div>
                             <div style={{ display: 'flex', gap: '10px', fontSize: '0.72rem', color: '#94A3B8', flexWrap: 'wrap' }}>
                                 <span>👑 Orchestrator: <strong style={{ color: '#FCD34D' }}>{clusterGrid.orchestratorNodeId || 'Electing...'}</strong></span>
@@ -626,12 +631,35 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                             </div>
                         </div>
 
-                        {/* Cluster Nodes Table / Cards */}
+                        {/* Autonomous Discovery Active Pill */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            background: 'rgba(16, 185, 129, 0.08)',
+                            border: '1px solid rgba(16, 185, 129, 0.25)',
+                            fontSize: '0.72rem',
+                            flexWrap: 'wrap',
+                            gap: '6px'
+                        }}>
+                            <span style={{ color: '#34D399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>📡</span>
+                                <strong>זיהוי וסנכרון עמיתים אוטומטי פעיל ברשת (UDP Multicast 239.210.1.5 & Broadcast)</strong>
+                                <span style={{ color: '#94A3B8', fontSize: '0.68rem' }}>— קבוצת אשכול: <code style={{ color: '#38BDF8' }}>{discovery.clusterGroup || 'Production'}</code></span>
+                            </span>
+                            <span style={{ color: '#A7F3D0', fontSize: '0.68rem', fontWeight: 700 }}>0 הגדרות IP נדרשות!</span>
+                        </div>
+
+                        {/* Cluster Nodes Grid */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-                            {clusterGrid.nodes?.map(node => (
+                            {clusterGrid.nodes?.map(node => {
+                                const isStandbyNode = node.nodeMode === 'Standby' || node.role === 'Secondary';
+                                return (
                                 <div key={node.nodeId} style={{
                                     background: 'rgba(30, 41, 59, 0.5)',
-                                    border: `1px solid ${node.isOnline ? (node.isOrchestrator ? '#F59E0B' : '#06B6D4') : '#EF4444'}`,
+                                    border: `1px solid ${node.isOnline ? (node.isOrchestrator ? '#F59E0B' : (isStandbyNode ? '#EAB308' : '#06B6D4')) : '#EF4444'}`,
                                     borderRadius: '6px',
                                     padding: '10px',
                                     display: 'flex',
@@ -639,10 +667,25 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                                     gap: '6px'
                                 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontWeight: 800, fontSize: '0.78rem', color: '#F8FAFC' }}>
-                                            {node.displayName || node.nodeId}
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontWeight: 800, fontSize: '0.78rem', color: '#F8FAFC' }}>
+                                                {node.displayName || node.nodeId}
+                                            </span>
+                                            {node.nodeId === clusterGrid.localNodeId && (
+                                                <span style={{ fontSize: '0.62rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(148, 163, 184, 0.2)', color: '#94A3B8' }}>LOCAL</span>
+                                            )}
+                                        </div>
                                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <span style={{
+                                                fontSize: '0.65rem',
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                background: isStandbyNode ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                                                color: isStandbyNode ? '#FDE047' : '#34D399',
+                                                fontWeight: 800
+                                            }}>
+                                                {isStandbyNode ? '🟡 STANDBY' : '🟢 ACTIVE'}
+                                            </span>
                                             <span style={{
                                                 fontSize: '0.65rem',
                                                 padding: '1px 6px',
@@ -664,8 +707,14 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                                     </div>
 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94A3B8' }}>
+                                        <span>IP: <strong style={{ color: '#38BDF8' }}>{node.localIps?.[0] || (node.apiBaseUrl ? node.apiBaseUrl.replace(/https?:\/\//, '').split(':')[0] : 'Auto')}</strong></span>
                                         <span>Streams: <strong style={{ color: '#E2E8F0' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
-                                        <span>Export Jobs: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                        <span>Jobs: <strong style={{ color: '#E2E8F0' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#94A3B8' }}>
+                                        <span>CPU: <strong style={{ color: node.hostCpuPct > 80 ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong></span>
+                                        <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
                                         <span>Priority: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
                                     </div>
 
@@ -690,184 +739,215 @@ export default function SystemNetworkTab({ form, activeFeatures = [], updateFiel
                                         </button>
                                     )}
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     </div>
                 )}
 
+                {/* ZERO-CONFIGURATION CLUSTER CONTROLS (Intuitive & Minimal) */}
                 <div className="settings-fields-row">
-                    <div className="settings-field">
-                        <span>Cluster Deployment Role</span>
+                    <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
+                        <span>תצורת פריסה (Cluster Mode)</span>
                         <select
                             value={discovery.role || 'Active-Active'}
                             onChange={e => updateDiscoveryField('role', e.target.value)}
                             className="tactical-select"
                         >
-                            <option value="Active-Active">Active-Active (Distributed Compute Grid & Workload Partitioning)</option>
-                            <option value="Active-Standby">Active-Standby (High Availability with Automatic Failover)</option>
-                            <option value="Standalone">Standalone (Single Server)</option>
+                            <option value="Active-Active">Active-Active (אשכול מבוזר - שיתוף עומסים ועיבוד וידאו מלא)</option>
+                            <option value="Active-Standby">Active-Standby (אשכול גיבוי חם - שרת ראשי ושרת משני)</option>
+                            <option value="Standalone">Standalone (שרת יחיד ללא אשכול)</option>
                         </select>
+                        <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                            קובע האם השרת פועל כחלק מאשכול מבוזר או כשרת עצמאי.
+                        </span>
                     </div>
 
-                    <div className="settings-field">
-                        <span>Cluster Node Role</span>
-                        <select
-                            value={discovery.nodeRole || 'Primary'}
-                            onChange={e => updateDiscoveryField('nodeRole', e.target.value)}
-                            className="tactical-select"
+                    {discovery.role !== 'Standalone' && (
+                        <>
+                            <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
+                                <span>אופי פעילות שרת זה (Node Mode)</span>
+                                <select
+                                    value={discovery.nodeMode || (discovery.nodeRole === 'Secondary' ? 'Standby' : 'Active')}
+                                    onChange={e => {
+                                        const mode = e.target.value;
+                                        updateDiscoveryField('nodeMode', mode);
+                                        updateDiscoveryField('nodeRole', mode === 'Standby' ? 'Secondary' : 'Primary');
+                                    }}
+                                    className="tactical-select"
+                                >
+                                    <option value="Active">🟢 שרת פעיל (Active - קולט שידורים, מקליט ומעבד וידאו)</option>
+                                    <option value="Standby">🟡 שרת גיבוי חם (Standby - עומד בהמתנה, נכנס לפעולה בנפילה)</option>
+                                </select>
+                                <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                                    תצורה משולבת (Hybrid): שרתים פעילים מתחלקים בעומס, ושרת גיבוי נכנס לפעולה רק במידת הצורך.
+                                </span>
+                            </div>
+
+                            <div className="settings-field" style={{ flex: '1 1 calc(33% - 10px)' }}>
+                                <span>שם קבוצת האשכול (Cluster Group)</span>
+                                <input
+                                    type="text"
+                                    placeholder="Production"
+                                    value={discovery.clusterGroup || 'Production'}
+                                    onChange={e => updateDiscoveryField('clusterGroup', e.target.value)}
+                                />
+                                <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                                    כל שרת ברשת המוגדר באותו שם קבוצה יזהה את עמיתיו ויצטרף לאשכול אוטומטית!
+                                </span>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* ADVANCED CLUSTER SETTINGS TOGGLE */}
+                {discovery.role !== 'Standalone' && (
+                    <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setShowAdvancedClusterSettings(prev => !prev)}
+                            style={{
+                                background: 'rgba(30, 41, 59, 0.6)',
+                                border: '1px solid rgba(148, 163, 184, 0.3)',
+                                color: '#94A3B8',
+                                padding: '5px 12px',
+                                borderRadius: '4px',
+                                fontSize: '0.74rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
                         >
-                            <option value="Orchestrator">Orchestrator (Leader / Workload & Ingest Coordinator)</option>
-                            <option value="Worker">Worker (Compute & Stream Ingest Node)</option>
-                            <option value="Primary">Primary (Active-Standby Leader Node)</option>
-                            <option value="Secondary">Secondary (Active-Standby Hot Standby Node)</option>
-                        </select>
+                            <span>⚙️</span>
+                            <span>{showAdvancedClusterSettings ? 'הסתר הגדרות מתקדמות (VIP, Priority, רשת)' : 'הצג הגדרות מתקדמות (Virtual IP, Priority, ערוצי רשת ידניים)'}</span>
+                            <span>{showAdvancedClusterSettings ? '▲' : '▼'}</span>
+                        </button>
                     </div>
+                )}
 
-                    <div className="settings-field">
-                        <span>Node Priority (1-100)</span>
-                        <input
-                            type="number"
-                            min="1"
-                            max="100"
-                            value={discovery.priority ?? 100}
-                            onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
-                        />
-                        <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                            עדיפות גבוהה יותר קובעת את בחירת ה-Orchestrator במקרה של ניתוק או בחירות מנהיג (Leader Election).
-                        </span>
+                {/* ADVANCED SETTINGS PANEL */}
+                {discovery.role !== 'Standalone' && showAdvancedClusterSettings && (
+                    <div style={{
+                        padding: '12px',
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px dashed rgba(148, 163, 184, 0.25)',
+                        borderRadius: '6px',
+                        marginTop: '6px',
+                        marginBottom: '12px'
+                    }}>
+                        <div className="settings-fields-row">
+                            <div className="settings-field">
+                                <span>Node Priority (1-100)</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={discovery.priority ?? 50}
+                                    onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
+                                />
+                                <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                                    עדיפות גבוהה יותר קובעת את בחירת ה-Orchestrator באופן דטרמיניסטי.
+                                </span>
+                            </div>
+
+                            <div className="settings-field">
+                                <span>Max Ingest Streams (Per Node)</span>
+                                <input
+                                    type="number"
+                                    min="10"
+                                    max="200"
+                                    value={discovery.maxIngestStreamsCapacity ?? 50}
+                                    onChange={e => updateDiscoveryField('maxIngestStreamsCapacity', Number(e.target.value))}
+                                />
+                            </div>
+
+                            <div className="settings-field">
+                                <span>Max Concurrent Render Jobs</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="16"
+                                    value={discovery.maxConcurrentRenderJobs ?? 2}
+                                    onChange={e => updateDiscoveryField('maxConcurrentRenderJobs', Number(e.target.value))}
+                                />
+                            </div>
+
+                            <div className="settings-field">
+                                <span>Heartbeat Interval (Seconds)</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="30"
+                                    value={discovery.heartbeatIntervalSeconds ?? 2}
+                                    onChange={e => updateDiscoveryField('heartbeatIntervalSeconds', Number(e.target.value))}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="settings-fields-row">
+                            <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                                <span>Virtual IP (VIP) Address (אופציונלי)</span>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 192.168.1.200"
+                                    value={discovery.virtualIp || ''}
+                                    onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
+                                />
+                            </div>
+
+                            <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
+                                <span>Virtual IP Subnet Mask</span>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 255.255.255.0"
+                                    value={discovery.virtualIpSubnetMask || '255.255.255.0'}
+                                    onChange={e => updateDiscoveryField('virtualIpSubnetMask', e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="settings-fields-row">
+                            <div className="settings-field" style={{ flex: '1 1 100%' }}>
+                                <span>Manual Peer / Seed URLs (רק במקרים בהם ה-UDP Multicast חסום ברשת ה-LAN)</span>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. http://192.168.1.101:5090, http://192.168.1.102:5090"
+                                    value={Array.isArray(discovery.clusterPeerUrls) ? discovery.clusterPeerUrls.join(', ') : (discovery.clusterPeerUrls || '')}
+                                    onChange={e => updateDiscoveryField('clusterPeerUrls', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                                />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '14px', marginTop: '10px', flexWrap: 'wrap' }}>
+                            <label className="tactical-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={discovery.autoBalanceStreams !== false}
+                                    onChange={e => updateDiscoveryField('autoBalanceStreams', e.target.checked)}
+                                />
+                                <span>Auto-Balance Workstations across Cluster Nodes</span>
+                            </label>
+
+                            <label className="tactical-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={discovery.distributedVideoProcessingEnabled !== false}
+                                    onChange={e => updateDiscoveryField('distributedVideoProcessingEnabled', e.target.checked)}
+                                />
+                                <span>Enable Distributed Video Extraction & Multi-Node Render Offload</span>
+                            </label>
+
+                            <label className="tactical-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(discovery.enableVirtualIp)}
+                                    onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
+                                />
+                                <span>Enable OS Virtual IP (VIP) Management</span>
+                            </label>
+                        </div>
                     </div>
-
-                    <div className="settings-field">
-                        <span>Partner Server URL (C2 Endpoint)</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. http://192.168.1.102:5090"
-                            value={discovery.partnerServerUrl || ''}
-                            onChange={e => updateDiscoveryField('partnerServerUrl', e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="settings-fields-row">
-                    <div className="settings-field" style={{ flex: '1 1 100%' }}>
-                        <span>Cluster Peer / Seed URLs (Comma-Separated for Multi-Server Active-Active)</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. http://192.168.1.101:5090, http://192.168.1.102:5090"
-                            value={Array.isArray(discovery.clusterPeerUrls) ? discovery.clusterPeerUrls.join(', ') : (discovery.clusterPeerUrls || '')}
-                            onChange={e => updateDiscoveryField('clusterPeerUrls', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                        />
-                        <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                            הזן את כתובות השרתים הנוספים המשתתפים בעיבוד הוידאו ובהקלטה המשותפת בקלאסטר.
-                        </span>
-                    </div>
-                </div>
-
-                <div className="settings-fields-row">
-                    <div className="settings-field">
-                        <span>Max Ingest Streams Capacity (Per Node)</span>
-                        <input
-                            type="number"
-                            min="10"
-                            max="200"
-                            value={discovery.maxIngestStreamsCapacity ?? 50}
-                            onChange={e => updateDiscoveryField('maxIngestStreamsCapacity', Number(e.target.value))}
-                        />
-                    </div>
-
-                    <div className="settings-field">
-                        <span>Max Concurrent Render Jobs (Per Node)</span>
-                        <input
-                            type="number"
-                            min="1"
-                            max="16"
-                            value={discovery.maxConcurrentRenderJobs ?? 2}
-                            onChange={e => updateDiscoveryField('maxConcurrentRenderJobs', Number(e.target.value))}
-                        />
-                    </div>
-
-                    <div className="settings-field">
-                        <span>Heartbeat Interval (Seconds)</span>
-                        <input
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={discovery.heartbeatIntervalSeconds ?? 3}
-                            onChange={e => updateDiscoveryField('heartbeatIntervalSeconds', Number(e.target.value))}
-                        />
-                    </div>
-
-                    <div className="settings-field">
-                        <span>Missed Heartbeats Failover Threshold</span>
-                        <input
-                            type="number"
-                            min="2"
-                            max="10"
-                            value={discovery.heartbeatMissedThreshold ?? 3}
-                            onChange={e => updateDiscoveryField('heartbeatMissedThreshold', Number(e.target.value))}
-                        />
-                    </div>
-                </div>
-
-                <div className="settings-fields-row">
-                    <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
-                        <span>Virtual IP (VIP) Address</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. 192.168.1.200"
-                            value={discovery.virtualIp || ''}
-                            onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
-                        />
-                    </div>
-
-                    <div className="settings-field" style={{ flex: '1 1 calc(50% - 10px)' }}>
-                        <span>Virtual IP Subnet Mask</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. 255.255.255.0"
-                            value={discovery.virtualIpSubnetMask || '255.255.255.0'}
-                            onChange={e => updateDiscoveryField('virtualIpSubnetMask', e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap' }}>
-                    <label className="tactical-checkbox-label">
-                        <input
-                            type="checkbox"
-                            checked={discovery.autoBalanceStreams !== false}
-                            onChange={e => updateDiscoveryField('autoBalanceStreams', e.target.checked)}
-                        />
-                        <span>Auto-Balance Workstations across Cluster Nodes (Distributes recording streams across commodity hardware)</span>
-                    </label>
-
-                    <label className="tactical-checkbox-label">
-                        <input
-                            type="checkbox"
-                            checked={discovery.distributedVideoProcessingEnabled !== false}
-                            onChange={e => updateDiscoveryField('distributedVideoProcessingEnabled', e.target.checked)}
-                        />
-                        <span>Enable Distributed Video Extraction & Multi-Node Render Offloading (Combines multiple GPUs/CPUs for fast exports)</span>
-                    </label>
-
-                    <label className="tactical-checkbox-label">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(discovery.enableVirtualIp)}
-                            onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
-                        />
-                        <span>Enable Operating System Virtual IP (VIP) Management (Automated acquisition via netsh / ip addr & Gratuitous ARP)</span>
-                    </label>
-
-                    <label className="tactical-checkbox-label">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(discovery.preemptLowerPriority)}
-                            onChange={e => updateDiscoveryField('preemptLowerPriority', e.target.checked)}
-                        />
-                        <span>Preempt Lower Priority (Automatically reclaim VIP/Orchestrator if Primary node recovers)</span>
-                    </label>
-                </div>
+                )}
             </div>
             {/* STEALTH REPLAY STUDIO & AUTO-DIRECTOR ENGINE CONFIGURATION */}
             {/* Principle of Secrecy (עקרון החשאיות): Feature settings strictly exposed ONLY if server has feature active */}

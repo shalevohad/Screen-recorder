@@ -81,6 +81,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                         _logger.LogWarning(ex, "[DISCOVERY SERVICE] Multicast group join failed ({Group}); listening on UDP broadcast fallback on port {Port}", mcastAddr, port);
                     }
 
+                    using var socketCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+
+                    // Launch background Cluster Beacon broadcaster if cluster auto-discovery is enabled
+                    var broadcasterTask = Task.Run(() => RunClusterBeaconBroadcasterAsync(udpServer, mcastAddr, port, socketCts.Token), socketCts.Token);
+
                     while (!stoppingToken.IsCancellationRequested)
                     {
                         UdpReceiveResult receiveResult;
@@ -93,8 +98,15 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                             break;
                         }
 
-                        _ = ProcessProbeAsync(udpServer, receiveResult, stoppingToken);
+                        _ = ProcessIncomingPacketAsync(udpServer, receiveResult, stoppingToken);
                     }
+
+                    try
+                    {
+                        socketCts.Cancel();
+                        await broadcasterTask.ConfigureAwait(false);
+                    }
+                    catch { }
                 }
                 catch (OperationCanceledException)
                 {
@@ -114,6 +126,92 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     }
                     catch { }
                 }
+            }
+        }
+
+        private async Task ProcessIncomingPacketAsync(UdpClient socket, UdpReceiveResult result, CancellationToken ct)
+        {
+            try
+            {
+                string payload = Encoding.UTF8.GetString(result.Buffer);
+                if (payload.Contains(ServerDiscoveryConstants.ClusterBeaconMagic))
+                {
+                    var beacon = JsonSerializer.Deserialize<ClusterBeaconPacket>(payload);
+                    if (beacon != null && _clusterService != null)
+                    {
+                        await _clusterService.ProcessClusterBeaconAsync(beacon, ct).ConfigureAwait(false);
+                    }
+                }
+                else if (payload.Contains(ServerDiscoveryConstants.ProbeMagic))
+                {
+                    await ProcessProbeAsync(socket, result, ct).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[DISCOVERY SERVICE] Error processing incoming UDP packet from {Endpoint}", result.RemoteEndPoint);
+            }
+        }
+
+        private async Task RunClusterBeaconBroadcasterAsync(UdpClient socket, string mcastAddr, int port, CancellationToken ct)
+        {
+            // Initial jitter to allow socket to fully bind
+            await Task.Delay(500, ct).ConfigureAwait(false);
+
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    var config = _configMonitor.CurrentValue;
+                    var disc = config?.Discovery ?? new DiscoverySettings();
+
+                    bool isCluster = disc.Enabled &&
+                                     !string.Equals(disc.Role, ServerDiscoveryConstants.RoleStandalone, StringComparison.OrdinalIgnoreCase);
+
+                    if (isCluster && disc.AutoPeerDiscovery && _clusterService != null)
+                    {
+                        var beacon = _clusterService.CreateLocalBeaconPacket();
+                        byte[] beaconBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(beacon));
+
+                        // 1. Multicast announcement
+                        try
+                        {
+                            var mcastEp = new IPEndPoint(IPAddress.Parse(mcastAddr), port);
+                            await socket.SendAsync(beaconBytes, beaconBytes.Length, mcastEp).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex, "[DISCOVERY SERVICE] Multicast beacon announcement failed");
+                        }
+
+                        // 2. Broadcast announcement fallback
+                        if (disc.EnableBroadcastFallback)
+                        {
+                            try
+                            {
+                                socket.EnableBroadcast = true;
+                                string bcastAddr = !string.IsNullOrWhiteSpace(disc.BroadcastAddress) ? disc.BroadcastAddress : "255.255.255.255";
+                                var bcastEp = new IPEndPoint(IPAddress.Parse(bcastAddr), port);
+                                await socket.SendAsync(beaconBytes, beaconBytes.Length, bcastEp).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug(ex, "[DISCOVERY SERVICE] Broadcast beacon announcement failed");
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[DISCOVERY SERVICE] Exception during cluster beacon broadcast");
+                }
+
+                int interval = Math.Clamp(_configMonitor.CurrentValue?.Discovery?.HeartbeatIntervalSeconds ?? 2, 1, 10);
+                await Task.Delay(TimeSpan.FromSeconds(interval), ct).ConfigureAwait(false);
             }
         }
 
@@ -201,7 +299,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
         }
 
-        private static List<string> GetActiveLocalIps()
+        public static List<string> GetActiveLocalIps()
         {
             var ips = new List<string>();
             try

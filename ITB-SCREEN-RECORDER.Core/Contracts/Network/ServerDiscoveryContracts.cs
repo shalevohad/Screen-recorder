@@ -24,6 +24,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         public const string ProbeMagic = "ITB_DISCOVERY_PROBE";
         public const string ResponseMagic = "ITB_DISCOVERY_RESPONSE";
+        public const string ClusterBeaconMagic = "ITB_CLUSTER_BEACON";
         public const string ProtocolVersion = "1.0";
         public const string RoleActiveActive = "Active-Active";
         public const string RoleActiveStandby = "Active-Standby";
@@ -34,6 +35,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public const string RoleOrchestrator = "Orchestrator";
         public const string RoleWorker = "Worker";
         public const string RolePeer = "Peer";
+        public const string NodeModeActive = "Active";
+        public const string NodeModeStandby = "Standby";
     }
 
     public class ServerDiscoveryProbe
@@ -314,6 +317,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("role")]
         public string Role { get; set; } = ServerDiscoveryConstants.RoleWorker; // Orchestrator or Worker
 
+        [JsonPropertyName("nodeMode")]
+        public string NodeMode { get; set; } = ServerDiscoveryConstants.NodeModeActive; // Active or Standby
+
         [JsonPropertyName("state")]
         public string State { get; set; } = ClusterNodeState.Active.ToString();
 
@@ -347,6 +353,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("assignedStations")]
         public List<string> AssignedStations { get; set; } = new();
 
+        [JsonPropertyName("localIps")]
+        public List<string> LocalIps { get; set; } = new();
+
+        [JsonPropertyName("isVipBound")]
+        public bool IsVipBound { get; set; }
+
         [JsonIgnore]
         public bool IsOnline => (DateTime.UtcNow - LastSeenUtc).TotalSeconds <= 12;
 
@@ -355,7 +367,82 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
                                       string.Equals(Role, ServerDiscoveryConstants.RolePrimary, StringComparison.OrdinalIgnoreCase);
 
         [JsonIgnore]
+        public bool IsStandby => string.Equals(NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(Role, ServerDiscoveryConstants.RoleSecondary, StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(State, ClusterNodeState.Standby.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
         public double LoadRatio => MaxStreamsCapacity > 0 ? (double)ActiveStreamsCount / MaxStreamsCapacity : 1.0;
+    }
+
+    /// <summary>
+    /// Autonomous Zero-Configuration Cluster Beacon broadcast via UDP Multicast and Broadcast.
+    /// Allows servers in a LAN to self-discover, elect leaders, and balance workloads with zero manual IP input.
+    /// </summary>
+    public class ClusterBeaconPacket
+    {
+        [JsonPropertyName("magic")]
+        public string Magic { get; set; } = ServerDiscoveryConstants.ClusterBeaconMagic;
+
+        [JsonPropertyName("clusterGroup")]
+        public string ClusterGroup { get; set; } = "Production";
+
+        [JsonPropertyName("nodeId")]
+        public string NodeId { get; set; } = Environment.MachineName;
+
+        [JsonPropertyName("displayName")]
+        public string DisplayName { get; set; } = Environment.MachineName;
+
+        [JsonPropertyName("nodeMode")]
+        public string NodeMode { get; set; } = ServerDiscoveryConstants.NodeModeActive; // "Active" or "Standby"
+
+        [JsonPropertyName("nodeRole")]
+        public string NodeRole { get; set; } = ServerDiscoveryConstants.RoleWorker; // "Orchestrator", "Worker", "Standby"
+
+        [JsonPropertyName("priority")]
+        public int Priority { get; set; } = 50;
+
+        [JsonPropertyName("apiBaseUrl")]
+        public string ApiBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("rtmpBaseUrl")]
+        public string RtmpBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("hlsBaseUrl")]
+        public string HlsBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("whepPort")]
+        public int WhepPort { get; set; } = 8889;
+
+        [JsonPropertyName("activeStreamsCount")]
+        public int ActiveStreamsCount { get; set; }
+
+        [JsonPropertyName("maxStreamsCapacity")]
+        public int MaxStreamsCapacity { get; set; } = 50;
+
+        [JsonPropertyName("activeJobsCount")]
+        public int ActiveJobsCount { get; set; }
+
+        [JsonPropertyName("maxConcurrentJobs")]
+        public int MaxConcurrentJobs { get; set; } = 2;
+
+        [JsonPropertyName("hostCpuPct")]
+        public double HostCpuPct { get; set; }
+
+        [JsonPropertyName("gpuNvencPct")]
+        public double GpuNvencPct { get; set; }
+
+        [JsonPropertyName("isVipBound")]
+        public bool IsVipBound { get; set; }
+
+        [JsonPropertyName("localIps")]
+        public List<string> LocalIps { get; set; } = new();
+
+        [JsonPropertyName("assignedStations")]
+        public List<string> AssignedStations { get; set; } = new();
+
+        [JsonPropertyName("timestampUtc")]
+        public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
     }
 
     public class ClusterHeartbeatRequest
@@ -395,6 +482,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
     {
         [JsonPropertyName("clusterMode")]
         public string ClusterMode { get; set; } = ServerDiscoveryConstants.RoleActiveActive;
+
+        [JsonPropertyName("clusterGroup")]
+        public string ClusterGroup { get; set; } = "Production";
+
+        [JsonPropertyName("autoPeerDiscovery")]
+        public bool AutoPeerDiscovery { get; set; } = true;
 
         [JsonPropertyName("localNodeId")]
         public string LocalNodeId { get; set; } = string.Empty;

@@ -108,6 +108,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             int rtmpPort = config?.MediaMtx?.RtmpPort > 0 ? config.MediaMtx.RtmpPort : 19350;
             int hlsPort = config?.MediaMtx?.HlsPort > 0 ? config.MediaMtx.HlsPort : 8888;
 
+            string cleanVip = disc.VirtualIp?.Trim() ?? string.Empty;
+            bool isVipBound = !string.IsNullOrWhiteSpace(cleanVip) &&
+                              _vipManager.IsVirtualIpBoundLocallyAsync(cleanVip).GetAwaiter().GetResult();
+
             var localNode = new ClusterNodeDescriptor
             {
                 NodeId = localId,
@@ -117,10 +121,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 HlsBaseUrl = $"http://{localId.ToLowerInvariant()}:{hlsPort}/live",
                 WhepPort = 8889,
                 Role = isOrchestrator ? ServerDiscoveryConstants.RoleOrchestrator : ServerDiscoveryConstants.RoleWorker,
+                NodeMode = !string.IsNullOrWhiteSpace(disc.NodeMode) ? disc.NodeMode : ServerDiscoveryConstants.NodeModeActive,
                 State = _state.ToString(),
                 Priority = disc.Priority,
                 MaxStreamsCapacity = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : 50,
                 MaxConcurrentJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2,
+                LocalIps = ServerDiscoveryHostedService.GetActiveLocalIps(),
+                IsVipBound = isVipBound,
                 LastSeenUtc = DateTime.UtcNow
             };
 
@@ -215,6 +222,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             return new ClusterGridStatusDto
             {
                 ClusterMode = disc.Role,
+                ClusterGroup = !string.IsNullOrWhiteSpace(disc.ClusterGroup) ? disc.ClusterGroup : "Production",
+                AutoPeerDiscovery = disc.AutoPeerDiscovery,
                 LocalNodeId = localId,
                 LocalNodeRole = isLocalOrch ? ServerDiscoveryConstants.RoleOrchestrator : ServerDiscoveryConstants.RoleWorker,
                 OrchestratorNodeId = !string.IsNullOrEmpty(_orchestratorNodeId) ? _orchestratorNodeId : (isLocalOrch ? localId : "Unknown"),
@@ -481,9 +490,18 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 _logger.LogCritical("[CLUSTER LEADER ELECTION] Orchestrator missing! Initiating cluster leader election across online peers...");
 
                 // Find candidate with highest Priority; if tied, compare NodeId string
+                // Prefer Active nodes; if none are online, allow Standby nodes to promote
                 var aliveNodes = _clusterNodes.Values
                     .Where(n => n.IsOnline || n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                    .Where(n => !n.IsStandby)
                     .ToList();
+
+                if (aliveNodes.Count == 0)
+                {
+                    aliveNodes = _clusterNodes.Values
+                        .Where(n => n.IsOnline || n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                }
 
                 if (!aliveNodes.Any(n => n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase)))
                 {
@@ -499,11 +517,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 {
                     // LOCAL NODE WON ELECTION!
                     _orchestratorNodeId = localId;
+                    _state = ClusterNodeState.Active;
                     _failoverCount++;
 
                     if (_clusterNodes.TryGetValue(localId, out var localDesc))
                     {
                         localDesc.Role = ServerDiscoveryConstants.RoleOrchestrator;
+                        localDesc.State = ClusterNodeState.Active.ToString();
                     }
 
                     _logger.LogCritical("[CLUSTER LEADER ELECTION] Local node '{LocalId}' (Priority: {Priority}) WON LEADER ELECTION and is now the NEW ORCHESTRATOR!",
@@ -590,11 +610,14 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 }
             }
 
-            // Find least loaded online node
+            // Find least loaded online node (preferring Active nodes; Standby nodes kept as hot spares)
             var onlineNodes = _clusterNodes.Values.Where(n => n.IsOnline).ToList();
             if (onlineNodes.Count == 0) return Task.FromResult<string?>(null);
 
-            var chosenNode = onlineNodes
+            var candidateNodes = onlineNodes.Where(n => !n.IsStandby).ToList();
+            if (candidateNodes.Count == 0) candidateNodes = onlineNodes;
+
+            var chosenNode = candidateNodes
                 .OrderBy(n => n.LoadRatio)
                 .ThenBy(n => n.ActiveStreamsCount)
                 .ThenBy(n => n.HostCpuPct)
@@ -622,8 +645,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 return Task.FromResult(localNode);
             }
 
+            var candidateNodes = onlineNodes.Where(n => !n.IsStandby).ToList();
+            if (candidateNodes.Count == 0) candidateNodes = onlineNodes;
+
             // Prefer nodes with spare job capacity (ActiveJobsCount < MaxConcurrentJobs)
-            var availableNodes = onlineNodes.Where(n => n.ActiveJobsCount < n.MaxConcurrentJobs).ToList();
+            var availableNodes = candidateNodes.Where(n => n.ActiveJobsCount < n.MaxConcurrentJobs).ToList();
             ClusterNodeDescriptor selected;
             if (availableNodes.Count > 0)
             {
@@ -635,7 +661,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
             else
             {
-                selected = onlineNodes
+                selected = candidateNodes
                     .OrderBy(n => n.ActiveJobsCount)
                     .ThenBy(n => n.HostCpuPct)
                     .First();
@@ -785,6 +811,188 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
 
             return null;
+        }
+
+        #endregion
+
+        #region Autonomous UDP Multicast/Broadcast Beacon Discovery
+
+        public ClusterBeaconPacket CreateLocalBeaconPacket()
+        {
+            var config = _configMonitor.CurrentValue;
+            var disc = config?.Discovery ?? new DiscoverySettings();
+            string localId = Environment.MachineName;
+
+            RegisterLocalNodeInRegistry();
+            _clusterNodes.TryGetValue(localId, out var localDesc);
+
+            int httpPort = config?.HttpPort > 0 ? config.HttpPort : 5090;
+            int rtmpPort = config?.MediaMtx?.RtmpPort > 0 ? config.MediaMtx.RtmpPort : 19350;
+            int hlsPort = config?.MediaMtx?.HlsPort > 0 ? config.MediaMtx.HlsPort : 8888;
+
+            string cleanVip = disc.VirtualIp?.Trim() ?? string.Empty;
+            bool isVipBound = !string.IsNullOrWhiteSpace(cleanVip) &&
+                              _vipManager.IsVirtualIpBoundLocallyAsync(cleanVip).GetAwaiter().GetResult();
+
+            var localIps = ServerDiscoveryHostedService.GetActiveLocalIps();
+            string primaryIp = localIps.FirstOrDefault() ?? "127.0.0.1";
+
+            bool isLocalOrchestrator = !string.IsNullOrEmpty(_orchestratorNodeId)
+                ? string.Equals(_orchestratorNodeId, localId, StringComparison.OrdinalIgnoreCase)
+                : (string.Equals(disc.NodeRole, ServerDiscoveryConstants.RoleOrchestrator, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(disc.NodeRole, ServerDiscoveryConstants.RolePrimary, StringComparison.OrdinalIgnoreCase));
+
+            bool isStandby = string.Equals(disc.NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(disc.NodeRole, ServerDiscoveryConstants.RoleSecondary, StringComparison.OrdinalIgnoreCase) ||
+                             _state == ClusterNodeState.Standby;
+
+            string role = isLocalOrchestrator ? ServerDiscoveryConstants.RoleOrchestrator : (isStandby ? ServerDiscoveryConstants.RoleSecondary : ServerDiscoveryConstants.RoleWorker);
+
+            return new ClusterBeaconPacket
+            {
+                Magic = ServerDiscoveryConstants.ClusterBeaconMagic,
+                ClusterGroup = !string.IsNullOrWhiteSpace(disc.ClusterGroup) ? disc.ClusterGroup : "Production",
+                NodeId = localId,
+                DisplayName = !string.IsNullOrWhiteSpace(disc.ServerDisplayName) ? disc.ServerDisplayName : localId,
+                NodeMode = isStandby ? ServerDiscoveryConstants.NodeModeStandby : ServerDiscoveryConstants.NodeModeActive,
+                NodeRole = role,
+                Priority = disc.Priority,
+                ApiBaseUrl = $"http://{primaryIp}:{httpPort}",
+                RtmpBaseUrl = $"rtmps://{primaryIp}:{rtmpPort}/live",
+                HlsBaseUrl = $"http://{primaryIp}:{hlsPort}/live",
+                WhepPort = 8889,
+                ActiveStreamsCount = localDesc?.ActiveStreamsCount ?? 0,
+                MaxStreamsCapacity = disc.MaxIngestStreamsCapacity > 0 ? disc.MaxIngestStreamsCapacity : 50,
+                ActiveJobsCount = localDesc?.ActiveJobsCount ?? 0,
+                MaxConcurrentJobs = disc.MaxConcurrentRenderJobs > 0 ? disc.MaxConcurrentRenderJobs : 2,
+                HostCpuPct = localDesc?.HostCpuPct ?? 0,
+                GpuNvencPct = localDesc?.GpuNvencPct ?? 0,
+                IsVipBound = isVipBound,
+                LocalIps = localIps,
+                AssignedStations = localDesc?.AssignedStations ?? new List<string>(),
+                TimestampUtc = DateTime.UtcNow
+            };
+        }
+
+        public async Task ProcessClusterBeaconAsync(ClusterBeaconPacket beacon, CancellationToken ct = default)
+        {
+            if (beacon == null || string.IsNullOrWhiteSpace(beacon.NodeId)) return;
+            string localId = Environment.MachineName;
+
+            // Ignore beacon sent by local node
+            if (string.Equals(beacon.NodeId, localId, StringComparison.OrdinalIgnoreCase)) return;
+
+            var config = _configMonitor.CurrentValue;
+            var disc = config?.Discovery ?? new DiscoverySettings();
+
+            // Ignore beacons from different cluster groups on the LAN
+            string myGroup = !string.IsNullOrWhiteSpace(disc.ClusterGroup) ? disc.ClusterGroup : "Production";
+            if (!string.Equals(beacon.ClusterGroup, myGroup, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            // Update or register discovered peer node
+            var node = _clusterNodes.GetOrAdd(beacon.NodeId, id => new ClusterNodeDescriptor { NodeId = id });
+            node.DisplayName = !string.IsNullOrWhiteSpace(beacon.DisplayName) ? beacon.DisplayName : beacon.NodeId;
+            node.ApiBaseUrl = beacon.ApiBaseUrl;
+            node.RtmpBaseUrl = beacon.RtmpBaseUrl;
+            node.HlsBaseUrl = beacon.HlsBaseUrl;
+            node.WhepPort = beacon.WhepPort;
+            node.Role = beacon.NodeRole;
+            node.NodeMode = beacon.NodeMode;
+            node.State = string.Equals(beacon.NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase)
+                ? ClusterNodeState.Standby.ToString()
+                : ClusterNodeState.Active.ToString();
+            node.Priority = beacon.Priority;
+            node.ActiveStreamsCount = beacon.ActiveStreamsCount;
+            node.MaxStreamsCapacity = beacon.MaxStreamsCapacity > 0 ? beacon.MaxStreamsCapacity : 50;
+            node.ActiveJobsCount = beacon.ActiveJobsCount;
+            node.MaxConcurrentJobs = beacon.MaxConcurrentJobs > 0 ? beacon.MaxConcurrentJobs : 2;
+            node.HostCpuPct = beacon.HostCpuPct;
+            node.GpuNvencPct = beacon.GpuNvencPct;
+            node.IsVipBound = beacon.IsVipBound;
+            node.LocalIps = beacon.LocalIps ?? new List<string>();
+            node.LastSeenUtc = DateTime.UtcNow;
+
+            if (beacon.AssignedStations != null)
+            {
+                node.AssignedStations = beacon.AssignedStations;
+                foreach (var station in beacon.AssignedStations)
+                {
+                    if (!string.IsNullOrWhiteSpace(station))
+                    {
+                        _stationToNodeMap[station] = beacon.NodeId;
+                    }
+                }
+            }
+
+            // Automatic Deterministic Leader Arbitration:
+            bool isLocalStandby = string.Equals(disc.NodeMode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase) ||
+                                  _state == ClusterNodeState.Standby;
+
+            var onlineActiveNodes = _clusterNodes.Values
+                .Where(n => n.IsOnline && !n.IsStandby)
+                .ToList();
+
+            if (!isLocalStandby && !onlineActiveNodes.Any(n => n.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (_clusterNodes.TryGetValue(localId, out var localDesc))
+                {
+                    onlineActiveNodes.Add(localDesc);
+                }
+            }
+
+            if (onlineActiveNodes.Count > 0)
+            {
+                var candidate = onlineActiveNodes
+                    .OrderByDescending(n => n.Priority)
+                    .ThenBy(n => n.NodeId, StringComparer.OrdinalIgnoreCase)
+                    .First();
+
+                if (candidate.NodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(_orchestratorNodeId, localId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("[CLUSTER AUTO-DISCOVERY] Local node '{LocalId}' (Priority: {Priority}) designated as ORCHESTRATOR.",
+                            localId, disc.Priority);
+                        _orchestratorNodeId = localId;
+
+                        if (disc.EnableVirtualIp && !string.IsNullOrWhiteSpace(disc.VirtualIp))
+                        {
+                            await _vipManager.AcquireVirtualIpAsync(disc.VirtualIp, disc.VirtualIpSubnetMask, disc.NetworkInterfaceName, ct);
+                        }
+                    }
+                }
+                else
+                {
+                    if (string.Equals(_orchestratorNodeId, localId, StringComparison.OrdinalIgnoreCase) && candidate.Priority > disc.Priority)
+                    {
+                        _logger.LogInformation("[CLUSTER AUTO-DISCOVERY] Yielding Orchestrator to higher priority node '{Winner}' ({Priority} > {MyPriority}).",
+                            candidate.NodeId, candidate.Priority, disc.Priority);
+                        _orchestratorNodeId = candidate.NodeId;
+                        if (disc.EnableVirtualIp && !string.IsNullOrWhiteSpace(disc.VirtualIp))
+                        {
+                            await _vipManager.ReleaseVirtualIpAsync(disc.VirtualIp, disc.NetworkInterfaceName, ct);
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(_orchestratorNodeId))
+                    {
+                        _orchestratorNodeId = candidate.NodeId;
+                    }
+                }
+            }
+            else if (isLocalStandby)
+            {
+                // No active nodes detected! Standby promotes itself to keep cluster operational
+                _logger.LogCritical("[CLUSTER AUTO-DISCOVERY] Zero online Active nodes detected! Standby node '{LocalId}' PROMOTING TO ACTIVE ORCHESTRATOR!", localId);
+                _state = ClusterNodeState.Active;
+                _orchestratorNodeId = localId;
+                if (disc.EnableVirtualIp && !string.IsNullOrWhiteSpace(disc.VirtualIp))
+                {
+                    await _vipManager.AcquireVirtualIpAsync(disc.VirtualIp, disc.VirtualIpSubnetMask, disc.NetworkInterfaceName, ct);
+                }
+            }
         }
 
         #endregion

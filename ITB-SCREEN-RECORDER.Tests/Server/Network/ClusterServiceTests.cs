@@ -407,5 +407,178 @@ namespace ITB_SCREEN_RECORDER.Tests.Server.Network
             Assert.Equal("SRV-WORKER-02", grid.OrchestratorNodeId);
             Assert.False(grid.IsLocalNodeOrchestrator);
         }
+
+        #region Zero-Configuration Multicast/Broadcast Beacon Discovery Tests
+
+        [Fact]
+        public void AutoDiscovery_CreateLocalBeaconPacket_GeneratesValidBeaconWithNetworkMetrics()
+        {
+            var config = new SystemConfig
+            {
+                HttpPort = 5090,
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    NodeMode = "Active",
+                    ClusterGroup = "Tactical-NOC-1",
+                    Priority = 80,
+                    ServerDisplayName = "Alpha Recording Server"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            var beacon = service.CreateLocalBeaconPacket();
+
+            Assert.NotNull(beacon);
+            Assert.Equal(ServerDiscoveryConstants.ClusterBeaconMagic, beacon.Magic);
+            Assert.Equal("Tactical-NOC-1", beacon.ClusterGroup);
+            Assert.Equal(System.Environment.MachineName, beacon.NodeId);
+            Assert.Equal("Alpha Recording Server", beacon.DisplayName);
+            Assert.Equal(ServerDiscoveryConstants.NodeModeActive, beacon.NodeMode);
+            Assert.Equal(80, beacon.Priority);
+            Assert.False(string.IsNullOrWhiteSpace(beacon.ApiBaseUrl));
+            Assert.Contains("5090", beacon.ApiBaseUrl);
+        }
+
+        [Fact]
+        public async Task AutoDiscovery_ProcessClusterBeacon_DiscoversPeerAndAutoAssignsStreams()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    NodeMode = "Active",
+                    ClusterGroup = "Production",
+                    Priority = 50
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Receive an autonomous beacon from peer node
+            var peerBeacon = new ClusterBeaconPacket
+            {
+                Magic = ServerDiscoveryConstants.ClusterBeaconMagic,
+                ClusterGroup = "Production",
+                NodeId = "PEER-COMPUTE-02",
+                DisplayName = "Secondary Video Worker",
+                NodeMode = "Active",
+                NodeRole = "Worker",
+                Priority = 40,
+                ApiBaseUrl = "http://192.168.1.150:5090",
+                RtmpBaseUrl = "rtmps://192.168.1.150:19350/live",
+                MaxStreamsCapacity = 60,
+                ActiveStreamsCount = 0,
+                AssignedStations = new System.Collections.Generic.List<string> { "STATION-RECON-7" }
+            };
+
+            await service.ProcessClusterBeaconAsync(peerBeacon, CancellationToken.None);
+
+            var grid = service.GetClusterGridStatus();
+            Assert.Contains(grid.Nodes, n => n.NodeId == "PEER-COMPUTE-02");
+            var discoveredNode = grid.Nodes.First(n => n.NodeId == "PEER-COMPUTE-02");
+            Assert.Equal("http://192.168.1.150:5090", discoveredNode.ApiBaseUrl);
+            Assert.True(discoveredNode.IsOnline);
+
+            // Stream resolve for existing station mapped via beacon
+            var assignedUrl = await service.ResolveAssignedIngestNodeUrlAsync("STATION-RECON-7", CancellationToken.None);
+            Assert.Equal("rtmps://192.168.1.150:19350/live", assignedUrl);
+        }
+
+        [Fact]
+        public async Task AutoDiscovery_ProcessClusterBeacon_FiltersDifferentClusterGroup()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    ClusterGroup = "Sector-Alpha"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Beacon from foreign cluster on the same LAN
+            var foreignBeacon = new ClusterBeaconPacket
+            {
+                ClusterGroup = "Sector-Bravo",
+                NodeId = "FOREIGN-SRV-99",
+                ApiBaseUrl = "http://192.168.1.99:5090"
+            };
+
+            await service.ProcessClusterBeaconAsync(foreignBeacon, CancellationToken.None);
+
+            var grid = service.GetClusterGridStatus();
+            Assert.DoesNotContain(grid.Nodes, n => n.NodeId == "FOREIGN-SRV-99");
+        }
+
+        [Fact]
+        public async Task AutoDiscovery_HybridCluster_StandbyNodePromotesToOrchestratorWhenActiveNodesUnreachable()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Standby",
+                    NodeMode = "Standby",
+                    NodeRole = "Secondary",
+                    ClusterGroup = "Production",
+                    Priority = 50,
+                    EnableVirtualIp = true,
+                    VirtualIp = "192.168.1.200",
+                    NetworkInterfaceName = "Ethernet0"
+                }
+            };
+
+            var (mockConfig, mockVip, mockHttp, mockLifetime, mockLogger) = CreateMocks(config);
+            var service = new ClusterService(mockConfig.Object, mockVip.Object, mockHttp.Object, mockLifetime.Object, mockLogger.Object);
+
+            // Local node initialized as Standby
+            Assert.Equal("Standby", service.GetClusterStatus().State);
+
+            // Discovers an active node
+            var activeBeacon = new ClusterBeaconPacket
+            {
+                ClusterGroup = "Production",
+                NodeId = "ACTIVE-PRIMARY-01",
+                NodeMode = "Active",
+                NodeRole = "Orchestrator",
+                Priority = 100,
+                ApiBaseUrl = "http://192.168.1.101:5090"
+            };
+
+            await service.ProcessClusterBeaconAsync(activeBeacon, CancellationToken.None);
+
+            var grid = service.GetClusterGridStatus();
+            Assert.Equal("ACTIVE-PRIMARY-01", grid.OrchestratorNodeId);
+            Assert.False(grid.IsLocalNodeOrchestrator);
+
+            // Simulate all active nodes going offline / unreachable
+            var discoveredNode = grid.Nodes.First(n => n.NodeId == "ACTIVE-PRIMARY-01");
+            discoveredNode.LastSeenUtc = System.DateTime.UtcNow.AddMinutes(-5); // Expired
+
+            // Re-trigger beacon evaluation with empty/dead active nodes
+            var dummyStandbyPeer = new ClusterBeaconPacket
+            {
+                ClusterGroup = "Production",
+                NodeId = "ANOTHER-STANDBY-03",
+                NodeMode = "Standby",
+                Priority = 20
+            };
+            await service.ProcessClusterBeaconAsync(dummyStandbyPeer, CancellationToken.None);
+
+            // Standby node promoted itself to Active Orchestrator and bound VIP!
+            var updatedGrid = service.GetClusterGridStatus();
+            Assert.True(updatedGrid.IsLocalNodeOrchestrator);
+            mockVip.Verify(v => v.AcquireVirtualIpAsync("192.168.1.200", It.IsAny<string>(), "Ethernet0", It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        #endregion
     }
 }

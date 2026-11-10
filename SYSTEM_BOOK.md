@@ -4999,6 +4999,22 @@ Exposed via [ClusterController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRec
      - [WhepProxyController.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs) inspects the target station and transparently proxies WebRTC WHEP streams to the specific node hosting that stream, giving operators sub-second live viewing from a single VIP endpoint.
      - The Global Jobs Queue displays all rendering jobs across the entire cluster.
 
+### 77.7 Zero-Configuration Autonomous Multicast/Broadcast Peer Discovery & Hybrid Clustering
+1. **Zero-Configuration Autonomous Discovery**:
+   - Eliminates all manual IP address and seed URL entry for multi-server deployments.
+   - [ServerDiscoveryHostedService.cs](file:///f:/Ohad%20Shalev/C#%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Server/Services/Network/ServerDiscoveryHostedService.cs) broadcasts an autonomous `ClusterBeaconPacket` every 2 seconds over UDP Multicast (`239.210.1.5:5098`) with Subnet Broadcast fallback (`255.255.255.255:5098`).
+   - Any server powered on in the network with the same `ClusterGroup` (default: `Production`) is automatically discovered and integrated into the live cluster grid within 2 seconds.
+2. **Hybrid Topologies (Mixed Active and Standby Nodes)**:
+   - Operators can flexibly configure nodes as either `Active` (participating in load balancing and video rendering) or `Standby` (hot backup spare).
+   - `Active` nodes form the active compute grid, handling stream ingestion and video jobs.
+   - `Standby` nodes continuously monitor the health of all active nodes via UDP beacons without taking regular ingest streams.
+   - **Automated Standby Promotion**: If all active nodes (or the Orchestrator) fail or become unreachable, the Standby node automatically promotes itself to `Active Orchestrator`, binds the Virtual IP (VIP), and accepts streaming agents without service interruption.
+3. **Ultra-Minimal Operator Experience**:
+   - The C2 Settings Dashboard presents only 2 simple inputs for standard setups:
+     1. Cluster Deployment Mode (`Active-Active`, `Active-Standby`, `Standalone`)
+     2. Node Mode (`Active 🟢` vs `Standby 🟡`)
+   - All complex networking (VIP, Priority, timeouts, manual peer seeds) is relegated to an expandable Advanced Options panel, allowing zero-touch deployment in air-gapped environments.
+
 ---
 
 ---

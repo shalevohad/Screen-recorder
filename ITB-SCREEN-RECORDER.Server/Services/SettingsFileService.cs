@@ -38,6 +38,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 discoveryDto.BroadcastAddress = (string)(discovery["BroadcastAddress"] ?? ServerDiscoveryConstants.DefaultBroadcastAddress);
                 discoveryDto.Role = (string)(discovery["Role"] ?? ServerDiscoveryConstants.RoleActiveActive);
                 discoveryDto.NodeRole = (string)(discovery["NodeRole"] ?? ServerDiscoveryConstants.RolePrimary);
+                discoveryDto.NodeMode = (string)(discovery["NodeMode"] ?? ServerDiscoveryConstants.NodeModeActive);
+                discoveryDto.ClusterGroup = (string)(discovery["ClusterGroup"] ?? "Production");
+                discoveryDto.AutoPeerDiscovery = (bool)(discovery["AutoPeerDiscovery"] ?? true);
                 discoveryDto.Priority = (int)(discovery["Priority"] ?? 1);
                 discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
                 if (discovery["ClusterPeerUrls"] is JsonArray peerArr)
@@ -127,6 +130,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     discNode["BroadcastAddress"] = dto.Discovery.BroadcastAddress ?? ServerDiscoveryConstants.DefaultBroadcastAddress;
                     discNode["Role"] = dto.Discovery.Role;
                     discNode["NodeRole"] = dto.Discovery.NodeRole;
+                    discNode["NodeMode"] = dto.Discovery.NodeMode ?? ServerDiscoveryConstants.NodeModeActive;
+                    discNode["ClusterGroup"] = dto.Discovery.ClusterGroup ?? "Production";
+                    discNode["AutoPeerDiscovery"] = dto.Discovery.AutoPeerDiscovery;
                     discNode["Priority"] = dto.Discovery.Priority;
                     discNode["PartnerServerUrl"] = dto.Discovery.PartnerServerUrl ?? "";
                     var peerArray = new JsonArray();
