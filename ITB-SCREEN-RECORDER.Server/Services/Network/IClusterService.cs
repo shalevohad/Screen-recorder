@@ -11,6 +11,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 {
     public interface IClusterService : IClusterWorkerSelector
     {
+        bool IsLocalNodeOrchestrator { get; }
         ClusterStatusDto GetClusterStatus();
         ClusterPartnerHealthDto GetPartnerHealthDto();
         ClusterGridStatusDto GetClusterGridStatus();
@@ -49,7 +50,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         Task ApplyInterNodeConfigSyncAsync(ClusterConfigSyncRequest req);
 
         // Remote Node Lifecycle & Maintenance Operations
+        ClusterNodeDescriptor? GetOrchestratorNode();
         Task<ClusterActionResultDto> SetNodeDrainingAsync(string nodeId, bool enableDraining, CancellationToken ct = default);
+        Task<ClusterActionResultDto> SetNodeModeAsync(string nodeId, string mode, CancellationToken ct = default);
+        Task BroadcastNodeModeAsync(string nodeId, string mode, CancellationToken ct = default);
+        void ApplyInterNodeNodeMode(ClusterNodeModeRequest req);
         Task<ClusterActionResultDto> RestartNodeAsync(string nodeId, CancellationToken ct = default);
         Task<ClusterActionResultDto> UpdateNodeCapacitiesAsync(string nodeId, ClusterNodeCapacitiesUpdateRequest req, CancellationToken ct = default);
     }

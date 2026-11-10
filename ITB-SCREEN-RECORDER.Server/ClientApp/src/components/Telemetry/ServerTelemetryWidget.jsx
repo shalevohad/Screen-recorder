@@ -83,9 +83,9 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
         ? (cluster?.aggregateAppCpuPct ?? 0)
         : (serverTelemetry?.appCpuUsagePct ?? serverTelemetry?.processCpuUsagePct ?? 0);
 
-    const cpuTitle = 'CPU LOAD';
+    const cpuTitle = isCluster ? 'CLUSTER CPU' : 'CPU LOAD';
     const cpuSub = isCluster
-        ? (appCpuPct > 0 ? `App ${appCpuPct.toFixed(1)}%` : 'UNIFIED COMPUTE')
+        ? `${cluster?.onlineNodes ?? 1}/${cluster?.totalNodes ?? 1} NODES AVG`
         : `App ${appCpuPct.toFixed(1)}%`;
 
     // RAM Metrics - Unified system memory pool
@@ -109,8 +109,10 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const totalRamDisplay = `${Math.round(totalRamGb)}G`;
     const hostUsedRamDisplay = `${usedRamGb.toFixed(1)}G`;
 
-    const ramTitle = 'SYSTEM RAM';
-    const ramSub = `${hostUsedRamDisplay} / ${totalRamDisplay}`;
+    const ramTitle = isCluster ? 'CLUSTER RAM' : 'SYSTEM RAM';
+    const ramSub = isCluster
+        ? `${hostUsedRamDisplay} / ${totalRamDisplay} POOL`
+        : `${hostUsedRamDisplay} / ${totalRamDisplay}`;
 
     // NET Metrics - Unified system network throughput
     const netTxMbps = isCluster
@@ -133,8 +135,10 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
         ? (cluster?.aggregateNicUtilizationPct ?? (totalNetMbps > 0 ? (totalNetMbps / linkSpeedMbps) * 100 : 0))
         : (serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100));
 
-    const netTitle = 'SYSTEM NETWORK';
-    const netSub = `${formatLinkSpeed(linkSpeedMbps)} LINK`;
+    const netTitle = isCluster ? 'CLUSTER NETWORK' : 'SYSTEM NETWORK';
+    const netSub = isCluster
+        ? `${formatCurrentRate(totalNetMbps)} / ${formatLinkSpeed(linkSpeedMbps)} FLEET`
+        : `${formatLinkSpeed(linkSpeedMbps)} LINK`;
 
     const c2Kbps = serverTelemetry?.telemetryTxKbps ?? fleetC2Kbps;
     const linkSpeedKbps = (linkSpeedMbps || 1000) * 1000;

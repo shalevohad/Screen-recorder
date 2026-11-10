@@ -5382,6 +5382,113 @@ From the user's perspective, all servers have merged into **one single giant ser
 
 ---
 
+### 78.11 Single-Entry Orchestrator Steering, Centralized Cluster Management, Hot/Standby Redundancy, Fleet-Wide Video Encoder Health, and Normalized Cluster Platform Diagnostics
+
+#### Operational Vision & User Requirements
+In mission-critical command centers, system administrators and operators require an architecture that guarantees:
+1. **Single Entry Address to Active Orchestrator**: Users connect to a single static DNS hostname or Virtual IP. Even if an operator points their browser to a physical worker node's IP, browser navigation is automatically steered to the elected Orchestrator serving the authoritative C2 dashboard.
+2. **Dedicated Cluster Management Hub**: Complete governance over the entire cluster mesh—monitoring node count, load per node, dynamic backup roles (`Hot/Active` vs `Standby Hot Spare`), hardware specifications, and fleet-wide encoder state.
+3. **Cluster-Wide Video Encoder Health**: Explicit visibility into the fleet's hardware video acceleration status (`Optimal`, `Hybrid`, `CPU Fallback`), detected GPU models across all nodes, total fleet transcode capacity, and dropped frame counts.
+4. **Normalized Cluster Health in System Overview**: The central health diagnostics tab (`SystemOverviewTab.jsx`) aggregates metrics across the entire cluster—normalizing CPU utilization, memory pool allocation (GB), network throughput (Mbps), and platform health scores based on fleet-wide node and station status.
+5. **Unified Telemetry Pods in Dashboard Header**: Header widgets (`ServerTelemetryWidget.jsx`) explicitly display `CLUSTER CPU`, `CLUSTER RAM`, `CLUSTER NETWORK`, and `STORAGE POOL` with aggregated metrics reflecting the entire multi-node cluster.
+
+```
+       USER BROWSER (Single Static Entry DNS / VIP)
+                           │
+             [ HTTP 307 UI Steering Middleware ]
+                           ▼
+             ELECTED ORCHESTRATOR NODE (Leader)
+          ┌──────────────────────────────────────┐
+          │ • Serves Unified React C2 Dashboard  │
+          │ • Cluster Management Hub             │
+          │ • Schedulers & Workload Balancer     │
+          └──────────────────┬───────────────────┘
+                             │
+            ┌────────────────┴────────────────┐
+            ▼                                 ▼
+     NODE A (🔥 HOT)                   NODE B (🟡 STANDBY)
+   ┌───────────────────────┐         ┌───────────────────────┐
+   │ • Ingests Live Streams│         │ • Failover Hot Spare  │
+   │ • Processes NLE Cuts  │         │ • Warm Standby Reserve│
+   │ • NVENC / QSV Accel   │         │ • Instant Promotion   │
+   └───────────────────────┘         └───────────────────────┘
+```
+
+#### Architectural Components & Implementation
+
+1. **Single-Entry Orchestrator Steering Middleware (`Program.cs`)**:
+   - Injected in HTTP pipeline before static file handling:
+     ```csharp
+     app.Use(async (context, next) =>
+     {
+         var path = context.Request.Path.Value?.ToLowerInvariant();
+         if (context.Request.Method == "GET" && 
+             (path == "/" || path == "/index.html" || string.IsNullOrEmpty(path)) &&
+             context.Request.Headers.Accept.Any(a => a != null && a.Contains("text/html")))
+         {
+             var clusterSvc = context.RequestServices.GetService<IClusterService>();
+             var cfgMon = context.RequestServices.GetService<IOptionsMonitor<SystemConfig>>();
+             var disc = cfgMon?.CurrentValue?.Discovery;
+
+             if (clusterSvc != null && disc != null &&
+                 !string.Equals(disc.Role, ServerDiscoveryConstants.RoleStandalone, StringComparison.OrdinalIgnoreCase) &&
+                 !clusterSvc.IsLocalNodeOrchestrator)
+             {
+                 var orch = clusterSvc.GetOrchestratorNode();
+                 if (orch != null && !string.IsNullOrWhiteSpace(orch.ApiBaseUrl))
+                 {
+                     string targetUrl = (!string.IsNullOrWhiteSpace(disc.VirtualIp) && disc.EnableVirtualIp)
+                         ? $"{context.Request.Scheme}://{disc.VirtualIp.Trim()}:{context.Connection.LocalPort}/"
+                         : orch.ApiBaseUrl.TrimEnd('/') + "/";
+
+                     if (Uri.TryCreate(targetUrl, UriKind.Absolute, out var targetUri) &&
+                         !targetUri.Host.Equals(context.Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+                     {
+                         context.Response.Redirect(targetUrl, permanent: false);
+                         return;
+                     }
+                 }
+             }
+         }
+         await next();
+     });
+     ```
+   - Guarantees that browser requests arriving at any secondary worker node automatically redirect to the Orchestrator or Virtual IP, while preserving transparent API, WHEP, and inter-node C2 endpoints untouched.
+
+2. **Cluster-Wide Video Encoder Fleet Status (`ClusterSettingsTab.jsx` & `ClusterService.cs`)**:
+   - `ClusterGridStatusDto` expanded with fleet encoder telemetry:
+     - `ClusterEncoderStatus`: Synthesized health string (e.g., `Optimal (All Hardware NVENC/QSV Accelerated)` or `Hybrid Hardware / CPU Fallback`).
+     - `ClusterHardwareEncodersCount`: Number of nodes utilizing hardware encoders.
+     - `ClusterTotalEncoderCapacityStreams`: Aggregated transcode capacity across all nodes.
+     - `ClusterGpuModels`: Distinct list of all GPU models detected in the cluster fleet.
+   - Surfaced prominently in `ClusterSettingsTab.jsx` inside `.cluster-encoder-health-card` above the node blades.
+
+3. **Node Backup Role Toggle & Lifecycle Controls (`ClusterSettingsTab.jsx`)**:
+   - Endpoints:
+     - `POST /api/v1/cluster/nodes/{nodeId}/mode?mode={Hot|Standby}`
+     - `POST /api/v1/cluster/c2/node-mode` (inter-node C2 sync)
+     - `GET /api/v1/cluster/orchestrator` (returns orchestrator node identity, VIP, and local status)
+   - Node blades render explicit backup badges: `🔥 HOT (Active Ingest)` vs `🟡 STANDBY (Hot Spare)`.
+   - Operators can toggle any node between Hot and Standby with one click directly from the blade toolbar (`[ 🔥 Set HOT ]` / `[ 🟡 Set STANDBY ]`).
+   - Workload capacity progress bars visualize current stream load (`activeStreamsCount / maxStreamsCapacity`) and NLE video processing load (`activeJobsCount / maxConcurrentJobs`).
+
+4. **Normalized Cluster Health Diagnostics (`SystemOverviewTab.jsx`)**:
+   - When running in a cluster (`isClusterActive`):
+     - **Normalized Platform Health Score**: Incorporates workstation operational status, cluster dropped frames, offline node deductions (-20 pts per down node), and node overload penalties.
+     - **Aggregated CPU Sparkline Chart**: Graphs cluster-wide mean CPU utilization (`aggregateCpuPct`) and app process overhead (`aggregateAppCpuPct`).
+     - **Pooled RAM Sparkline Chart**: Graphs pooled used RAM (in GB) against total cluster memory pool (`aggregateTotalRamGb`).
+     - **Fleet Network Throughput Chart**: Graphs aggregated ingress Rx and egress WHEP Tx in Mbps.
+     - **Hero Status Banner**: Displays `Central Command & Unified Cluster Health` with dynamic cluster mode and online node badges.
+
+5. **Dashboard Header Telemetry Alignment (`ServerTelemetryWidget.jsx`)**:
+   - In cluster mode, telemetry pods dynamically update titles to:
+     - `CLUSTER CPU`: Displays aggregate CPU % and node average subtext.
+     - `CLUSTER RAM`: Displays pooled used memory vs total cluster memory (GB).
+     - `CLUSTER NETWORK`: Displays total combined fleet throughput and link capacity.
+   - Tooltips provide deep multi-node diagnostics without requiring operators to switch scopes.
+
+---
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

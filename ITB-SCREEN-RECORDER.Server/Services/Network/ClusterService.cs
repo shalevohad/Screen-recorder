@@ -277,6 +277,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                                                       string.Equals(n.Role, ServerDiscoveryConstants.RoleSecondary, StringComparison.OrdinalIgnoreCase));
 
             double avgCpu = onlineNodes.Count > 0 ? Math.Round(onlineNodes.Average(n => n.HostCpuPct), 1) : 0;
+            double avgAppCpu = onlineNodes.Count > 0 ? Math.Round(onlineNodes.Average(n => n.GpuNvencPct > 0 ? n.GpuNvencPct : (n.HostCpuPct * 0.2)), 1) : 0;
             double totalRamGb = onlineNodes.Sum(n => n.TotalRamGb);
             double usedRamGb = Math.Round(onlineNodes.Sum(n => n.TotalRamGb * (n.HostRamPct / 100.0)), 1);
             double ramPct = totalRamGb > 0 ? Math.Round((usedRamGb / totalRamGb) * 100.0, 1) : 0;
@@ -286,6 +287,33 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             double totalNet = Math.Round(totalTx + totalRx, 2);
             double totalSpeed = onlineNodes.Sum(n => n.LinkSpeedMbps > 0 ? n.LinkSpeedMbps : 1000);
             double netUtil = totalSpeed > 0 ? Math.Min(100.0, Math.Round((totalNet / totalSpeed) * 100.0, 1)) : 0;
+
+            // Cluster-wide encoder status & GPU models aggregation
+            var gpuModels = onlineNodes
+                .Where(n => !string.IsNullOrWhiteSpace(n.GpuModel) && !n.GpuModel.Equals("CPU Software", StringComparison.OrdinalIgnoreCase))
+                .Select(n => $"{n.DisplayName}: {n.GpuModel}")
+                .Distinct()
+                .ToList();
+
+            int hwEncoders = onlineNodes.Count(n =>
+                !string.IsNullOrWhiteSpace(n.EncoderType) &&
+                (n.EncoderType.Contains("nvenc", StringComparison.OrdinalIgnoreCase) ||
+                 n.EncoderType.Contains("qsv", StringComparison.OrdinalIgnoreCase) ||
+                 n.EncoderType.Contains("amf", StringComparison.OrdinalIgnoreCase)));
+
+            string clusterEncoderStatus;
+            if (onlineNodes.Count > 0 && hwEncoders == onlineNodes.Count)
+            {
+                clusterEncoderStatus = "Optimal (All Hardware NVENC/QSV Accelerated)";
+            }
+            else if (hwEncoders > 0)
+            {
+                clusterEncoderStatus = $"Hybrid ({hwEncoders}/{onlineNodes.Count} Hardware Accelerated, Remainder CPU Fallback)";
+            }
+            else
+            {
+                clusterEncoderStatus = "CPU Software Encoding (libx264)";
+            }
 
             return new ClusterGridStatusDto
             {
@@ -307,6 +335,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
                 // Overall Cluster Telemetry Aggregates
                 AggregateCpuPct = avgCpu,
+                AggregateAppCpuPct = avgAppCpu,
                 AggregateRamPct = ramPct,
                 AggregateTotalRamGb = Math.Round(totalRamGb, 1),
                 AggregateUsedRamGb = usedRamGb,
@@ -320,6 +349,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 EnableVirtualIp = disc.EnableVirtualIp,
                 VirtualIp = disc.VirtualIp,
                 IsVipBoundLocally = isVipBound,
+                ClusterEncoderStatus = clusterEncoderStatus,
+                ClusterHardwareEncodersCount = hwEncoders,
+                ClusterTotalEncoderCapacityStreams = nodesList.Sum(n => n.MaxStreamsCapacity),
+                ClusterGpuModels = gpuModels,
                 Nodes = nodesList
             };
         }
@@ -2014,6 +2047,111 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
 
             return new ClusterActionResultDto { Success = false, Message = $"Node '{nodeId}' not found.", TargetNodeId = nodeId };
+        }
+
+        public bool IsLocalNodeOrchestrator => string.Equals(_orchestratorNodeId, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
+
+        public ClusterNodeDescriptor? GetOrchestratorNode()
+        {
+            if (!string.IsNullOrEmpty(_orchestratorNodeId) && _clusterNodes.TryGetValue(_orchestratorNodeId, out var orch))
+            {
+                return orch;
+            }
+            return _clusterNodes.Values.FirstOrDefault(n => n.IsOrchestrator && n.IsOnline)
+                ?? _clusterNodes.Values.FirstOrDefault(n => n.IsOnline);
+        }
+
+        public async Task<ClusterActionResultDto> SetNodeModeAsync(string nodeId, string mode, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(nodeId)) return new ClusterActionResultDto { Success = false, Message = "NodeId is required." };
+            string normalizedMode = string.Equals(mode, "Standby", StringComparison.OrdinalIgnoreCase)
+                ? ServerDiscoveryConstants.NodeModeStandby
+                : ServerDiscoveryConstants.NodeModeActive;
+
+            string localId = Environment.MachineName;
+            if (nodeId.Equals(localId, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_clusterNodes.TryGetValue(localId, out var localDesc))
+                {
+                    localDesc.NodeMode = normalizedMode;
+                    localDesc.State = normalizedMode == ServerDiscoveryConstants.NodeModeStandby
+                        ? ClusterNodeState.Standby.ToString()
+                        : ClusterNodeState.Active.ToString();
+                }
+
+                var syncService = GetSyncService();
+                if (syncService != null)
+                {
+                    await syncService.UpdateSystemConfigAsync(c =>
+                    {
+                        c.Discovery ??= new DiscoverySettings();
+                        c.Discovery.NodeMode = normalizedMode;
+                        c.Discovery.NodeRole = normalizedMode == ServerDiscoveryConstants.NodeModeStandby
+                            ? ServerDiscoveryConstants.RoleSecondary
+                            : ServerDiscoveryConstants.RoleWorker;
+                    });
+                }
+
+                await BroadcastNodeModeAsync(nodeId, normalizedMode, ct);
+                return new ClusterActionResultDto { Success = true, Message = $"Local node backup mode set to '{normalizedMode}'.", TargetNodeId = localId };
+            }
+
+            // Remote node
+            if (_clusterNodes.TryGetValue(nodeId, out var remoteNode) && !string.IsNullOrWhiteSpace(remoteNode.ApiBaseUrl))
+            {
+                try
+                {
+                    using var client = CreateClusterHttpClient();
+                    var res = await client.PostAsync($"{remoteNode.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/nodes/{nodeId}/mode?mode={normalizedMode}", null, ct);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        remoteNode.NodeMode = normalizedMode;
+                        remoteNode.State = normalizedMode == ServerDiscoveryConstants.NodeModeStandby
+                            ? ClusterNodeState.Standby.ToString()
+                            : ClusterNodeState.Active.ToString();
+
+                        await BroadcastNodeModeAsync(nodeId, normalizedMode, ct);
+                        return new ClusterActionResultDto { Success = true, Message = $"Node '{nodeId}' backup mode set to '{normalizedMode}'.", TargetNodeId = nodeId };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new ClusterActionResultDto { Success = false, Message = $"Failed contacting node '{nodeId}': {ex.Message}", TargetNodeId = nodeId };
+                }
+            }
+
+            return new ClusterActionResultDto { Success = false, Message = $"Node '{nodeId}' not found.", TargetNodeId = nodeId };
+        }
+
+        public async Task BroadcastNodeModeAsync(string nodeId, string mode, CancellationToken ct = default)
+        {
+            var req = new ClusterNodeModeRequest { NodeId = nodeId, Mode = mode };
+            var peers = _clusterNodes.Values
+                .Where(n => n.IsOnline && !string.IsNullOrWhiteSpace(n.ApiBaseUrl) && !n.NodeId.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            using var client = CreateClusterHttpClient();
+            foreach (var peer in peers)
+            {
+                try
+                {
+                    _ = client.PostAsJsonAsync($"{peer.ApiBaseUrl.TrimEnd('/')}/api/v1/cluster/c2/node-mode", req, ct);
+                }
+                catch { }
+            }
+        }
+
+        public void ApplyInterNodeNodeMode(ClusterNodeModeRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.NodeId)) return;
+            if (_clusterNodes.TryGetValue(req.NodeId, out var node))
+            {
+                node.NodeMode = req.Mode;
+                node.State = string.Equals(req.Mode, ServerDiscoveryConstants.NodeModeStandby, StringComparison.OrdinalIgnoreCase)
+                    ? ClusterNodeState.Standby.ToString()
+                    : ClusterNodeState.Active.ToString();
+                _logger.LogInformation("[CLUSTER C2] Applied inter-node backup mode for '{NodeId}' -> '{Mode}'", req.NodeId, req.Mode);
+            }
         }
 
         #endregion

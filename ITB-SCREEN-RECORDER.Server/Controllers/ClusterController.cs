@@ -297,9 +297,49 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(new { success = true });
         }
 
+        /// <summary>
+        /// Inter-node C2 endpoint: synchronizes node backup mode (Active/Hot vs Standby) across all cluster nodes.
+        /// </summary>
+        [HttpPost("c2/node-mode")]
+        [AllowAnonymous]
+        public IActionResult ApplyNodeMode([FromBody] ClusterNodeModeRequest req)
+        {
+            _clusterService.ApplyInterNodeNodeMode(req);
+            return Ok(new { success = true });
+        }
+
+        /// <summary>
+        /// Resolves the currently active Orchestrator node URL and Virtual IP for single-entry routing.
+        /// </summary>
+        [HttpGet("orchestrator")]
+        [AllowAnonymous]
+        public IActionResult GetOrchestratorInfo()
+        {
+            var orch = _clusterService.GetOrchestratorNode();
+            return Ok(new
+            {
+                orchestratorNodeId = orch?.NodeId ?? "Unknown",
+                apiBaseUrl = orch?.ApiBaseUrl ?? string.Empty,
+                isLocal = _clusterService.IsLocalNodeOrchestrator,
+                displayName = orch?.DisplayName ?? string.Empty
+            });
+        }
+
         #endregion
 
         #region Node Administrative Lifecycle Operations
+
+        /// <summary>
+        /// Sets a cluster node into Hot (Active) or Standby backup mode.
+        /// </summary>
+        [HttpPost("nodes/{nodeId}/mode")]
+        [AuthorizePermission(PermissionKeys.SettingsCluster)]
+        public async Task<IActionResult> SetNodeMode(string nodeId, [FromQuery] string mode, CancellationToken ct)
+        {
+            _logger.LogWarning("[CLUSTER API] Set mode={Mode} for node '{Node}' requested by {User}", mode, nodeId, User.Identity?.Name ?? "Admin");
+            var result = await _clusterService.SetNodeModeAsync(nodeId, mode, ct);
+            return result.Success ? Ok(result) : StatusCode(400, result);
+        }
 
         /// <summary>
         /// Sets a cluster node into Draining (maintenance) or Active mode.

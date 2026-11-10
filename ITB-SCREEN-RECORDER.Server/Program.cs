@@ -5,6 +5,7 @@ using ITB_SCREEN_RECORDER.Core.Abstractions;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Plugins;
 using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using ITB_SCREEN_RECORDER.Server.Data;
@@ -411,6 +412,42 @@ namespace ITB_SCREEN_RECORDER.Server
                 app.UseStaticFiles();
                 app.UseRouting();
                 app.UseCors();
+
+                // Rule: Single Entry Point to Orchestrator (ORC) Dashboard
+                app.Use(async (context, next) =>
+                {
+                    var path = context.Request.Path.Value ?? "";
+                    if (context.Request.Method == "GET" &&
+                        (path == "/" || path == "/index.html" || string.IsNullOrEmpty(path)) &&
+                        context.Request.Headers.Accept.Any(a => a != null && a.Contains("text/html")))
+                    {
+                        var clusterSvc = context.RequestServices.GetService<ITB_SCREEN_RECORDER.Server.Services.Network.IClusterService>();
+                        var cfgMon = context.RequestServices.GetService<Microsoft.Extensions.Options.IOptionsMonitor<SystemConfig>>();
+                        var disc = cfgMon?.CurrentValue?.Discovery;
+
+                        if (clusterSvc != null && disc != null &&
+                            !string.Equals(disc.Role, ServerDiscoveryConstants.RoleStandalone, StringComparison.OrdinalIgnoreCase) &&
+                            !clusterSvc.IsLocalNodeOrchestrator)
+                        {
+                            var orch = clusterSvc.GetOrchestratorNode();
+                            if (orch != null && !string.IsNullOrWhiteSpace(orch.ApiBaseUrl))
+                            {
+                                string targetUrl = (!string.IsNullOrWhiteSpace(disc.VirtualIp) && disc.EnableVirtualIp)
+                                    ? $"{context.Request.Scheme}://{disc.VirtualIp.Trim()}:{context.Connection.LocalPort}/"
+                                    : orch.ApiBaseUrl.TrimEnd('/') + "/";
+
+                                if (Uri.TryCreate(targetUrl, UriKind.Absolute, out var targetUri) &&
+                                    !targetUri.Host.Equals(context.Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    Logger.AlwaysInfo($"[ORCHESTRATOR ROUTER] Steering browser session from worker to Orchestrator ({targetUrl})...");
+                                    context.Response.Redirect(targetUrl, permanent: false);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    await next();
+                });
 
                 app.Use(async (context, next) =>
                 {

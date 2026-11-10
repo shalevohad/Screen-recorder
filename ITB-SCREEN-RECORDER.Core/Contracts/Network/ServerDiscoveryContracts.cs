@@ -770,8 +770,29 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("isVipBoundLocally")]
         public bool IsVipBoundLocally { get; set; }
 
+        [JsonPropertyName("clusterEncoderStatus")]
+        public string ClusterEncoderStatus { get; set; } = "Hardware Accelerated";
+
+        [JsonPropertyName("clusterHardwareEncodersCount")]
+        public int ClusterHardwareEncodersCount { get; set; }
+
+        [JsonPropertyName("clusterTotalEncoderCapacityStreams")]
+        public int ClusterTotalEncoderCapacityStreams { get; set; }
+
+        [JsonPropertyName("clusterGpuModels")]
+        public List<string> ClusterGpuModels { get; set; } = new();
+
         [JsonPropertyName("nodes")]
         public List<ClusterNodeDescriptor> Nodes { get; set; } = new();
+    }
+
+    public class ClusterNodeModeRequest
+    {
+        [JsonPropertyName("nodeId")]
+        public string NodeId { get; set; } = string.Empty;
+
+        [JsonPropertyName("mode")]
+        public string Mode { get; set; } = ServerDiscoveryConstants.NodeModeActive; // "Active" (Hot) or "Standby"
     }
 
     public class ClusterJobDispatchRequest

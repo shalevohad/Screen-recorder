@@ -211,6 +211,27 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
         }
     };
 
+    const handleToggleNodeMode = async (nodeId, newMode) => {
+        setClusterActionLoading(true);
+        setClusterFeedback(null);
+        try {
+            const res = await fetch(`/api/v1/cluster/nodes/${encodeURIComponent(nodeId)}/mode?mode=${encodeURIComponent(newMode)}`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setClusterFeedback({ type: 'success', message: data.message || `Node '${nodeId}' set to ${newMode}.` });
+                await fetchClusterStatus();
+            } else {
+                setClusterFeedback({ type: 'error', message: data.message || `Failed to change mode for node '${nodeId}'.` });
+            }
+        } catch (err) {
+            setClusterFeedback({ type: 'error', message: err.message || 'Mode change request failed.' });
+        } finally {
+            setClusterActionLoading(false);
+        }
+    };
+
     const [editingNodeCapacities, setEditingNodeCapacities] = useState(null);
     const [nodeCapStreams, setNodeCapStreams] = useState(50);
     const [nodeCapJobs, setNodeCapJobs] = useState(2);
@@ -567,11 +588,96 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                         </div>
                     </div>
 
+                    {/* CLUSTER-WIDE HARDWARE ENCODER STATUS & FLEET CAPACITY CARD */}
+                    <div className="cluster-encoder-health-card">
+                        <div className="encoder-card-header">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '1.25rem' }}>🎬</span>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{
+                                            fontSize: '0.66rem',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            background: (clusterGrid.clusterHardwareEncodersCount || 0) > 0 ? '#10B981' : '#F59E0B',
+                                            color: '#0F172A',
+                                            fontWeight: 900
+                                        }}>
+                                            {(clusterGrid.clusterHardwareEncodersCount || 0) > 0 ? 'HARDWARE ACCELERATED' : 'CPU SOFTWARE ONLY'}
+                                        </span>
+                                        <h4 style={{ margin: 0, fontSize: '0.92rem', color: '#F8FAFC' }}>
+                                            CLUSTER-WIDE VIDEO ENCODER FLEET STATUS
+                                        </h4>
+                                    </div>
+                                    <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                        Fleet-wide video encoding status, hardware GPU offload, and aggregate transcode capacity across all nodes.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                background: 'rgba(15, 23, 42, 0.7)',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(56, 189, 248, 0.25)'
+                            }}>
+                                <span style={{ fontSize: '0.72rem', color: '#CBD5E1' }}>Overall Encoder State:</span>
+                                <span style={{
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800,
+                                    color: (clusterGrid.clusterHardwareEncodersCount || 0) === clusterGrid.totalNodes ? '#34D399' : '#38BDF8'
+                                }}>
+                                    {clusterGrid.clusterEncoderStatus || 'Evaluating...'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="encoder-stats-matrix">
+                            <div>
+                                <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>HW Accelerated Encoders</span>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#38BDF8', fontFamily: 'monospace' }}>
+                                    {clusterGrid.clusterHardwareEncodersCount || 0} / {clusterGrid.totalNodes || 1} Nodes
+                                </div>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Total Fleet Encoding Capacity</span>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#34D399', fontFamily: 'monospace' }}>
+                                    ~{clusterGrid.clusterTotalEncoderCapacityStreams || (clusterGrid.totalStreamsCapacity || 100)} Streams
+                                </div>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Fleet Dropped Frames</span>
+                                <div style={{
+                                    fontSize: '1.1rem',
+                                    fontWeight: 800,
+                                    color: (clusterGrid.totalDroppedFrames || 0) > 0 ? '#F43F5E' : '#10B981',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    {clusterGrid.totalDroppedFrames || 0} Frames {(clusterGrid.totalDroppedFrames || 0) === 0 ? '✓ ZERO DROPS' : '⚠️ Jitter'}
+                                </div>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Detected Fleet GPUs</span>
+                                <div style={{ fontSize: '0.76rem', color: '#F1F5F9', fontFamily: 'monospace', marginTop: '2px' }}>
+                                    {clusterGrid.clusterGpuModels && clusterGrid.clusterGpuModels.length > 0
+                                        ? clusterGrid.clusterGpuModels.join(', ')
+                                        : 'CPU libx264 software only'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="cluster-nodes-grid">
                         {clusterGrid.nodes?.map(node => {
                             const isStandbyNode = node.nodeMode === 'Standby' || node.role === 'Secondary';
                             const isOverloaded = node.isOverloaded || node.hostCpuPct >= 75.0;
                             const isLinux = node.osPlatform === 'Linux' || (node.osDescription && node.osDescription.toLowerCase().includes('linux'));
+                            const nodeStreamsPct = Math.round((node.activeStreamsCount / Math.max(1, node.maxStreamsCapacity)) * 100);
+                            const nodeJobsPct = Math.round((node.activeJobsCount / Math.max(1, node.maxConcurrentJobs)) * 100);
+                            const isHwEncoder = node.encoderType && node.encoderType !== 'libx264';
 
                             let nodeClass = 'worker';
                             if (!node.isOnline) nodeClass = 'offline';
@@ -609,10 +715,12 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                                 </span>
                                             ) : (
                                                 <span className="role-badge" style={{
-                                                    background: isStandbyNode ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                                    color: isStandbyNode ? '#FDE047' : '#34D399'
+                                                    background: isStandbyNode ? 'rgba(234, 179, 8, 0.25)' : 'rgba(244, 63, 94, 0.25)',
+                                                    color: isStandbyNode ? '#FDE047' : '#FDA4AF',
+                                                    border: `1px solid ${isStandbyNode ? 'rgba(234, 179, 8, 0.4)' : 'rgba(244, 63, 94, 0.4)'}`,
+                                                    fontWeight: 800
                                                 }}>
-                                                    {isStandbyNode ? 'STANDBY' : 'ACTIVE'}
+                                                    {isStandbyNode ? '🟡 STANDBY' : '🔥 HOT'}
                                                 </span>
                                             )}
                                             <span className="role-badge" style={{
@@ -632,7 +740,7 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                     {/* Hardware Spec & Power Index */}
                                     <div className="hardware-spec-strip">
                                         <span className="spec-text">
-                                            {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`} • {node.encoderType || 'libx264'}
+                                            {node.gpuModel && node.gpuModel !== 'CPU Software' ? `🎮 ${node.gpuModel}` : `💻 ${node.cpuCores || 4}C / ${Math.round(node.totalRamGb || 8)}GB`} • <strong style={{ color: isHwEncoder ? '#34D399' : '#CBD5E1' }}>{node.encoderType || 'libx264'}</strong> {isHwEncoder ? '⚡ [HW ACCEL]' : '💻 [CPU SW]'}
                                         </span>
                                         <span className="pwr-rating-pill" style={{
                                             background: (node.hardwareCapabilityScore || 200) >= 600 ? 'rgba(16, 185, 129, 0.25)' : ((node.hardwareCapabilityScore || 200) >= 300 ? 'rgba(6, 182, 212, 0.25)' : 'rgba(148, 163, 184, 0.2)'),
@@ -642,26 +750,45 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                         </span>
                                     </div>
 
-                                    {/* Streams & Jobs Capacity */}
-                                    <div className="blade-metrics-row">
-                                        <span>IP: <strong style={{ color: '#38BDF8', fontFamily: 'monospace' }}>{node.localIps?.[0] || 'Auto'}</strong></span>
-                                        <span>Streams: <strong style={{ color: '#F8FAFC' }}>{node.activeStreamsCount} / {node.maxStreamsCapacity}</strong></span>
-                                        <span>NLE Jobs: <strong style={{ color: '#F8FAFC' }}>{node.activeJobsCount} / {node.maxConcurrentJobs}</strong></span>
-                                    </div>
-                                    {node.recommendedStreamsCapacity > 0 && (
-                                        <div style={{ fontSize: '0.67rem', color: '#94A3B8', display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                                            <span>Hardware Baseline:</span>
-                                            <span style={{ color: '#38BDF8', fontFamily: 'monospace', fontWeight: 700 }}>
-                                                ⚡ {node.recommendedStreamsCapacity} Str • {node.recommendedConcurrentJobs} Jobs
-                                            </span>
+                                    {/* Streams Ingestion Load Progress Bar */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem' }}>
+                                            <span style={{ color: '#94A3B8' }}>Streams Load:</span>
+                                            <strong style={{ color: nodeStreamsPct > 75 ? '#F43F5E' : '#F8FAFC', fontFamily: 'monospace' }}>
+                                                {node.activeStreamsCount} / {node.maxStreamsCapacity} ({nodeStreamsPct}%)
+                                            </strong>
                                         </div>
-                                    )}
+                                        <div style={{ width: '100%', height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                                            <div style={{
+                                                width: `${Math.min(100, Math.max(3, nodeStreamsPct))}%`,
+                                                height: '100%',
+                                                background: nodeStreamsPct > 75 ? '#F43F5E' : '#10B981'
+                                            }} />
+                                        </div>
+                                    </div>
 
-                                    {/* CPU & GPU Telemetry */}
-                                    <div className="blade-metrics-row" style={{ fontSize: '0.7rem' }}>
+                                    {/* Video NLE Render Cuts Load Progress Bar */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem' }}>
+                                            <span style={{ color: '#94A3B8' }}>NLE Render Jobs:</span>
+                                            <strong style={{ color: '#F472B6', fontFamily: 'monospace' }}>
+                                                {node.activeJobsCount} / {node.maxConcurrentJobs} ({nodeJobsPct}%)
+                                            </strong>
+                                        </div>
+                                        <div style={{ width: '100%', height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                                            <div style={{
+                                                width: `${Math.min(100, Math.max(3, nodeJobsPct))}%`,
+                                                height: '100%',
+                                                background: nodeJobsPct > 80 ? '#F43F5E' : '#F472B6'
+                                            }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Hardware Resource Telemetry: CPU, RAM & Network */}
+                                    <div className="blade-metrics-row" style={{ fontSize: '0.69rem', background: 'rgba(15, 23, 42, 0.4)', padding: '4px 6px', borderRadius: '4px' }}>
                                         <span>CPU: <strong style={{ color: isOverloaded ? '#F43F5E' : '#34D399' }}>{Math.round(node.hostCpuPct || 0)}%</strong></span>
-                                        <span>GPU: <strong style={{ color: '#38BDF8' }}>{Math.round(node.gpuNvencPct || 0)}%</strong></span>
-                                        <span>Priority: <strong style={{ color: '#E2E8F0' }}>{node.priority}</strong></span>
+                                        <span>RAM: <strong style={{ color: '#38BDF8' }}>{Math.round(node.usedRamGb || 0)}G/{Math.round(node.totalRamGb || 8)}G</strong></span>
+                                        <span>NET: <strong style={{ color: '#A855F7' }}>↓{Math.round(node.networkRxMbps || 0)}M ↑{Math.round(node.networkTxMbps || 0)}M</strong></span>
                                     </div>
 
                                     {/* Ingest Pressure & Overload Guard Bar */}
@@ -703,6 +830,18 @@ export default function ClusterSettingsTab({ form, updateDiscoveryField }) {
                                                 title="Promote this node to Cluster Orchestrator"
                                             >
                                                 👑 Promote Leader
+                                            </button>
+                                        )}
+
+                                        {node.isOnline && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleNodeMode(node.nodeId, isStandbyNode ? 'Hot' : 'Standby')}
+                                                disabled={clusterActionLoading}
+                                                className={`btn-node-action ${isStandbyNode ? 'btn-mode-hot' : 'btn-mode-standby'}`}
+                                                title={isStandbyNode ? "Promote node to HOT (Active Ingest & Processing)" : "Set node to STANDBY (Reserve Hot Spare)"}
+                                            >
+                                                {isStandbyNode ? '🔥 Set HOT' : '🟡 Set STANDBY'}
                                             </button>
                                         )}
 

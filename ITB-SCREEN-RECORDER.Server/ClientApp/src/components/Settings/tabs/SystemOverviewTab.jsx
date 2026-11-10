@@ -268,6 +268,7 @@ export default function SystemOverviewTab({
 
             let sData = null;
             let tData = null;
+            let gData = null;
 
             if (storageRes.status === 'fulfilled' && storageRes.value.ok) {
                 sData = await storageRes.value.json();
@@ -278,26 +279,48 @@ export default function SystemOverviewTab({
                 setServerTelemetry(tData);
             }
             if (gridRes.status === 'fulfilled' && gridRes.value.ok) {
-                const gData = await gridRes.value.json();
+                gData = await gridRes.value.json();
                 setClusterGrid(gData);
             }
 
-            // Append live point to rolling chart history
+            // Append live point to rolling chart history (normalized to cluster in cluster mode)
             setHistory(prev => {
                 const onlineStations = stations.filter(s => s.isOnline || s.isProcessRunning);
                 const avgFps = onlineStations.length > 0
                     ? Math.round(onlineStations.reduce((acc, s) => acc + (s.actualFps || 30), 0) / onlineStations.length)
                     : 30;
-                const totalDrops = stations.reduce((acc, s) => acc + (s.droppedFrames || 0), 0);
 
-                const hostCpu = tData?.hostCpuPct ?? (prev[prev.length - 1]?.hostCpu ?? 15);
-                const appCpu = tData?.processCpuPct ?? (prev[prev.length - 1]?.appCpu ?? 5);
-                const ramMb = tData?.processRamMb ?? (prev[prev.length - 1]?.ramMb ?? 450);
-                const ramPct = tData?.hostTotalRamMb && tData.hostTotalRamMb > 0
-                    ? Math.round(((tData.processRamMb || 450) / tData.hostTotalRamMb) * 100)
-                    : 25;
-                const netTx = tData?.serverNetworkTxMbps ?? (prev[prev.length - 1]?.netTx ?? 12);
-                const netRx = tData?.serverNetworkRxMbps ?? (prev[prev.length - 1]?.netRx ?? 24);
+                const isClusterMode = Boolean(gData && (gData.totalNodes > 1 || (gData.clusterMode && gData.clusterMode !== 'Standalone')));
+
+                const hostCpu = isClusterMode
+                    ? (gData.aggregateCpuPct ?? tData?.hostCpuPct ?? prev[prev.length - 1]?.hostCpu ?? 15)
+                    : (tData?.hostCpuPct ?? prev[prev.length - 1]?.hostCpu ?? 15);
+
+                const appCpu = isClusterMode
+                    ? (gData.aggregateAppCpuPct ?? tData?.processCpuPct ?? prev[prev.length - 1]?.appCpu ?? 5)
+                    : (tData?.processCpuPct ?? prev[prev.length - 1]?.appCpu ?? 5);
+
+                const ramMb = isClusterMode
+                    ? ((gData.aggregateUsedRamGb || 4) * 1024)
+                    : (tData?.processRamMb ?? prev[prev.length - 1]?.ramMb ?? 450);
+
+                const totalRamMb = isClusterMode
+                    ? ((gData.aggregateTotalRamGb || 32) * 1024)
+                    : (tData?.hostTotalRamMb || 16384);
+
+                const ramPct = Math.round((ramMb / Math.max(1, totalRamMb)) * 100);
+
+                const netTx = isClusterMode
+                    ? (gData.aggregateNicTxMbps ?? tData?.serverNetworkTxMbps ?? prev[prev.length - 1]?.netTx ?? 12)
+                    : (tData?.serverNetworkTxMbps ?? prev[prev.length - 1]?.netTx ?? 12);
+
+                const netRx = isClusterMode
+                    ? (gData.aggregateNicRxMbps ?? tData?.serverNetworkRxMbps ?? prev[prev.length - 1]?.netRx ?? 24)
+                    : (tData?.serverNetworkRxMbps ?? prev[prev.length - 1]?.netRx ?? 24);
+
+                const totalDrops = isClusterMode
+                    ? (gData.totalDroppedFrames ?? stations.reduce((acc, s) => acc + (s.droppedFrames || 0), 0))
+                    : stations.reduce((acc, s) => acc + (s.droppedFrames || 0), 0);
 
                 const nextPoint = {
                     hostCpu: Math.round(Math.max(0, Math.min(100, hostCpu)) * 10) / 10,
@@ -326,7 +349,9 @@ export default function SystemOverviewTab({
         return () => clearInterval(interval);
     }, [fetchTelemetry]);
 
-    // Fleet station counters
+    const isClusterActive = Boolean(clusterGrid && (clusterGrid.totalNodes > 1 || (clusterGrid.clusterMode && clusterGrid.clusterMode !== 'Standalone')));
+
+    // Fleet station counters & normalized cluster health
     const metrics = useMemo(() => {
         const total = stations.length;
         const online = stations.filter(s => s.isOnline || s.isProcessRunning).length;
@@ -348,6 +373,23 @@ export default function SystemOverviewTab({
             healthScore = Math.max(15, Math.round(100 - dropImpact - (offlineRatio * 35)));
         }
 
+        // Factor in Cluster Nodes Health & Load normalization
+        if (isClusterActive && clusterGrid) {
+            const totalNodes = clusterGrid.totalNodes || 1;
+            const onlineNodes = clusterGrid.onlineNodesCount ?? clusterGrid.onlineNodes ?? 1;
+            const deadNodes = Math.max(0, totalNodes - onlineNodes);
+            if (deadNodes > 0) {
+                healthScore = Math.max(10, healthScore - (deadNodes * 20));
+            }
+            const overloadedNodes = clusterGrid.nodes?.filter(n => n.isOverloaded || (n.hostCpuPct || 0) >= 80).length || 0;
+            if (overloadedNodes > 0) {
+                healthScore = Math.max(10, healthScore - (overloadedNodes * 10));
+            }
+            if ((clusterGrid.aggregateCpuPct || 0) >= 85) {
+                healthScore = Math.max(10, healthScore - 15);
+            }
+        }
+
         return {
             total,
             online,
@@ -361,7 +403,7 @@ export default function SystemOverviewTab({
             offlinePct,
             healthScore
         };
-    }, [stations]);
+    }, [stations, isClusterActive, clusterGrid]);
 
     const formatBytes = (bytes) => {
         if (!bytes || bytes <= 0) return '0 B';
@@ -426,12 +468,26 @@ export default function SystemOverviewTab({
                         data-status={metrics.healthScore >= 80 ? 'optimal' : metrics.healthScore >= 50 ? 'warning' : 'critical'}
                     >
                         <span className="health-score-val">{metrics.healthScore}%</span>
-                        <span className="health-score-label">PLATFORM HEALTH</span>
+                        <span className="health-score-label">{isClusterActive ? 'CLUSTER HEALTH' : 'PLATFORM HEALTH'}</span>
                     </div>
                     <div className="hero-titles">
                         <div className="hero-heading-row">
-                            <h2 className="hero-main-title">Central Command & Platform Health</h2>
-                            <span className="airgap-badge">🔒 100% AIR-GAPPED & OFFLINE</span>
+                            <h2 className="hero-main-title">
+                                {isClusterActive ? 'Central Command & Unified Cluster Health' : 'Central Command & Platform Health'}
+                            </h2>
+                            <span className="airgap-badge">🔒 100% AIR-GAPPED &amp; OFFLINE</span>
+                            {isClusterActive && clusterGrid && (
+                                <span style={{
+                                    fontSize: '0.68rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    background: '#06B6D4',
+                                    color: '#0F172A',
+                                    fontWeight: 900
+                                }}>
+                                    👑 CLUSTER: {clusterGrid.clusterMode || 'ACTIVE-ACTIVE'} ({clusterGrid.onlineNodesCount ?? clusterGrid.onlineNodes ?? 1}/{clusterGrid.totalNodes || 1} ONLINE)
+                                </span>
+                            )}
                             {serverTelemetry?.uptimeSeconds && (
                                 <span className="uptime-pill">
                                     ⏱ Uptime: {formatUptime(serverTelemetry.uptimeSeconds)}
@@ -439,7 +495,9 @@ export default function SystemOverviewTab({
                             )}
                         </div>
                         <p className="hero-subtext">
-                            Real-time platform diagnostics, continuous recording cluster supervision, hardware telemetry, and tactical workspace routing.
+                            {isClusterActive
+                                ? 'Unified multi-node telemetry aggregation, distributed stream load balancing, cross-platform hardware encoder acceleration, and forensic DVR routing.'
+                                : 'Real-time platform diagnostics, continuous recording cluster supervision, hardware telemetry, and tactical workspace routing.'}
                         </p>
                     </div>
                 </div>
@@ -593,14 +651,14 @@ export default function SystemOverviewTab({
             </div>
 
             <div className="overview-charts-grid">
-                {/* Chart 1: Central Server CPU Load */}
+                {/* Chart 1: Central Server / Cluster CPU Load */}
                 <TacticalTelemetryChart
-                    title="SERVER CPU UTILIZATION"
-                    badge="HOST VS PROCESS"
+                    title={isClusterActive ? "CLUSTER CPU UTILIZATION (AGGREGATED)" : "SERVER CPU UTILIZATION"}
+                    badge={isClusterActive ? `${clusterGrid?.onlineNodesCount ?? clusterGrid?.onlineNodes ?? 1}/${clusterGrid?.totalNodes ?? 1} NODES AVG` : "HOST VS PROCESS"}
                     seriesA={cpuHostSeries}
                     seriesB={cpuAppSeries}
-                    labelA="Host CPU"
-                    labelB="App CPU"
+                    labelA={isClusterActive ? "Cluster Avg CPU" : "Host CPU"}
+                    labelB={isClusterActive ? "Cluster App CPU" : "App CPU"}
                     colorA="#06B6D4"
                     colorB="#10B981"
                     unit="%"
@@ -609,32 +667,32 @@ export default function SystemOverviewTab({
                     decimals={1}
                 />
 
-                {/* Chart 2: Server RAM & Process Heap */}
+                {/* Chart 2: Server RAM & Process Heap / Cluster RAM Pool */}
                 <TacticalTelemetryChart
-                    title="SERVER MEMORY & HEAP"
-                    badge="RAM ALLOCATION"
-                    seriesA={ramMbSeries}
-                    labelA="App Memory"
+                    title={isClusterActive ? "CLUSTER MEMORY POOL" : "SERVER MEMORY & HEAP"}
+                    badge={isClusterActive ? `POOL: ${clusterGrid?.aggregateTotalRamGb || 32} GB` : "RAM ALLOCATION"}
+                    seriesA={isClusterActive ? history.map(h => Math.round((h.ramMb / 1024) * 10) / 10) : ramMbSeries}
+                    labelA={isClusterActive ? "Cluster Used RAM" : "App Memory"}
                     colorA="#38BDF8"
-                    unit=" MB"
-                    maxValue={1024}
-                    currentValA={serverTelemetry?.processRamMb ? Math.round(serverTelemetry.processRamMb) : undefined}
+                    unit={isClusterActive ? " GB" : " MB"}
+                    maxValue={isClusterActive ? Math.ceil(clusterGrid?.aggregateTotalRamGb || 32) : 1024}
+                    currentValA={isClusterActive ? (clusterGrid?.aggregateUsedRamGb ?? Math.round((history[history.length - 1]?.ramMb || 0) / 1024)) : (serverTelemetry?.processRamMb ? Math.round(serverTelemetry.processRamMb) : undefined)}
                     gradientId="ram"
-                    decimals={0}
+                    decimals={isClusterActive ? 1 : 0}
                 />
 
-                {/* Chart 3: Network Throughput */}
+                {/* Chart 3: Network Throughput / Cluster Aggregate */}
                 <TacticalTelemetryChart
-                    title="NETWORK BANDWIDTH THROUGHPUT"
-                    badge="SERVER NIC TX / RX"
+                    title={isClusterActive ? "CLUSTER NETWORK AGGREGATE THROUGHPUT" : "NETWORK BANDWIDTH THROUGHPUT"}
+                    badge={isClusterActive ? `${clusterGrid?.totalNodes || 1} NODES FLEET NIC` : "SERVER NIC TX / RX"}
                     seriesA={netRxSeries}
                     seriesB={netTxSeries}
-                    labelA="Rx (Ingest)"
-                    labelB="Tx (WHEP)"
+                    labelA={isClusterActive ? "Cluster Ingest Rx" : "Rx (Ingest)"}
+                    labelB={isClusterActive ? "Cluster WHEP Tx" : "Tx (WHEP)"}
                     colorA="#A855F7"
                     colorB="#06B6D4"
                     unit=" Mbps"
-                    maxValue={50}
+                    maxValue={isClusterActive ? 100 : 50}
                     gradientId="net"
                     decimals={1}
                 />
