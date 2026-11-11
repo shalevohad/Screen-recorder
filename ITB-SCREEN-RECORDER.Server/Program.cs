@@ -273,6 +273,34 @@ namespace ITB_SCREEN_RECORDER.Server
                         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
                     });
 
+                builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
+                {
+                    options.InvalidModelStateResponseFactory = context =>
+                    {
+                        var logger = context.HttpContext.RequestServices
+                            .GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("ApiModelBinding");
+                        var errors = context.ModelState
+                            .Where(entry => entry.Value?.Errors.Count > 0)
+                            .ToDictionary(
+                                entry => entry.Key,
+                                entry => entry.Value!.Errors
+                                    .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage)
+                                        ? error.Exception?.Message ?? "Invalid value."
+                                        : error.ErrorMessage)
+                                    .ToArray());
+
+                        logger.LogWarning("[API:ModelBinding] HTTP 400 for {Path}. Validation errors: {@Errors}",
+                            context.HttpContext.Request.Path, errors);
+
+                        return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new
+                        {
+                            message = "Invalid export request.",
+                            errors
+                        });
+                    };
+                });
+
                 foreach (var featureAsm in loadedFeatureAssemblies) mvcBuilder.AddApplicationPart(featureAsm);
 
                 builder.Services.AddEndpointsApiExplorer();

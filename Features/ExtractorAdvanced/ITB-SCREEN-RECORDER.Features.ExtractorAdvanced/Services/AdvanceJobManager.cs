@@ -853,12 +853,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             SyncJobToCluster(job);
 
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
-            Directory.CreateDirectory(tempStagingDir);
-
-
-
             try
             {
+                Directory.CreateDirectory(tempStagingDir);
+
                 var allStationChunks = new Dictionary<string, List<RecordingChunkMetadata>>();
                 long rawBytes = 0;
 
@@ -1774,27 +1772,34 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 // 3. Daisy-chain overlays
                 string currentSurface = "[bg]";
-                for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
+                if (sortedPlacements.Count == 0)
                 {
-                    var p = sortedPlacements[pIdx];
-                    string pLabel = placementLabels[pIdx];
-                    string nextSurface = (pIdx == sortedPlacements.Count - 1) ? "[vbase]" : $"[t_{pIdx}]";
-
-                    int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X * scaleX);
-                    int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y * scaleY);
-                    targetX -= (targetX % 2);
-                    targetY -= (targetY % 2);
-
-                    string enableClause = "";
-                    if (p.StartOffsetMs.HasValue || p.EndOffsetMs.HasValue)
+                    filterBuilder.Append("[bg]null[vbase]; ");
+                }
+                else
+                {
+                    for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
                     {
-                        double startSec = Math.Max(0, (p.StartOffsetMs ?? 0) / 1000.0);
-                        double endSec = Math.Min(exportedDurationSec, (p.EndOffsetMs ?? (exportedDurationSec * 1000)) / 1000.0);
-                        enableClause = $":enable='between(t,{startSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)},{endSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})'";
-                    }
+                        var p = sortedPlacements[pIdx];
+                        string pLabel = placementLabels[pIdx];
+                        string nextSurface = (pIdx == sortedPlacements.Count - 1) ? "[vbase]" : $"[t_{pIdx}]";
 
-                    filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}:eof_action=pass:repeatlast=1{enableClause}{nextSurface}; ");
-                    currentSurface = nextSurface;
+                        int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X * scaleX);
+                        int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y * scaleY);
+                        targetX -= (targetX % 2);
+                        targetY -= (targetY % 2);
+
+                        string enableClause = "";
+                        if (p.StartOffsetMs.HasValue || p.EndOffsetMs.HasValue)
+                        {
+                            double startSec = Math.Max(0, (p.StartOffsetMs ?? 0) / 1000.0);
+                            double endSec = Math.Min(exportedDurationSec, (p.EndOffsetMs ?? (exportedDurationSec * 1000)) / 1000.0);
+                            enableClause = $":enable='between(t,{startSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)},{endSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})'";
+                        }
+
+                        filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}:eof_action=pass:repeatlast=1{enableClause}{nextSurface}; ");
+                        currentSurface = nextSurface;
+                    }
                 }
             }
 

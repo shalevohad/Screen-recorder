@@ -1458,7 +1458,13 @@ export default function ExtractorAdvancedStudio() {
 
             if (!response.ok) {
                 const errorPayload = await response.json().catch(() => ({}));
-                throw new Error(errorPayload.message || errorPayload.error || `HTTP ${response.status}`);
+                const validationErrors = errorPayload.errors
+                    ? Object.entries(errorPayload.errors)
+                        .flatMap(([field, messages]) => (Array.isArray(messages) ? messages : [messages])
+                            .map(message => `${field || 'request'}: ${message}`))
+                        .join(' | ')
+                    : '';
+                throw new Error(validationErrors || errorPayload.message || errorPayload.error || `HTTP ${response.status}`);
             }
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         } catch (error) {
