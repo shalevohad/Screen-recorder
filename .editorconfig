@@ -1,0 +1,56 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+insert_final_newline = true
+
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8602.severity = warning
+dotnet_diagnostic.CS8603.severity = warning
+
+# C# Naming Conventions & Semantic Prefixes
+dotnet_naming_style.member_field_style.required_prefix = m_
+dotnet_naming_style.member_field_style.capitalization = camel_case
+
+dotnet_naming_style.input_param_style.required_prefix = xi_
+dotnet_naming_style.input_param_style.capitalization = camel_case
+
+dotnet_naming_style.output_param_style.required_prefix = xo_
+dotnet_naming_style.output_param_style.capitalization = camel_case
+
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+dotnet_naming_style.camel_case_style.capitalization = camel_case
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, protected
+
+dotnet_naming_symbols.input_parameters.applicable_kinds = parameter
+
+dotnet_naming_symbols.output_parameters.applicable_kinds = parameter
+dotnet_naming_symbols.output_parameters.required_modifiers = out, ref
+
+dotnet_naming_symbols.public_members.applicable_kinds = property, method, event
+dotnet_naming_symbols.public_members.applicable_accessibilities = public, internal
+
+dotnet_naming_rule.fields_require_m_prefix.symbols = private_fields
+dotnet_naming_rule.fields_require_m_prefix.style = member_field_style
+dotnet_naming_rule.fields_require_m_prefix.severity = warning
+
+dotnet_naming_rule.inputs_require_xi_prefix.symbols = input_parameters
+dotnet_naming_rule.inputs_require_xi_prefix.style = input_param_style
+dotnet_naming_rule.inputs_require_xi_prefix.severity = warning
+
+dotnet_naming_rule.outputs_require_xo_prefix.symbols = output_parameters
+dotnet_naming_rule.outputs_require_xo_prefix.style = output_param_style
+dotnet_naming_rule.outputs_require_xo_prefix.severity = warning
+
+dotnet_naming_rule.public_members_must_be_pascal.symbols = public_members
+dotnet_naming_rule.public_members_must_be_pascal.style = pascal_case_style
+dotnet_naming_rule.public_members_must_be_pascal.severity = warning

@@ -35,6 +35,21 @@ mediamtx.exe
 **/ffmpeg.exe
 
 ## Local-only convenience scripts (not part of the repo)
+## Local SDK/cache and generated release output
+.tmp_dotnet/
+Publish/
+
+# Generated publish/runtime payloads
+**/Properties/PublishProfiles/
+Features/*/*/Tools/
+Features/*/*/wwwroot/
+ITB-SCREEN-RECORDER.AgentWorker/Tools/
+ITB-SCREEN-RECORDER.Server/Tools/Win/
+ITB-SCREEN-RECORDER.Server/Tools/Linux/ffmpeg*
+ITB-SCREEN-RECORDER.Server/Tools/Linux/ffprobe*
+
+# Host-specific offline security attestation
+.agent-kit/security/socket-attestation.json
 /Launch.bat
 /ITB-SCREEN-RECORDER.AgentService/Properties/PublishProfiles/Agent - Windows.pubxml
 /ITB-SCREEN-RECORDER.AgentWorker/Properties/PublishProfiles/Agent - Windows.pubxml

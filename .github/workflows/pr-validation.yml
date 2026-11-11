@@ -1,0 +1,33 @@
+name: PR Validation, Security & V&V Quality Gate
+
+on:
+  pull_request:
+    branches: [ master, main, develop ]
+  push:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    name: Build, Format, AppSec & V&V Verification
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK (8.0.x)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore Dependencies with Lockfile
+        run: dotnet restore --locked-mode
+
+      - name: Verify Code Formatting (.editorconfig)
+        run: dotnet format --verify-no-changes --verbosity minimal
+
+      - name: Strict Build (Warnings as Errors & Roslyn Analyzers)
+        run: dotnet build --no-restore --configuration Release /warnaserror
+
+      - name: Execute Automated V&V Test Harness (with Branch Coverage)
+        run: dotnet test --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage"

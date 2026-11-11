@@ -1,0 +1,297 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GenericDefenseAgentKitConfiguration",
+  "type": "object",
+  "required": [
+    "environment",
+    "hmi",
+    "security",
+    "engineering"
+  ],
+  "properties": {
+    "project": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "baselineTarget": {
+          "type": "string"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "airGapped"
+      ],
+      "properties": {
+        "developmentEnclave": {
+          "type": "string",
+          "enum": [
+            "Connected",
+            "Isolated"
+          ]
+        },
+        "airGapped": {
+          "type": "boolean"
+        },
+        "classificationLevel": {
+          "type": "string"
+        },
+        "strictNetworkIsolation": {
+          "type": "boolean"
+        }
+      }
+    },
+    "autonomousPipeline": {
+      "type": "object",
+      "properties": {
+        "intakeDirectory": {
+          "type": "string"
+        },
+        "deliverablesDirectory": {
+          "type": "string"
+        },
+        "autoGenerateWorkPackages": {
+          "type": "boolean"
+        },
+        "maxNcrRemediationLoops": {
+          "type": "integer"
+        },
+        "requiredFinalDeliverables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "trackTokensPerAgent": {
+          "type": "boolean"
+        },
+        "trackTokensPerWorkPackage": {
+          "type": "boolean"
+        },
+        "logEncounteredBlockersAndNcrs": {
+          "type": "boolean"
+        }
+      }
+    },
+    "hmi": {
+      "type": "object",
+      "required": [
+        "activeTheme"
+      ],
+      "properties": {
+        "activeTheme": {
+          "type": "string",
+          "enum": [
+            "TacticalNight",
+            "DaylightHighContrast",
+            "CustomScoped"
+          ]
+        },
+        "allowOperatorThemeSwitch": {
+          "type": "boolean"
+        },
+        "highContrastOverride": {
+          "type": "boolean"
+        },
+        "density": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "standard",
+            "dense"
+          ]
+        }
+      }
+    },
+    "domainInvariants": {
+      "type": "object",
+      "properties": {
+        "enforceProjectRulesMd": {
+          "type": "boolean"
+        },
+        "continuousSystemBookSync": {
+          "type": "boolean"
+        },
+        "customInvariants": {
+          "type": "object"
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "required": [
+        "nuGetAudit",
+        "socketDev",
+        "sast",
+        "sca",
+        "antiPoisoning"
+      ],
+      "properties": {
+        "nuGetAudit": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "severityLevel": {
+              "type": "string",
+              "enum": [
+                "low",
+                "moderate",
+                "high",
+                "critical"
+              ]
+            },
+            "treatWarningsAsErrors": {
+              "type": "boolean"
+            }
+          }
+        },
+        "socketDev": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "apiKey": {
+              "type": "string"
+            },
+            "strict": {
+              "type": "boolean"
+            },
+            "enforceOfflineAttestation": {
+              "type": "boolean"
+            },
+            "attestationFilePath": {
+              "type": "string"
+            }
+          }
+        },
+        "sast": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "Checkmarx",
+                "SonarQube",
+                "Fortify",
+                "None"
+              ]
+            },
+            "serverUrl": {
+              "type": "string"
+            },
+            "apiToken": {
+              "type": "string"
+            },
+            "failOnHighOrCritical": {
+              "type": "boolean"
+            },
+            "sarifOutputPath": {
+              "type": "string"
+            }
+          }
+        },
+        "sca": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "JFrogXray",
+                "NexusLifecycle",
+                "Snyk",
+                "Native",
+                "None"
+              ]
+            },
+            "serverUrl": {
+              "type": "string"
+            },
+            "apiToken": {
+              "type": "string"
+            },
+            "blockOnPolicyViolation": {
+              "type": "boolean"
+            },
+            "sbomOutputPath": {
+              "type": "string"
+            }
+          }
+        },
+        "antiPoisoning": {
+          "type": "object",
+          "properties": {
+            "enforce100PercentBranchCoverage": {
+              "type": "boolean"
+            },
+            "banUnmappedTimeTriggers": {
+              "type": "boolean"
+            },
+            "banUnsafeBlocks": {
+              "type": "boolean"
+            },
+            "banCovertChannels": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "engineering": {
+      "type": "object",
+      "properties": {
+        "runtime": {
+          "type": "string"
+        },
+        "csharpVersion": {
+          "type": "string"
+        },
+        "zeroAllocationHotPaths": {
+          "type": "boolean"
+        },
+        "strictAsyncOnly": {
+          "type": "boolean"
+        },
+        "namingConventions": {
+          "type": "object",
+          "properties": {
+            "inputPrefix": {
+              "type": "string"
+            },
+            "outputPrefix": {
+              "type": "string"
+            },
+            "memberPrefix": {
+              "type": "string"
+            },
+            "staticPrefix": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

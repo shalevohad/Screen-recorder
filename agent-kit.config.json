@@ -1,0 +1,98 @@
+{
+  "$schema": "./.agent-kit/security/agent-kit.schema.json",
+  "project": {
+    "name": "TargetSystem",
+    "description": "Mission-Critical Real-Time Defense Application / Node",
+    "baselineTarget": "CDR-Phase-1"
+  },
+  "environment": {
+    "developmentEnclave": "Connected",
+    "airGapped": true,
+    "classificationLevel": "Restricted",
+    "strictNetworkIsolation": true
+  },
+  "autonomousPipeline": {
+    "intakeDirectory": ".agent-kit/intake",
+    "deliverablesDirectory": ".agent-kit/deliverables",
+    "autoGenerateWorkPackages": true,
+    "maxNcrRemediationLoops": 3,
+    "requiredFinalDeliverables": [
+      "01_ARCHITECTURE_AND_DESIGN.md",
+      "02_DATA_FLOW_DIAGRAMS_DFD.md",
+      "03_EXECUTION_AND_TELEMETRY_REPORT.md"
+    ]
+  },
+  "telemetry": {
+    "enabled": true,
+    "trackTokensPerAgent": true,
+    "trackTokensPerWorkPackage": true,
+    "logEncounteredBlockersAndNcrs": true,
+    "tokenEstimationRatio": {
+      "codeAndEnglishCharsPerToken": 3.6,
+      "hebrewCharsPerToken": 1.8
+    }
+  },
+  "hmi": {
+    "activeTheme": "TacticalNight",
+    "allowOperatorThemeSwitch": true,
+    "highContrastOverride": false,
+    "density": "compact",
+    "customPaletteOverrides": {
+      "surface": null,
+      "accent": null
+    }
+  },
+  "domainInvariants": {
+    "enforceProjectRulesMd": true,
+    "continuousSystemBookSync": true,
+    "customInvariants": {}
+  },
+  "security": {
+    "nuGetAudit": {
+      "enabled": true,
+      "severityLevel": "moderate",
+      "treatWarningsAsErrors": true
+    },
+    "socketDev": {
+      "enabled": true,
+      "apiKey": "",
+      "strict": true,
+      "enforceOfflineAttestation": true,
+      "attestationFilePath": ".agent-kit/security/socket-attestation.json"
+    },
+    "sast": {
+      "enabled": false,
+      "provider": "Checkmarx",
+      "serverUrl": "",
+      "apiToken": "",
+      "failOnHighOrCritical": true,
+      "sarifOutputPath": "./reports/sast-report.sarif"
+    },
+    "sca": {
+      "enabled": false,
+      "provider": "JFrogXray",
+      "serverUrl": "",
+      "apiToken": "",
+      "blockOnPolicyViolation": true,
+      "sbomOutputPath": "./reports/bom.cdx.json"
+    },
+    "antiPoisoning": {
+      "enforce100PercentBranchCoverage": true,
+      "banUnmappedTimeTriggers": true,
+      "banUnsafeBlocks": true,
+      "banCovertChannels": true
+    }
+  },
+  "engineering": {
+    "runtime": ".NET 8.0 LTS",
+    "csharpVersion": "12.0",
+    "zeroAllocationHotPaths": true,
+    "strictAsyncOnly": true,
+    "namingConventions": {
+      "inputPrefix": "xi_",
+      "outputPrefix": "xo_",
+      "memberPrefix": "m_",
+      "staticPrefix": "s_"
+    }
+  }
+}
