@@ -35,8 +35,9 @@
 		<Compile Remove="Providers\Video\**\Windows\*.cs" />
 	</ItemGroup>
 
-	<!-- תלויות ספציפיות ל-Windows (מוחרגות בבנייה ל-Linux) -->
-	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+ <!-- Managed references are restored for every RID; Windows-only source files
+		 remain excluded by the Linux compile condition below. -->
+	<ItemGroup>
 		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
 		<PackageReference Include="NAudio.Core" Version="2.3.0" />
 		<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />

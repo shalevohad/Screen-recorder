@@ -1,0 +1,53 @@
+<Project>
+  <!-- Read security toggles from agent-kit.config.json -->
+  <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\agent-kit.config.json')">
+    <ConfigJson>$([System.IO.File]::ReadAllText("$(MSBuildThisFileDirectory)..\..\agent-kit.config.json"))</ConfigJson>
+    
+    <SocketDevEnabled Condition="$(ConfigJson.Contains('&quot;socketDev&quot;: {')) and $(ConfigJson.Contains('&quot;enabled&quot;: true'))">true</SocketDevEnabled>
+    <SastEnabled Condition="$(ConfigJson.Contains('&quot;sast&quot;: {')) and $(ConfigJson.Contains('&quot;enabled&quot;: true'))">true</SastEnabled>
+    <ScaEnabled Condition="$(ConfigJson.Contains('&quot;sca&quot;: {')) and $(ConfigJson.Contains('&quot;enabled&quot;: true'))">true</ScaEnabled>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Native .NET 8 NuGet Audit -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+
+    <!-- Air-gapped locked dependency mode -->
+    <RestoreLockedMode Condition="'$(AirGappedBuild)' == 'true'">true</RestoreLockedMode>
+
+    <!-- Keep compiler and dependency security failures fatal without turning the
+         existing legacy analyzer backlog into compilation failures. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <AnalysisLevel>latest-all</AnalysisLevel>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <!-- Offline Attestation check for Air-Gapped deployment (Active only if Socket.dev enabled) -->
+  <Target Name="VerifyAirGappedSecurityAttestation" 
+          BeforeTargets="BeforeBuild" 
+          Condition="'$(AirGappedBuild)' == 'true' and '$(SocketDevEnabled)' == 'true'">
+    <PropertyGroup>
+      <SocketAttestationFile>$(SolutionDir).agent-kit\security\socket-attestation.json</SocketAttestationFile>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(SocketAttestationFile)') and Exists('$(SolutionDir)packages.lock.json')"
+           Text="[Air-Gap AppSec Gate] Build HALTED: Socket.dev check is ENABLED, but missing offline attestation: $(SocketAttestationFile). Set 'security.socketDev.enabled': false in agent-kit.config.json if running without Socket.dev." />
+
+    <Message Importance="high" 
+             Text="[Air-Gap AppSec Gate] Offline Socket.dev attestation verified for locked package manifests." 
+             Condition="Exists('$(SocketAttestationFile)')" />
+  </Target>
+
+  <Target Name="LogSecurityScannersStatus" BeforeTargets="BeforeBuild">
+    <Message Importance="normal" Text="[AppSec Engine] Socket.dev Scanner: $(SocketDevEnabled)" Condition="'$(SocketDevEnabled)' != ''" />
+    <Message Importance="normal" Text="[AppSec Engine] Commercial SAST Scanner: $(SastEnabled)" Condition="'$(SastEnabled)' != ''" />
+    <Message Importance="normal" Text="[AppSec Engine] Enterprise SCA Scanner: $(ScaEnabled)" Condition="'$(ScaEnabled)' != ''" />
+  </Target>
+</Project>

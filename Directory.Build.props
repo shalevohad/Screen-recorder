@@ -1,13 +1,15 @@
 <Project>
   <PropertyGroup>
-    <SolutionRoot Condition="'$(SolutionRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</SolutionRoot>
-    <Version Condition="'$(Version)' == ''">1.0.71</Version>
-    <Company>ITB</Company>
-    <Authors>ITB</Authors>
-    <Product>ITB Screen Recorder</Product>
-    <Copyright>Copyright © ITB 2026</Copyright>
-    <AssemblyCompany>ITB</AssemblyCompany>
-    <AssemblyProduct>ITB Screen Recorder</AssemblyProduct>
-    <AssemblyCopyright>Copyright © ITB 2026</AssemblyCopyright>
+    <SolutionRoot Condition="'$(SolutionRoot)' == ''">$(MSBuildThisFileDirectory)</SolutionRoot>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
+
+  <!-- Load high-level configuration from agent-kit.config.json if present -->
+  <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)agent-kit.config.json')">
+    <AirGappedBuild Condition="$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)agent-kit.config.json').Contains(''airGapped'': true))">true</AirGappedBuild>
+    <AirGappedBuild Condition="$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)agent-kit.config.json').Contains(''airGapped'': false))">false</AirGappedBuild>
+  </PropertyGroup>
+
+  <!-- Import security analyzers and compile-time gates -->
+  <Import Project="$(MSBuildThisFileDirectory).agent-kit\security\security.props" Condition="Exists('$(MSBuildThisFileDirectory).agent-kit\security\security.props')" />
 </Project>
