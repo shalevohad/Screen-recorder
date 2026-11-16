@@ -4,6 +4,7 @@
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
+using ITB_SCREEN_RECORDER.Core.Media.Contracts;
 using System;
 using System.Diagnostics;
 using System.IO;

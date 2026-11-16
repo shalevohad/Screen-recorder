@@ -1,5 +1,5 @@
 // ==========================================
-// File: ITB-SCREEN-RECORDER.AgentWorker/Engine/FfmpegInProcessEncoder.cs
+// File: ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessEncoder.cs
 // ==========================================
 using System;
 using System.IO;
@@ -9,12 +9,14 @@ using System.Threading.Tasks;
 using FFmpeg.AutoGen;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Media.Contracts;
 
-namespace ITBRecorderAgent.Engine
+namespace ITB_SCREEN_RECORDER.Core.Media.Engine
 {
     /// <summary>
     /// High-performance, in-process hardware-accelerated video & audio encoder using native FFmpeg NuGet bindings (FFmpeg.AutoGen).
     /// Eliminates the need to spawn external ffmpeg.exe processes by executing compression and RTMP streaming entirely in-memory.
+    /// Centralized in Core to serve AgentWorker, Extractor, and ExtractorAdvanced Studio pipelines.
     /// </summary>
     public unsafe class FfmpegInProcessEncoder : IMediaStreamEncoder
     {
@@ -45,44 +47,12 @@ namespace ITBRecorderAgent.Engine
 
         static FfmpegInProcessEncoder()
         {
-            InitializeNativeLibraries();
+            FfmpegNativeResolver.EnsureInitialized();
         }
 
         public FfmpegInProcessEncoder(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-        }
-
-        private static void InitializeNativeLibraries()
-        {
-            try
-            {
-                string baseDir = AppContext.BaseDirectory;
-                string[] candidatePaths =
-                {
-                    baseDir,
-                    Path.Combine(baseDir, "runtimes", OperatingSystem.IsWindows() ? "win-x64" : "linux-x64", "native"),
-                    Path.Combine(baseDir, "..", "..", "..", "..", "Tools", OperatingSystem.IsWindows() ? "Win" : "Linux"),
-                    Path.Combine(baseDir, "Tools", OperatingSystem.IsWindows() ? "Win" : "Linux")
-                };
-
-                foreach (var path in candidatePaths)
-                {
-                    if (Directory.Exists(path))
-                    {
-                        ffmpeg.RootPath = Path.GetFullPath(path);
-                        Logger.Info($"[INPROCESS-ENCODER] Configured FFmpeg native root path: {ffmpeg.RootPath}");
-                        break;
-                    }
-                }
-
-                ffmpeg.avformat_network_init();
-                Logger.Info("[INPROCESS-ENCODER] FFmpeg network subsystem initialized.");
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"[INPROCESS-ENCODER] Native library initialization note: {ex.Message}");
-            }
         }
 
         public Task<bool> StartAsync(

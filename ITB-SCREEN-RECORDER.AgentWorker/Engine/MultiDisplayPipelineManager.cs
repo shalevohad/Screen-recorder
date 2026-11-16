@@ -10,6 +10,8 @@ using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
+using ITB_SCREEN_RECORDER.Core.Media.Contracts;
+using ITB_SCREEN_RECORDER.Core.Media.Engine;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;

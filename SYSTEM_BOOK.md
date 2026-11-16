@@ -5495,23 +5495,31 @@ Historically, `AgentWorker` executed an external `ffmpeg.exe` (Windows) or `ffmp
 2. **Subprocess Lifecycle Complexity**: Managing process handles, PID tracking, zombie processes during abnormal session terminations, and OS pipe buffer deadlocks.
 3. **Endpoint Security & EDR Heuristics**: Enterprise endpoint detection and response (EDR) systems occasionally flag services spawning subprocesses that connect to network sockets.
 
-### 79.2 Architectural Solution: `IMediaStreamEncoder` Abstraction & In-Process Bindings
-The encoding engine was refactored with a strict interface-driven architecture:
+### 79.2 Architectural Solution: Centralized `ITB-SCREEN-RECORDER.Core.Media` Architecture
+The encoding and media processing subsystem was centralized into `ITB-SCREEN-RECORDER.Core` to provide a uniform, in-process media pipeline across `AgentWorker`, `Extractor`, and `ExtractorAdvanced` (Studio):
 
-1. **`IMediaStreamEncoder` Contract (`IMediaStreamEncoder.cs`)**:
+1. **`IMediaStreamEncoder` Contract (`ITB-SCREEN-RECORDER.Core/Media/Contracts/IMediaStreamEncoder.cs`)**:
    - `StartAsync(...)`: Initializes output format context and codec pipelines.
    - `CompleteAudioHandshakeAsync(...)`: Completes connection handshakes (instant no-op for in-process mode).
    - `WriteVideoFrame(byte[] frameData)`: Submits raw uncompressed frames directly to the video encoder.
    - `WriteAudioData(byte[] audioData, int offset, int count)`: Submits raw audio samples directly to the audio encoder.
    - `IsRunning`, `HasAudio`, `Dispose()`: Lifecycle management and cleanup.
 
-2. **In-Process Hardware Encoding (`FfmpegInProcessEncoder.cs`)**:
+2. **In-Process Hardware Encoding (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessEncoder.cs`)**:
    - Built on `FFmpeg.AutoGen` (MIT Licensed P/Invoke bindings).
    - **Video Pipeline**: Allocates an `AVCodecContext` with hardware acceleration (`h264_nvenc` preset `p2`, `h264_qsv` preset `veryfast`, or `libx264` preset `ultrafast`). Transforms incoming BGRA frames to target pixel formats (`yuv420p` / `nv12`) via native `swscale`, enforces 1-second keyframe GOP intervals (Rule 1 compliance), and rescales presentation timestamps (`pts`).
    - **Audio Pipeline**: Allocates an `AVCodecContext` with native AAC encoding. Converts 32-bit IEEE float interleaved audio from WASAPI loopback into planar float (`FLTP`) via native `swresample`.
    - **Direct RTMP Transport**: Muxes compressed `AVPacket`s directly into an `AVFormatContext` connected to MediaMTX's RTMP endpoint (`rtmp://localhost:19350/...`) using native `avio_open2` without external network listeners.
 
-3. **Runtime Configuration & Backward Compatibility (`AppConfig.cs`)**:
+3. **Shared Native Resolution (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegNativeResolver.cs`)**:
+   - Discovers native shared libraries (`avcodec`, `avformat`, `swscale`, `swresample`) across application root, runtimes directory, and tools folders.
+   - Automatically initializes network transport subsystems (`avformat_network_init`).
+
+4. **Elimination of `ffmpeg.exe` from Worker Build & Installers**:
+   - Stripped `AddFfmpegToPublishFiles`, `EnsureFfmpegInPublishDir`, and `EnsureFfmpegInOutputDir` from `ITB-SCREEN-RECORDER.AgentWorker.csproj`.
+   - Worker payload and MSI/Linux `.run` installers no longer package `ffmpeg.exe` or `ffmpeg`, reducing agent installer size and eliminating external child process spawning.
+
+5. **Runtime Configuration & Backward Compatibility (`AppConfig.cs`)**:
    - `EncoderEngine`: Configurable via `AppConfig` (`"InProcess"` [Default] or `"Process"` [Legacy Fallback]).
    - If in-process initialization fails for any environment-specific reason, the pipeline automatically logs a diagnostic warning and falls back gracefully to `FfmpegProcessManager`.
 

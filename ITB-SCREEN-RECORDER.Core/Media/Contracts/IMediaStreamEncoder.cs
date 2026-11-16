@@ -1,11 +1,11 @@
 // ==========================================
-// File: ITB-SCREEN-RECORDER.AgentWorker/Engine/IMediaStreamEncoder.cs
+// File: ITB-SCREEN-RECORDER.Core/Media/Contracts/IMediaStreamEncoder.cs
 // ==========================================
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ITBRecorderAgent.Engine
+namespace ITB_SCREEN_RECORDER.Core.Media.Contracts
 {
     /// <summary>
     /// Represents an abstract media encoder and RTMP/FLV/MP4 stream transport.

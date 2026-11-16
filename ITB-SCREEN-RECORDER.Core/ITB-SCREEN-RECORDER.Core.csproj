@@ -5,6 +5,7 @@
 		<RootNamespace>ITB_SCREEN_RECORDER.Core</RootNamespace>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
@@ -19,6 +20,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.89" />
+		<!-- FFmpeg NuGet native in-process bindings (MIT) -->
+		<PackageReference Include="FFmpeg.AutoGen" Version="7.0.0" />
+		<PackageReference Include="FFMpegCore" Version="5.1.0" />
+		<PackageReference Include="System.Text.Json" Version="8.0.5" />
 		<!-- SQLite 8.0.33 (Secured against GHSA-2m69-gcr7-jv3q) -->
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.33" />
 		<!-- Native libe_sqlite3 (Secured 2.1.13) -->
