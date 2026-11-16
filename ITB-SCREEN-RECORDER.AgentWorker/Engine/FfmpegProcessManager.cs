@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace ITBRecorderAgent.Engine
 {
-    public class FfmpegProcessManager : IDisposable
+    public class FfmpegProcessManager : IMediaStreamEncoder
     {
         private Process? _ffmpegProcess;
         private Stream? _videoStdinStream;

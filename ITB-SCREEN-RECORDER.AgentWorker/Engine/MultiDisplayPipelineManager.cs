@@ -22,7 +22,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
         public bool IsPrimary { get; }
         public DxgiDisplayDescriptor Descriptor { get; }
         public IScreenCaptureProvider? ScreenCapture { get; }
-        public FfmpegProcessManager? Ffmpeg { get; }
+        public IMediaStreamEncoder? Ffmpeg { get; }
         public VideoPipeline? VideoPipe { get; }
         public CancellationTokenSource? Cts { get; }
         public Task? CaptureTask { get; set; }
@@ -38,7 +38,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             bool isPrimary,
             DxgiDisplayDescriptor descriptor,
             IScreenCaptureProvider? screenCapture,
-            FfmpegProcessManager? ffmpeg,
+            IMediaStreamEncoder? ffmpeg,
             VideoPipeline? videoPipe,
             CancellationTokenSource? cts,
             bool? hasAudio = null)
@@ -502,7 +502,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
 
             screenCapture.Initialize();
 
-            var ffmpeg = new FfmpegProcessManager(_config);
+            var ffmpeg = CreateStreamEncoder();
             int targetFps = desc.IsPrimary ? baselineFps : Math.Min(20, baselineFps);
             var videoPipe = new VideoPipeline(screenCapture.Width, screenCapture.Height, targetFps, desc.X, desc.Y);
 
@@ -692,6 +692,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             string ext = Path.GetExtension(baseDestination);
 
             return Path.Combine(dir, $"{fname}_{displayId}{ext}");
+        }
+
+        private IMediaStreamEncoder CreateStreamEncoder()
+        {
+            return new FfmpegProcessManager(_config);
         }
 
         public void Dispose()

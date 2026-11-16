@@ -46,7 +46,7 @@ namespace ITBRecorderAgent.Engine
             Logger.Info($"[WORKER:VIDEO-PIPE] Initialized pipeline. FrameSize: {frameSize / 1024 / 1024.0:F2}MB, Resolution: {width}x{height}, BaselineFps: {baselineFps}, Offset: ({screenOffsetX},{screenOffsetY})");
         }
 
-        public Task StartWriterAsync(FfmpegProcessManager ffmpeg, Action onPipeBroken, Action<long> onBytesSent, CancellationToken ct)
+        public Task StartWriterAsync(IMediaStreamEncoder ffmpeg, Action onPipeBroken, Action<long> onBytesSent, CancellationToken ct)
         {
             return Task.Run(async () =>
             {

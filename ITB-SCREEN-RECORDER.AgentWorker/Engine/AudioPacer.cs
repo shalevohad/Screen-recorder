@@ -42,7 +42,7 @@ namespace ITBRecorderAgent.Engine
             return lastTicks > 0 && Stopwatch.GetElapsedTime(lastTicks).TotalMilliseconds < 2000;
         }
 
-        public Task RunPacerLoopAsync(Func<FfmpegProcessManager?> getActiveFfmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
+        public Task RunPacerLoopAsync(Func<IMediaStreamEncoder?> getActiveFfmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
         {
             return Task.Run(() =>
             {
@@ -82,7 +82,7 @@ namespace ITBRecorderAgent.Engine
             }, ct);
         }
 
-        public Task RunPacerLoopAsync(FfmpegProcessManager ffmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
+        public Task RunPacerLoopAsync(IMediaStreamEncoder ffmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
             => RunPacerLoopAsync(() => ffmpeg, onBytesPushed, isSessionActive, ct);
     }
 }
