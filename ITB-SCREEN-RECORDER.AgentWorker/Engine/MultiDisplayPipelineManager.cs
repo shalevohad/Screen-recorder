@@ -696,6 +696,19 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
 
         private IMediaStreamEncoder CreateStreamEncoder()
         {
+            if (string.Equals(_config.EncoderEngine, "InProcess", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    Logger.Info("[ENGINE] Initializing InProcess FFmpeg encoder (NuGet in-memory bindings)...");
+                    return new FfmpegInProcessEncoder(_config);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[ENGINE] InProcess encoder initialization failed ({ex.Message}), falling back to Process encoder.");
+                }
+            }
+
             return new FfmpegProcessManager(_config);
         }
 

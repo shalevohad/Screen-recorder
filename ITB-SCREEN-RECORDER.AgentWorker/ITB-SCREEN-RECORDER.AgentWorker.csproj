@@ -17,6 +17,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="FFmpeg.AutoGen" Version="7.0.0" />
+		<PackageReference Include="FFMpegCore" Version="5.1.0" />
 		<PackageReference Include="System.Text.Json" Version="8.0.5" />
 	</ItemGroup>
 

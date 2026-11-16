@@ -5487,6 +5487,34 @@ In mission-critical command centers, system administrators and operators require
 
 ---
 
+## 79. In-Process Media Encoding & Managed FFmpeg NuGet Architecture (2026-11-16)
+
+### 79.1 Architectural Motivation: Decoupling from External Binaries
+Historically, `AgentWorker` executed an external `ffmpeg.exe` (Windows) or `ffmpeg` (Linux) child process via `Process.Start`, piping uncompressed BGRA video frames through Standard Input (Stdin) and raw PCM audio through a local TCP loopback socket (`127.0.0.1:{port}`). While functional, executing an out-of-process binary introduced operational friction:
+1. **Packaging & Storage Bloat**: Requiring monolithic 220MB static FFmpeg binaries committed in repository tool folders and published to endpoints.
+2. **Subprocess Lifecycle Complexity**: Managing process handles, PID tracking, zombie processes during abnormal session terminations, and OS pipe buffer deadlocks.
+3. **Endpoint Security & EDR Heuristics**: Enterprise endpoint detection and response (EDR) systems occasionally flag services spawning subprocesses that connect to network sockets.
+
+### 79.2 Architectural Solution: `IMediaStreamEncoder` Abstraction & In-Process Bindings
+The encoding engine was refactored with a strict interface-driven architecture:
+
+1. **`IMediaStreamEncoder` Contract (`IMediaStreamEncoder.cs`)**:
+   - `StartAsync(...)`: Initializes output format context and codec pipelines.
+   - `CompleteAudioHandshakeAsync(...)`: Completes connection handshakes (instant no-op for in-process mode).
+   - `WriteVideoFrame(byte[] frameData)`: Submits raw uncompressed frames directly to the video encoder.
+   - `WriteAudioData(byte[] audioData, int offset, int count)`: Submits raw audio samples directly to the audio encoder.
+   - `IsRunning`, `HasAudio`, `Dispose()`: Lifecycle management and cleanup.
+
+2. **In-Process Hardware Encoding (`FfmpegInProcessEncoder.cs`)**:
+   - Built on `FFmpeg.AutoGen` (MIT Licensed P/Invoke bindings).
+   - **Video Pipeline**: Allocates an `AVCodecContext` with hardware acceleration (`h264_nvenc` preset `p2`, `h264_qsv` preset `veryfast`, or `libx264` preset `ultrafast`). Transforms incoming BGRA frames to target pixel formats (`yuv420p` / `nv12`) via native `swscale`, enforces 1-second keyframe GOP intervals (Rule 1 compliance), and rescales presentation timestamps (`pts`).
+   - **Audio Pipeline**: Allocates an `AVCodecContext` with native AAC encoding. Converts 32-bit IEEE float interleaved audio from WASAPI loopback into planar float (`FLTP`) via native `swresample`.
+   - **Direct RTMP Transport**: Muxes compressed `AVPacket`s directly into an `AVFormatContext` connected to MediaMTX's RTMP endpoint (`rtmp://localhost:19350/...`) using native `avio_open2` without external network listeners.
+
+3. **Runtime Configuration & Backward Compatibility (`AppConfig.cs`)**:
+   - `EncoderEngine`: Configurable via `AppConfig` (`"InProcess"` [Default] or `"Process"` [Legacy Fallback]).
+   - If in-process initialization fails for any environment-specific reason, the pipeline automatically logs a diagnostic warning and falls back gracefully to `FfmpegProcessManager`.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
