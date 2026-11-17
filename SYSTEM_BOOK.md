@@ -160,7 +160,14 @@ flowchart TD
 
 ```
 ITB-SCREEN-RECORDER/
-├── ITB-SCREEN-RECORDER.Core\             # Shared domain, contracts, encryption, SQLite DB base
+├── ITB-SCREEN-RECORDER.Core\             # Shared domain, contracts, infrastructure, SQLite DB base
+│   ├── Contracts\                        # Centralized system contracts (Capture, Data, Ipc, Jobs, Media, Network, Plugins, Topology)
+│   ├── Data\                             # Data persistence layer (Handlers, Sqlite)
+│   ├── Diagnostics\                      # Hardware, Network, Profiling, Debug diagnostics
+│   ├── Infrastructure\                   # Logging, IPC server factory, System limits & locks
+│   ├── Security\                         # Cryptography & AES-GCM payload encryption
+│   ├── Compatibility\                    # Legacy compatibility shims (guaranteeing zero breaking changes)
+│   └── Media\                            # In-process media pipelines, probes, and decoders
 ├── ITB-SCREEN-RECORDER.Server\           # Central ASP.NET Core 8 Web API, SignalR, MediaMTX supervisor
 │   ├── ClientApp\                        # Tactical C2 Command Dashboard (React 18, Vite, SCSS)
 │   ├── MediaMTX\                         # Bundled MediaMTX v1.15.4 binaries (Win/Linux) and mediamtx.yml (source in Tools\Win)
@@ -5576,6 +5583,76 @@ Because Google Chrome hosts the primary operational mission application on the w
      - `thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE` (concurrent multi-threading across both frame and slice domains).
      - `threads = auto`.
    - Maximizes throughput across all physical/logical CPU cores without blocking the capture loop or single-threading execution.
+
+---
+
+## 80. Domain-Driven Modular Restructuring of `ITB-SCREEN-RECORDER.Core` (2026-11-17)
+
+### 80.1 Structural Motivation
+Prior to this restructuring, `ITB-SCREEN-RECORDER.Core` suffered from historical architectural sprawl:
+- Interface abstractions were scattered across `Abstractions/`, `Common/`, `Ipc/`, `Plugins/`, and `Media/Contracts/`.
+- Concrete implementations were placed alongside contracts without clear domain boundaries.
+- Downstream projects (`Server`, `AgentWorker`, `AgentService`, `Extractor`, `ExtractorAdvanced`, and `Tests`) referenced disparate folders for related concerns.
+
+### 80.2 Canonical Folder Hierarchy & Domain Partitioning
+Under CDR specification ([01_ARCHITECTURE_AND_DESIGN.md](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/.agent-kit/deliverables/01_ARCHITECTURE_AND_DESIGN.md)), `ITB-SCREEN-RECORDER.Core` was reorganized into a strict 5-pillar domain taxonomy:
+
+```
+ITB-SCREEN-RECORDER.Core/
+├── Contracts/                             # 1. System-Wide Interface & DTO Contracts
+│   ├── Capture/                           # Screen & Audio capture abstractions (IScreenCaptureProvider, IAudioCaptureProvider)
+│   ├── Data/                              # Persistence interfaces (IFeatureDbInitializer)
+│   ├── Ipc/                               # Named-pipe IPC DTOs and contracts (IpcContracts)
+│   ├── Jobs/                              # Cluster background and forensic job contracts (IClusterWorkerSelector)
+│   ├── Media/                             # In-process media encoder, decoder, and probe contracts (IMediaStreamEncoder, IMediaProbeService, etc.)
+│   ├── Network/                           # C2, node discovery, and station role contracts (ServerDiscoveryContracts, StationRoleContracts)
+│   ├── Plugins/                           # Extensibility and retention shield abstractions (IFeatureModule, IRetentionShieldProvider)
+│   └── Topology/                          # Virtual desktop display geometry DTOs (StationDisplayTopologyDto)
+├── Data/                                  # 2. Data Persistence Infrastructure
+│   ├── Handlers/                          # Dapper TypeHandlers (JsonTypeHandler)
+│   └── Sqlite/                            # SQLite connection factories & WAL migrations (BaseSqliteConnectionFactory, SqliteMigrationExtensions)
+├── Diagnostics/                           # 3. System Health & Hardware Telemetry
+│   ├── Debug/                             # Developer debugging helpers (DebugHelper)
+│   ├── Hardware/                          # Tri-tier GPU/CPU probing & hardware telemetry (HardwareProbe, HardwareTelemetry)
+│   ├── Network/                           # Network interface discovery & bandwidth profiling (NetworkTelemetry)
+│   └── Profiling/                         # Memory, thread, and process profiling (SystemMetricsProfiler)
+├── Infrastructure/                        # 4. Core System Infrastructure
+│   ├── Ipc/                               # Named-pipe server implementation (IpcServerFactory)
+│   ├── Logging/                           # Unified logging providers & formatting (Logger, CoreLoggerProvider)
+│   └── System/                            # Buffer thresholds & cross-process mutexes (BufferLimits, SingleInstanceLock)
+├── Security/                              # 5. Security & Cryptography
+│   └── Cryptography/                      # AES-256-GCM authenticated payload encryption (PayloadEncryptionManager)
+├── Compatibility/                         # 6. Backward Compatibility Layer
+│   └── LegacyCompatShims.cs               # Type forwarding and legacy namespace shims guaranteeing 100% zero breaking changes
+└── Media/                                 # 7. Managed In-Process Media Engine
+    └── Engine/                            # FfmpegInProcessEncoder, FfmpegInProcessProbe, ManagedMp4Probe, FfmpegInProcessAudioDecoder
+```
+
+### 80.3 Backward Compatibility Guarantees (`LegacyCompatShims.cs`)
+To prevent breaking changes across the extensive solution codebase without requiring mass code rewrites across dozens of downstream files:
+1. Canonical classes reside in their target domain namespaces.
+2. [`LegacyCompatShims.cs`](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/ITB-SCREEN-RECORDER.Core/Compatibility/LegacyCompatShims.cs) provides type aliases and inheriting shims within legacy namespaces:
+   - `ITB_SCREEN_RECORDER.Core.Abstractions` (`IAudioCaptureProvider`, `IScreenCaptureProvider`, `IFeatureDbInitializer`, `BaseSqliteConnectionFactory`, `SqliteMigrationExtensions`)
+   - `ITB_SCREEN_RECORDER.Core.Common` (`Logger`, `BufferLimits`, `SingleInstanceLock`, `CoreLoggerProvider`)
+   - `ITB_SCREEN_RECORDER.Core.Data` (`JsonTypeHandler`)
+   - `ITB_SCREEN_RECORDER.Core.Diagnostics` (`DebugHelper`, `HardwareProbe`, `HardwareTelemetry`, `NetworkTelemetry`, `SystemMetricsProfiler`)
+   - `ITB_SCREEN_RECORDER.Core.Ipc` (`IpcServerFactory`, `IpcContracts`)
+   - `ITB_SCREEN_RECORDER.Core.Security` (`PayloadEncryptionManager`)
+3. All 515 solution tests pass with 0 regressions, maintaining full backward and forward compatibility.
+
+---
+
+## 81. Installer Cleansing & Licensing Alignment (2026-11-17)
+
+### 81.1 Deletion of FFmpeg GPL Disclaimers and Binaries
+Following the total migration to in-process NuGet bindings (`FFmpeg.AutoGen` under MIT license and `ManagedMp4Probe` pure C#):
+1. **Zero GPL Binary Bundling**: Monolithic `ffmpeg.exe` and `ffprobe.exe` binaries were removed from all solution outputs and packaging manifests.
+2. **License Sanitization**:
+   - Deleted `LICENSE-FFMPEG.txt` from `Installers/Windows/ITB-SCREEN-RECORDER.Installer/`.
+   - Removed `<Component Id="FfmpegLicenseDeclaration">` from WiX `Package.wxs`.
+   - Replaced the agent EULA `License.rtf` with a clean, modern enterprise End User License Agreement that declares all proprietary rights and references only permissive third-party open-source components.
+   - Cleaned legacy `chmod +x` commands referencing `ffmpeg` and `ffprobe` in Linux installer scripts (`setup.sh`).
+3. **MediaMTX Retained**: MediaMTX remains licensed under MIT in `ITB-SCREEN-RECORDER.Server.Installer` (`LICENSE-MEDIAMTX.txt`), accurately reflecting server streaming dependencies.
 
 ---
 

@@ -12,6 +12,9 @@
 | WP ID | SRS Ref | WP Description | Base Ref | Target Branch | Assigned Agent | Status | Active Branch |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **WP-100** | SRS-GEN-001 | Baseline As-Is Discovery & Rules Ingestion | `master` | `arch/wp-100-baseline` | `@BaselineAuditor` | ✅ Completed | `master` |
+| **WP-101** | SRS-MED-001 | In-Process Media Pipeline & Zero-Binary Migration (NuGet FFmpeg, ManagedMp4Probe, In-Process Audio Decoder, Eliminating `ffmpeg.exe` & `ffprobe.exe`, Chrome GPU/CPU priority invariant) | `master` | `feature/ffmpeg-nuget` | `@SoftwareEngineer` | ✅ Completed | `feature/ffmpeg-nuget` |
+| **WP-102** | SRS-PKG-001 | Installer License Cleansing & Proprietary EULA Transition (Removal of FFmpeg GPL licenses/disclaimers, retention of MediaMTX MIT) | `feature/ffmpeg-nuget` | `feature/ffmpeg-nuget` | `@CM_Specialist` | ✅ Completed | `feature/ffmpeg-nuget` |
+| **WP-103** | SRS-ARC-001 | Core Domain Architecture Restructuring & Legacy Shims (`Contracts/<Domain>`, `Data/<System>`, `Diagnostics/<System>`, `Infrastructure/<System>`, `Security/<System>`) | `feature/ffmpeg-nuget` | `feature/ffmpeg-nuget` | `@SystemArchitect` | ✅ Completed | `feature/ffmpeg-nuget` |
 
 ---
 

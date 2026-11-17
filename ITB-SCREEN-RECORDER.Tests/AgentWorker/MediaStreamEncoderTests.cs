@@ -18,31 +18,6 @@ namespace ITB_SCREEN_RECORDER.Tests.AgentWorker
     public class MediaStreamEncoderTests
     {
         [Fact]
-        public void AppConfig_EncoderEngine_DefaultsToInProcess()
-        {
-            var config = new AppConfig();
-            Assert.Equal("InProcess", config.EncoderEngine);
-        }
-
-        [Fact]
-        public void AppConfig_EncoderEngine_CanBeConfiguredToProcess()
-        {
-            var config = new AppConfig { EncoderEngine = "Process" };
-            Assert.Equal("Process", config.EncoderEngine);
-        }
-
-        [Fact]
-        public void FfmpegProcessManager_Implements_IMediaStreamEncoder()
-        {
-            var config = new AppConfig();
-            using var encoder = new FfmpegProcessManager(config);
-
-            Assert.IsAssignableFrom<IMediaStreamEncoder>(encoder);
-            Assert.False(encoder.IsRunning);
-            Assert.False(encoder.HasAudio);
-        }
-
-        [Fact]
         public void FfmpegInProcessEncoder_Implements_IMediaStreamEncoder()
         {
             var config = new AppConfig();
