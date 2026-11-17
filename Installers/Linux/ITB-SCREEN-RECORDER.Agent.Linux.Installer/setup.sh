@@ -88,9 +88,6 @@ chmod +x "$INSTALL_ROOT/service/ITB-SCREEN-RECORDER.AgentService"
 chmod +x "$INSTALL_ROOT/worker/ITB-SCREEN-RECORDER.AgentWorker"
 chmod 755 "/var/lib/itb-screen-recorder/certificates"
 
-if [ -f "$INSTALL_ROOT/worker/ffmpeg" ]; then
-    chmod +x "$INSTALL_ROOT/worker/ffmpeg"
-fi
 
 echo "--> Registering Systemd daemon..."
 cp "$CURRENT_DIR/itb-agent.service" /etc/systemd/system/

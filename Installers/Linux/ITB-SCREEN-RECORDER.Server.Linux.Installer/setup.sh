@@ -569,7 +569,7 @@ elif [ -f "$INSTALL_ROOT/mediamtx" ]; then
 fi
 
 if [ -d "$FEATURES_DEST_DIR" ]; then
-    find "$FEATURES_DEST_DIR" -type f \( -name "ffmpeg" -o -name "ffprobe" -o -executable \) -exec chmod +x {} + 2>/dev/null || true
+    find "$FEATURES_DEST_DIR" -type f -executable -exec chmod +x {} + 2>/dev/null || true
 fi
 
 echo "--> Registering and starting Systemd service..."

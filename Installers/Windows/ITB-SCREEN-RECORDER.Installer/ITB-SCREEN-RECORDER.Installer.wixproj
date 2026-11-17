@@ -26,10 +26,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="LICENSE-FFMPEG.txt" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<None Include="License.rtf" />
 	</ItemGroup>
 

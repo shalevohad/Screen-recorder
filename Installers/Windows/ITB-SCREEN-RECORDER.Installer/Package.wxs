@@ -116,11 +116,6 @@
 								Wait="yes" />
 			</Component>
 
-			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">
-				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
-			</Component>
-
-
 			<Files Include="$(var.PublishDir)\**">
 				<Exclude Files="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe" />
 			</Files>
