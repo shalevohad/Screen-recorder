@@ -125,7 +125,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         }
 
         /// <summary>
-        /// Probes media container and stream attributes directly using an external ffprobe process.
+        /// Probes media container and stream attributes directly using native in-process FFmpeg bindings (zero external processes).
         /// </summary>
         /// <param name="filePath">Target video chunk file path.</param>
         /// <param name="stationId">Target station identifier.</param>
@@ -133,143 +133,37 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         /// <returns>Extracted station metadata (width, height, fps, sample rate, channels, audio existence).</returns>
         public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct = default)
         {
-            // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
-            if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             {
-                try
-                {
-                    var inProcessProbe = new FfmpegInProcessProbe();
-                    var probeResult = await inProcessProbe.ProbeFileAsync(filePath, ct);
-                    if (probeResult.Success)
-                    {
-                        return new ProbedStationMetadata
-                        {
-                            Width = probeResult.Width,
-                            Height = probeResult.Height,
-                            Fps = probeResult.Fps,
-                            IsVfr = probeResult.IsVfr,
-                            PixFmt = probeResult.PixelFormat,
-                            HasAudio = probeResult.HasAudio,
-                            AudioSampleRate = probeResult.AudioSampleRate,
-                            AudioChannels = probeResult.AudioChannels,
-                            AudioCodec = probeResult.AudioCodec
-                        };
-                    }
-                }
-                catch (Exception pEx)
-                {
-                    _logger.LogDebug(pEx, "[MediaProbeService] In-process probe note on '{File}', attempting process fallback.", filePath);
-                }
+                return new ProbedStationMetadata();
             }
-
-            var meta = new ProbedStationMetadata();
-            string ffprobePath = ResolveFfprobeBinary();
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = ffprobePath,
-                Arguments = $"-v error -show_streams -show_format -of json \"{filePath.Replace('\\', '/')}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = false, // Critical: must be false to prevent OS pipe buffer deadlocks when ffprobe writes warnings
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var proc = new Process { StartInfo = psi };
 
             try
             {
-                proc.Start();
-
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
-
-                // Memory-efficient stream parsing (stream-based JSON parsing without intermediate StringBuilder)
-                using var doc = await JsonDocument.ParseAsync(proc.StandardOutput.BaseStream, default, timeoutCts.Token);
-                await proc.WaitForExitAsync(timeoutCts.Token);
-
-                if (doc.RootElement.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
+                var inProcessProbe = new FfmpegInProcessProbe();
+                var probeResult = await inProcessProbe.ProbeFileAsync(filePath, ct).ConfigureAwait(false);
+                if (probeResult.Success)
                 {
-                    bool foundVideo = false;
-                    foreach (var stream in streams.EnumerateArray())
+                    return new ProbedStationMetadata
                     {
-                        if (!stream.TryGetProperty("codec_type", out var typeProp)) continue;
-                        string type = typeProp.GetString() ?? "";
-
-                        if (type.Equals("video", StringComparison.OrdinalIgnoreCase) && !foundVideo)
-                        {
-                            foundVideo = true;
-                            if (stream.TryGetProperty("width", out var w) && w.TryGetInt32(out int wVal)) meta.Width = wVal;
-                            if (stream.TryGetProperty("height", out var h) && h.TryGetInt32(out int hVal)) meta.Height = hVal;
-                            if (stream.TryGetProperty("pix_fmt", out var pf)) meta.PixFmt = pf.GetString() ?? "yuv420p";
-
-                            double aFps = 0.0;
-                            double rFps = 0.0;
-
-                            bool hasAvg = stream.TryGetProperty("avg_frame_rate", out var afr) &&
-                                          ParseFpsFraction(afr.GetString(), out aFps) && aFps > 0 && aFps <= 240;
-
-                            bool hasR = stream.TryGetProperty("r_frame_rate", out var rfr) &&
-                                        ParseFpsFraction(rfr.GetString(), out rFps) && rFps > 0 && rFps <= 240;
-
-                            if (hasAvg && aFps >= 5 && aFps <= 120) meta.Fps = Math.Round(aFps, 2);
-                            else if (hasR && rFps >= 5 && rFps <= 120) meta.Fps = Math.Round(rFps, 2);
-                            else if (hasAvg) meta.Fps = Math.Round(aFps, 2);
-                            else if (hasR) meta.Fps = Math.Round(rFps, 2);
-
-                            if (hasAvg && hasR && Math.Abs(aFps - rFps) > 0.8)
-                            {
-                                meta.IsVfr = true;
-                            }
-                        }
-                        else if (type.Equals("audio", StringComparison.OrdinalIgnoreCase))
-                        {
-                            meta.HasAudio = true;
-                            if (stream.TryGetProperty("sample_rate", out var sr))
-                            {
-                                if (sr.ValueKind == JsonValueKind.Number && sr.TryGetInt32(out int srNum)) meta.AudioSampleRate = srNum;
-                                else if (sr.ValueKind == JsonValueKind.String && int.TryParse(sr.GetString(), out int srVal) && srVal > 0) meta.AudioSampleRate = srVal;
-                            }
-                            if (stream.TryGetProperty("channels", out var ch))
-                            {
-                                if (ch.ValueKind == JsonValueKind.Number && ch.TryGetInt32(out int chVal)) meta.AudioChannels = chVal;
-                                else if (ch.ValueKind == JsonValueKind.String && int.TryParse(ch.GetString(), out int chStrVal)) meta.AudioChannels = chStrVal;
-                            }
-                            if (stream.TryGetProperty("codec_name", out var cn))
-                            {
-                                meta.AudioCodec = cn.GetString() ?? "aac";
-                            }
-                        }
-                    }
+                        Width = probeResult.Width > 0 ? probeResult.Width : 1920,
+                        Height = probeResult.Height > 0 ? probeResult.Height : 1080,
+                        Fps = probeResult.Fps > 0 ? probeResult.Fps : 30.0,
+                        IsVfr = probeResult.IsVfr,
+                        PixFmt = !string.IsNullOrEmpty(probeResult.PixelFormat) ? probeResult.PixelFormat : "yuv420p",
+                        HasAudio = probeResult.HasAudio,
+                        AudioSampleRate = probeResult.AudioSampleRate,
+                        AudioChannels = probeResult.AudioChannels,
+                        AudioCodec = probeResult.AudioCodec
+                    };
                 }
             }
-            catch (JsonException) { /* Stream empty or invalid JSON */ }
-            catch (Exception ex)
+            catch (Exception pEx)
             {
-                _logger.LogError(ex, "[MediaProbeService] Failed probing file '{File}' for station '{StationId}'.", filePath, stationId);
+                _logger.LogWarning(pEx, "[MediaProbeService] In-process probe failed on '{File}'.", filePath);
             }
 
-            return meta;
-        }
-
-        private static bool ParseFpsFraction(string? fpsStr, out double fps)
-        {
-            fps = 30.0;
-            if (string.IsNullOrWhiteSpace(fpsStr)) return false;
-            var parts = fpsStr.Split('/');
-            if (parts.Length == 2 &&
-                double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double num) &&
-                double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double den) && den > 0)
-            {
-                fps = num / den;
-                return true;
-            }
-            if (double.TryParse(fpsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double val) && val > 0)
-            {
-                fps = val;
-                return true;
-            }
-            return false;
+            return new ProbedStationMetadata();
         }
     }
 }

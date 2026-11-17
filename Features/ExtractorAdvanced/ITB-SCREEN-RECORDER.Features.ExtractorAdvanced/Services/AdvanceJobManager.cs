@@ -1962,47 +1962,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 if (!File.Exists(filePath)) return false;
 
-                // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
-                if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+                // High-performance in-process probing via Core.Media native bindings (zero external process)
+                var inProcessProbe = new FfmpegInProcessProbe();
+                var probeResult = inProcessProbe.ProbeFile(filePath);
+                if (probeResult.Success)
                 {
-                    try
-                    {
-                        var inProcessProbe = new FfmpegInProcessProbe();
-                        var probeResult = inProcessProbe.ProbeFile(filePath);
-                        if (probeResult.Success)
-                        {
-                            return probeResult.HasAudio;
-                        }
-                    }
-                    catch (Exception pEx)
-                    {
-                        _advLogger.LogDebug(pEx, "[AdvanceJobManager] In-process audio probe note for '{Path}', attempting process fallback.", filePath);
-                    }
+                    return probeResult.HasAudio;
                 }
 
-                // 2. Fallback to external process if ffprobe exists
-                string ffprobePath = _binaryResolver.ResolveFfprobe();
-                if (string.IsNullOrWhiteSpace(ffprobePath) || !File.Exists(ffprobePath)) return false;
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = ffprobePath,
-                    Arguments = $"-v error -select_streams a -show_entries stream=codec_type -of csv=p=0 \"{filePath.Replace('\\', '/')}\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null) return false;
-                string output = proc.StandardOutput.ReadToEnd();
-                string error = proc.StandardError.ReadToEnd();
-                proc.WaitForExit(4000);
-                return output.Contains("audio", StringComparison.OrdinalIgnoreCase);
+                return false;
             }
             catch (Exception ex)
             {
-                _advLogger.LogWarning(ex, "[AdvanceJobManager] Failed to probe audio for {Path}, assuming false", filePath);
+                _advLogger.LogWarning(ex, "[AdvanceJobManager] In-process audio probe failed for {Path}, assuming false", filePath);
                 return false;
             }
         }

@@ -740,54 +740,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
 
-                // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
-                if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+                // High-performance in-process probing via Core.Media native bindings (zero external process)
+                try
                 {
-                    try
+                    var inProcessProbe = new FfmpegInProcessProbe();
+                    var probeResult = inProcessProbe.ProbeFile(filePath);
+                    if (probeResult.Success && probeResult.Duration.TotalMilliseconds > 50)
                     {
-                        var inProcessProbe = new FfmpegInProcessProbe();
-                        var probeResult = inProcessProbe.ProbeFile(filePath);
-                        if (probeResult.Success && probeResult.Duration.TotalMilliseconds > 50)
-                        {
-                            return (long)Math.Round(probeResult.Duration.TotalMilliseconds);
-                        }
-                    }
-                    catch (Exception pEx)
-                    {
-                        _logger.LogDebug(pEx, "[STORAGE SCANNER] In-process duration probe note for '{Path}', attempting fallback.", filePath);
+                        return (long)Math.Round(probeResult.Duration.TotalMilliseconds);
                     }
                 }
-
-                // 2. Fallback probe via FFprobe only if not derivable from file metadata and in-process probe is not available
-                // The file is finalized on disk: sample accurate duration using FFprobe
-                string? ffprobePath = ResolveFfprobePath();
-                if (!string.IsNullOrWhiteSpace(ffprobePath) && File.Exists(ffprobePath))
+                catch (Exception pEx)
                 {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = ffprobePath,
-                        Arguments = $"-v error -analyzeduration 1M -probesize 1M -threads 2 -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    using var proc = Process.Start(psi);
-                    if (proc != null)
-                    {
-                        if (proc.WaitForExit(3000))
-                        {
-                            string output = proc.StandardOutput.ReadToEnd().Trim();
-                            if (double.TryParse(output, NumberStyles.Any, CultureInfo.InvariantCulture, out double durSec) && durSec > 0.05)
-                            {
-                                return (long)Math.Round(durSec * 1000.0);
-                            }
-                        }
-                        else
-                        {
-                            try { proc.Kill(); } catch { }
-                        }
-                    }
+                    _logger.LogWarning(pEx, "[STORAGE SCANNER] In-process duration probe failed for '{Path}'.", filePath);
                 }
             }
             catch (Exception ex)
@@ -813,34 +778,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 return false;
             }
-        }
-
-        private static string? ResolveFfprobePath()
-        {
-            string binaryName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
-            var baseDir = AppContext.BaseDirectory;
-            string[] directCandidates = {
-                Path.Combine(baseDir, "Features", "ExtractorAdvanced", binaryName),
-                Path.Combine(baseDir, "Features", "Extractor", binaryName),
-                Path.Combine(baseDir, "Features", "Extractor", "Tools", "Win", binaryName),
-                Path.Combine(baseDir, "Tools", "Win", binaryName),
-                Path.Combine(baseDir, binaryName),
-                Path.Combine(baseDir, "..", "..", "..", "Tools", "Win", binaryName),
-                Path.Combine(baseDir, "..", "..", "..", "..", "Features", "ExtractorAdvanced", "ITB-SCREEN-RECORDER.Features.ExtractorAdvanced", "Tools", "Win", binaryName),
-                Path.Combine(baseDir, "..", "..", "..", "..", "Features", "Extractor", "ITB-SCREEN-RECORDER.Features.Extractor", "Tools", "Win", binaryName)
-            };
-
-            foreach (var path in directCandidates)
-            {
-                try
-                {
-                    var full = Path.GetFullPath(path);
-                    if (File.Exists(full)) return full;
-                }
-                catch { }
-            }
-
-            return binaryName;
         }
 
         private void TriggerCatalogSelfHeal()

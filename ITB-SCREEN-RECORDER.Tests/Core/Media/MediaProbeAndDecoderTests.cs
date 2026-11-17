@@ -163,5 +163,49 @@ namespace ITB_SCREEN_RECORDER.Tests.Core.Media
             var result2 = await service.ProbeFileAsync("   ");
             Assert.Null(result2);
         }
+
+        [Fact]
+        public void ManagedMp4Probe_HandlesInvalidFiles_Gracefully()
+        {
+            var result1 = ManagedMp4Probe.ProbeFile("");
+            Assert.False(result1.Success);
+            Assert.Contains("does not exist", result1.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+
+            var result2 = ManagedMp4Probe.ProbeFile("some_non_existent_file.mp4");
+            Assert.False(result2.Success);
+
+            string tempCorrupt = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllBytes(tempCorrupt, new byte[] { 0x00, 0x00, 0x00, 0x04 });
+                var result3 = ManagedMp4Probe.ProbeFile(tempCorrupt);
+                Assert.False(result3.Success);
+                Assert.Contains("too small", result3.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                if (File.Exists(tempCorrupt)) File.Delete(tempCorrupt);
+            }
+        }
+
+        [Fact]
+        public void ManagedMp4Probe_ExtractsMetadataFromValidMp4_IfPresent()
+        {
+            string samplePath = Path.Combine(AppContext.BaseDirectory, "Assets", "dummy_3440x1440_20_1fps.mp4");
+            if (!File.Exists(samplePath))
+            {
+                // Fallback to source asset if running under IDE test runner
+                samplePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "ITB-SCREEN-RECORDER.Server", "Assets", "dummy_3440x1440_20_1fps.mp4");
+            }
+
+            if (File.Exists(samplePath))
+            {
+                var result = ManagedMp4Probe.ProbeFile(samplePath);
+                Assert.True(result.Success);
+                Assert.True(result.HasVideo);
+                Assert.Equal(3440, result.Width);
+                Assert.Equal(1440, result.Height);
+            }
+        }
     }
 }

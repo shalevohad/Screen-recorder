@@ -22,12 +22,6 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string VideoEncoder { get; set; } = "auto";
 
         /// <summary>
-        /// Encoder execution engine: "InProcess" (native NuGet FFmpeg in-memory bindings) or "Process" (out-of-process ffmpeg.exe).
-        /// Defaults to "InProcess".
-        /// </summary>
-        public string EncoderEngine { get; set; } = "InProcess";
-
-        /// <summary>
         /// Anti-flipflop stabilization hold-off duration (in seconds) required for a restored primary display
         /// to remain continuously present before reclaiming the audio carrier from a surviving secondary display.
         /// </summary>

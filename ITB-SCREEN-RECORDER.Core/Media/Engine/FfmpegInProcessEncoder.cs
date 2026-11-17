@@ -142,6 +142,10 @@ namespace ITB_SCREEN_RECORDER.Core.Media.Engine
                         }
                         _videoCodecContext->bit_rate = bitrateNum;
 
+                        // Multi-core CPU utilization: auto-detect and distribute across all logical CPU cores
+                        _videoCodecContext->thread_count = 0;
+                        _videoCodecContext->thread_type = ffmpeg.FF_THREAD_FRAME | ffmpeg.FF_THREAD_SLICE;
+
                         // Determine pixel format and private options
                         AVDictionary* videoOptions = null;
                         if (encoderName.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
@@ -151,18 +155,28 @@ namespace ITB_SCREEN_RECORDER.Core.Media.Engine
                             ffmpeg.av_dict_set(&videoOptions, "tune", "ll", 0);
                             ffmpeg.av_dict_set(&videoOptions, "rc", "vbr", 0);
                             ffmpeg.av_dict_set(&videoOptions, "forced-idr", "1", 0);
+                            // Operational System Priority Invariant:
+                            // Limit NVENC surface buffers to 2 (instead of default 32) and delay to 0.
+                            // This caps recorder VRAM usage to <15MB, reserving GPU VRAM and scheduling bandwidth for Google Chrome.
+                            ffmpeg.av_dict_set(&videoOptions, "surfaces", "2", 0);
+                            ffmpeg.av_dict_set(&videoOptions, "delay", "0", 0);
+                            ffmpeg.av_dict_set(&videoOptions, "gpu", "0", 0);
                         }
                         else if (encoderName.Contains("qsv", StringComparison.OrdinalIgnoreCase))
                         {
                             _videoCodecContext->pix_fmt = AVPixelFormat.AV_PIX_FMT_NV12;
                             ffmpeg.av_dict_set(&videoOptions, "preset", "veryfast", 0);
                             ffmpeg.av_dict_set(&videoOptions, "forced_idr", "1", 0);
+                            // Intel VDENC fixed-function hardware (zero execution-unit contention with Chrome)
+                            ffmpeg.av_dict_set(&videoOptions, "low_power", "1", 0);
+                            ffmpeg.av_dict_set(&videoOptions, "async_depth", "1", 0);
                         }
                         else
                         {
                             _videoCodecContext->pix_fmt = AVPixelFormat.AV_PIX_FMT_YUV420P;
                             ffmpeg.av_dict_set(&videoOptions, "preset", "ultrafast", 0);
                             ffmpeg.av_dict_set(&videoOptions, "tune", "zerolatency", 0);
+                            ffmpeg.av_dict_set(&videoOptions, "threads", "auto", 0);
                         }
 
                         if ((_formatContext->oformat->flags & ffmpeg.AVFMT_GLOBALHEADER) != 0)
@@ -209,6 +223,7 @@ namespace ITB_SCREEN_RECORDER.Core.Media.Engine
                                 _audioCodecContext->sample_fmt = AVSampleFormat.AV_SAMPLE_FMT_FLTP;
                                 _audioCodecContext->bit_rate = 128_000;
                                 _audioCodecContext->time_base = new AVRational { num = 1, den = _audioCodecContext->sample_rate };
+                                _audioCodecContext->thread_count = 0;
 
                                 ffmpeg.av_channel_layout_default(&_audioCodecContext->ch_layout, audioChannels);
 

@@ -90,79 +90,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
                 catch (Exception pEx)
                 {
-                    _logger.LogDebug(pEx, "[VideoMetadataService] In-process probe note on '{File}', attempting process fallback.", matchingChunk.FullPath);
+                    _logger.LogWarning(pEx, "[VideoMetadataService] In-process metadata probe failed on '{File}'.", matchingChunk.FullPath);
                 }
             }
 
-            // 2. Fallback to external process if ffprobe exists on disk
-            if (string.IsNullOrWhiteSpace(ffprobePath) || !File.Exists(ffprobePath))
-            {
-                return new StreamMetadataDto { Fps = 30.0, FrameDurationMs = 33.333 };
-            }
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffprobePath,
-                Arguments = $"-v error -select_streams v:0 -show_entries stream=r_frame_rate,width,height -of csv=s=x:p=0 \"{matchingChunk.FullPath.Replace('\\', '/')}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            try
-            {
-                process.Start();
-                string output = await process.StandardOutput.ReadToEndAsync(ct);
-                await process.WaitForExitAsync(ct);
-
-                string[] parts = output.Trim().Split('x');
-                int width = 1920;
-                int height = 1080;
-                double fps = 30.0;
-
-                if (parts.Length >= 2)
-                {
-                    int.TryParse(parts[0], out width);
-                    int.TryParse(parts[1], out height);
-                }
-
-                if (parts.Length >= 3)
-                {
-                    string rateStr = parts[2];
-                    if (rateStr.Contains('/'))
-                    {
-                        var frac = rateStr.Split('/');
-                        if (double.TryParse(frac[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double num) &&
-                            double.TryParse(frac[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double den) && den > 0)
-                        {
-                            fps = num / den;
-                        }
-                    }
-                    else if (double.TryParse(rateStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double directFps))
-                    {
-                        fps = directFps;
-                    }
-                }
-
-                if (fps <= 0.5 || fps > 240) fps = 30.0;
-
-                var result = new StreamMetadataDto
-                {
-                    Fps = Math.Round(fps, 2),
-                    FrameDurationMs = Math.Round(1000.0 / fps, 3),
-                    Width = width,
-                    Height = height
-                };
-
-                _memoryCache?.Set(cacheKey, result, TimeSpan.FromMinutes(10));
-                return result;
-            }
-            catch
-            {
-                return new StreamMetadataDto { Fps = 30.0, FrameDurationMs = 33.333 };
-            }
+            return new StreamMetadataDto { Fps = 30.0, FrameDurationMs = 33.333, Width = 1920, Height = 1080 };
         }
 
         public async Task<double> GetAccurateVideoDurationSecondsAsync(string filePath, string ffprobePath, CancellationToken ct = default)
@@ -175,63 +107,21 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 return cachedDur;
             }
 
-            // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe process)
-            if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
-            {
-                try
-                {
-                    var inProcessProbe = new FfmpegInProcessProbe();
-                    var probeResult = await inProcessProbe.ProbeFileAsync(filePath, ct).ConfigureAwait(false);
-                    if (probeResult.Success && probeResult.Duration.TotalSeconds > 0)
-                    {
-                        double val = probeResult.Duration.TotalSeconds;
-                        _memoryCache?.Set(cacheKey, val, TimeSpan.FromHours(2));
-                        return val;
-                    }
-                }
-                catch (Exception pEx)
-                {
-                    _logger.LogDebug(pEx, "[VideoMetadataService] In-process duration probe note on '{File}', attempting process fallback.", filePath);
-                }
-            }
-
-            // 2. Fallback to external process if ffprobe exists on disk
-            if (string.IsNullOrWhiteSpace(ffprobePath) || !File.Exists(ffprobePath))
-            {
-                return 0;
-            }
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffprobePath,
-                Arguments = $"-v error -show_entries format=duration:stream=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = startInfo };
+            // High-performance in-process probing via Core.Media native bindings (zero external process)
             try
             {
-                process.Start();
-                string output = await process.StandardOutput.ReadToEndAsync(ct);
-                await process.WaitForExitAsync(ct);
-
-                var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var line in lines)
+                var inProcessProbe = new FfmpegInProcessProbe();
+                var probeResult = await inProcessProbe.ProbeFileAsync(filePath, ct).ConfigureAwait(false);
+                if (probeResult.Success && probeResult.Duration.TotalSeconds > 0)
                 {
-                    string cleaned = line.Trim();
-                    if (double.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out double val) && val > 0)
-                    {
-                        _memoryCache?.Set(cacheKey, val, TimeSpan.FromHours(2));
-                        return val;
-                    }
+                    double val = probeResult.Duration.TotalSeconds;
+                    _memoryCache?.Set(cacheKey, val, TimeSpan.FromHours(2));
+                    return val;
                 }
             }
-            catch (Exception ex)
+            catch (Exception pEx)
             {
-                _logger.LogWarning(ex, "[ACCURATE DURATION] Failed probing duration for {Path}", filePath);
+                _logger.LogWarning(pEx, "[VideoMetadataService] In-process duration probe failed on '{File}'.", filePath);
             }
 
             return 0;

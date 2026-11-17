@@ -304,10 +304,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 try
                 {
-                    Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
-                    Thread.CurrentThread.Priority = ThreadPriority.Highest;
+                    // Operational System Priority Invariant:
+                    // Maintain ProcessPriorityClass.Normal and ThreadPriority.Normal to ensure Google Chrome
+                    // (the operational command system) receives absolute scheduling priority on CPU and GPU.
+                    Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.Normal;
+                    Thread.CurrentThread.Priority = ThreadPriority.Normal;
                     WindowsNative.TimeBeginPeriod(1);
-                    Logger.Info("[WORKER:LIFECYCLE] Process/Thread priority set to High. WinMM 1ms timer period applied.");
+                    Logger.Info("[WORKER:LIFECYCLE] Process/Thread priority set to Normal (Operational Chrome priority preserved). WinMM 1ms timer period applied.");
                 }
                 catch (Exception ex)
                 {

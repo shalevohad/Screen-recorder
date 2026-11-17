@@ -43,8 +43,7 @@ namespace ITB_SCREEN_RECORDER.Core.Media.Engine
 
             if (!FfmpegNativeResolver.EnsureInitialized())
             {
-                result.ErrorMessage = "Native FFmpeg libraries not available.";
-                return result;
+                return ManagedMp4Probe.ProbeFile(filePath);
             }
 
             AVFormatContext* pFormatContext = null;
@@ -62,11 +61,14 @@ namespace ITB_SCREEN_RECORDER.Core.Media.Engine
                 int openRet = ffmpeg.avformat_open_input(&pFormatContext, normalizedPath, null, &options);
                 if (openRet < 0 || pFormatContext == null)
                 {
+                    var managedResult = ManagedMp4Probe.ProbeFile(filePath);
+                    if (managedResult.Success) return managedResult;
+
                     result.ErrorMessage = $"avformat_open_input failed with code: {openRet}";
                     return result;
                 }
 
-                int findInfoRet = ffmpeg.avformat_find_stream_info(pFormatContext, &options);
+                int findInfoRet = ffmpeg.avformat_find_stream_info(pFormatContext, null);
                 if (findInfoRet < 0)
                 {
                     Logger.Warn($"[INPROCESS-PROBE] avformat_find_stream_info warning ({findInfoRet}) on '{filePath}'");
@@ -143,6 +145,9 @@ namespace ITB_SCREEN_RECORDER.Core.Media.Engine
             }
             catch (Exception ex)
             {
+                var managedResult = ManagedMp4Probe.ProbeFile(filePath);
+                if (managedResult.Success) return managedResult;
+
                 result.ErrorMessage = ex.Message;
                 Logger.Error($"[INPROCESS-PROBE] Exception probing '{filePath}': {ex.Message}");
                 return result;

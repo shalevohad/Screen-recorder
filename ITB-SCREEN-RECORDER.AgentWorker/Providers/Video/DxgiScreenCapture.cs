@@ -62,6 +62,23 @@ namespace ITBRecorderAgent.Providers.Video
                         new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
                         out _device, out _context);
 
+                    // Operational System Priority Invariant:
+                    // Subordinate our screen capture GPU thread priority to -5 (range: -7 to +7)
+                    // so operational systems (e.g. Google Chrome) receive absolute priority for GPU memory and rendering cycles.
+                    try
+                    {
+                        using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
+                        if (dxgiDevice != null)
+                        {
+                            dxgiDevice.GPUThreadPriority = -5;
+                            Logger.Info("[DXGI] GPU Thread Priority set to -5 (Chrome/Operational foreground prioritization enabled).");
+                        }
+                    }
+                    catch (Exception prioEx)
+                    {
+                        Logger.Warn($"[DXGI] Could not set GPU thread priority: {prioEx.Message}");
+                    }
+
                     if (!adapter.EnumOutputs(OutputIndex, out IDXGIOutput output).Success)
                     {
                         throw new InvalidOperationException($"Cannot find DXGI Output {OutputIndex} on Adapter {AdapterIndex}");

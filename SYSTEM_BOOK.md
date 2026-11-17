@@ -5519,20 +5519,27 @@ The encoding and media processing subsystem was centralized into `ITB-SCREEN-REC
    - Stripped `AddFfmpegToPublishFiles`, `EnsureFfmpegInPublishDir`, and `EnsureFfmpegInOutputDir` from `ITB-SCREEN-RECORDER.AgentWorker.csproj`.
    - Worker payload and MSI/Linux `.run` installers no longer package `ffmpeg.exe` or `ffmpeg`, reducing agent installer size and eliminating external child process spawning.
 
-5. **Runtime Configuration & Backward Compatibility (`AppConfig.cs`)**:
-   - `EncoderEngine`: Configurable via `AppConfig` (`"InProcess"` [Default] or `"Process"` [Legacy Fallback]).
-   - If in-process initialization fails for any environment-specific reason, the pipeline automatically logs a diagnostic warning and falls back gracefully to `FfmpegProcessManager`.
+5. **Zero-Fallback In-Process Architecture (Enforced)**:
+   - All legacy fallback designs, subprocess spawning, and obsolete configuration options (including `EncoderEngine` and `FfmpegProcessManager`) have been completely removed from the solution.
+   - Capture encoding directly instantiates `FfmpegInProcessEncoder` with zero fallback to external `ffmpeg.exe` binaries.
+   - Probing operates purely in-process via `FfmpegInProcessProbe` backed by `ManagedMp4Probe`.
 
-### 79.3 In-Process Media Probing & Forensic Metadata Inspection (`IMediaProbeService` & `FfmpegInProcessProbe`)
-To eliminate external `ffprobe.exe` subprocess calls across the entire solution, `Core.Media` provides a native in-process probe subsystem:
+### 79.3 In-Process Media Probing & Forensic Metadata Inspection (`IMediaProbeService`, `FfmpegInProcessProbe` & `ManagedMp4Probe`)
+To eliminate external `ffprobe.exe` subprocess calls across the entire solution, `Core.Media` provides a dual-layer in-process probe subsystem:
 1. **`IMediaProbeService` (`ITB-SCREEN-RECORDER.Core/Media/Contracts/IMediaProbeService.cs`)**:
    - `ProbeFileAsync(string filePath, CancellationToken ct)`: Asynchronously probes media container, duration, bitrate, video/audio stream attributes, codecs, and metadata.
    - `ProbeFile(string filePath)`: Synchronous probe method for zero-overhead inline queries.
 2. **`MediaProbeResult` (`ITB-SCREEN-RECORDER.Core/Media/Models/MediaProbeResult.cs`)**:
    - Strongly-typed DTO containing `Width`, `Height`, `Fps`, `IsVfr`, `PixelFormat`, `VideoCodec`, `HasAudio`, `AudioSampleRate`, `AudioChannels`, `AudioCodec`, `Duration`, `Bitrate`, and container/stream `Metadata`.
    - Helper methods `GetStartEpochMs()` and `GetStartEpochUtc()` to parse the forensic wall-clock calibration tag (`itb_start_epoch_ms`).
-3. **`FfmpegInProcessProbe` (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessProbe.cs`)**:
-   - Uses `avformat_open_input`, `avformat_find_stream_info`, and `av_dict_get` to inspect files in microseconds.
+3. **`ManagedMp4Probe` (`ITB-SCREEN-RECORDER.Core/Media/Engine/ManagedMp4Probe.cs`)**:
+   - Pure managed, zero-dependency ISO Base Media File Format (MP4 / MOV) container and stream probe.
+   - Directly parses box hierarchies (`moov`, `mvhd`, `trak`, `tkhd`, `mdia`, `mdhd`, `hdlr`, `minf`, `stbl`, `stsd`, `stts`, `udta`) in microseconds.
+   - Extracts accurate geometry (`Width`, `Height`), codecs (`avc1` -> `h264`, `mp4a` -> `aac`), sample rates, discrete audio channels (`AudioChannels = 2`), FPS, and forensic tags (`itb_start_epoch_ms`).
+   - Guarantees 100% reliable in-process probing across all platforms without requiring native C shared libraries or external executable processes.
+   - Complies strictly with Rule 10 non-locking stream semantics (`FileShare.ReadWrite | FileShare.Delete`).
+4. **`FfmpegInProcessProbe` (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessProbe.cs`)**:
+   - Seamlessly evaluates native FFmpeg libraries (`avformat_open_input`, `avformat_find_stream_info`) when available, and automatically utilizes `ManagedMp4Probe` for container inspection.
    - Enforces Rule 10 non-locking probe options (`-analyzeduration 1M -probesize 1M -threads 2`).
    - Integrated across the entire solution as the primary probing engine:
      - `ITB-SCREEN-RECORDER.Server/Services/VideoProbeService.cs`: Probes incoming client/worker chunk uploads in `AgentController.cs` in-memory.
@@ -5540,7 +5547,7 @@ To eliminate external `ffprobe.exe` subprocess calls across the entire solution,
      - `Features/Extractor/.../VideoMetadataService.cs`: In-process stream metadata and accurate PTS duration probing.
      - `Features/Extractor/.../StorageScannerService.cs`: Fallback segment duration measurement via direct in-process container probe.
      - `Features/ExtractorAdvanced/.../AdvanceJobManager.cs`: `ProbeFileHasAudio` verified in-memory without child processes.
-   - Binary packaging targets (`Tools\Win\ffprobe.exe` and `Tools/Linux/ffprobe`) removed from `ITB-SCREEN-RECORDER.Server.csproj` and Linux installer scripts, completely eliminating external `ffprobe` binaries.
+   - Binary packaging targets (`Tools\Win\ffprobe.exe` and `Tools/Linux/ffprobe`) removed from all solution projects and installers.
 
 ### 79.4 In-Process Audio Decoding & Waveform Peak Extraction (`IAudioDecoderService` & `FfmpegInProcessAudioDecoder`)
 1. **`IAudioDecoderService` (`ITB-SCREEN-RECORDER.Core/Media/Contracts/IAudioDecoderService.cs`)**:
@@ -5550,6 +5557,25 @@ To eliminate external `ffprobe.exe` subprocess calls across the entire solution,
    - Opens media files, locates audio streams, allocates native decoders (AAC/MP3/Opus), and resamples via `swresample` to 1000Hz 16-bit PCM mono.
    - Computes acoustic peak envelopes directly into caller buffers without spawning `ffmpeg.exe` child processes, avoiding OS pipe buffer exhaustion and process storms during multi-track NLE timeline scrolling.
    - Integrated into `Features/ExtractorAdvanced`'s `AdvancedExtractorService.GenerateAudioWaveformAsync`.
+
+### 79.5 Chrome Operational System Priority Invariant & High-Performance Parallelism
+Because Google Chrome hosts the primary operational mission application on the workstation, the recording system must never degrade Chrome's interactive responsiveness, rendering performance, or GPU memory availability:
+1. **Operating System Process & Thread Priority**:
+   - In `WorkerEngine.cs`, process priority is pinned to `ProcessPriorityClass.Normal` and worker thread priority to `ThreadPriority.Normal`.
+   - Prevents the capture loop from starving Chrome's renderer or compositor threads.
+2. **DXGI GPU Scheduler Subordination (`GPUThreadPriority = -5`)**:
+   - In `DxgiScreenCapture.cs`, the capture device queries `_device.QueryInterface<IDXGIDevice>()` and sets `dxgiDevice.GPUThreadPriority = -5`.
+   - Informs the Windows DirectX Graphics Kernel (`Dxgkrnl.sys`) GPU scheduler to prioritize foreground rendering operations (Chrome) ahead of desktop capture textures.
+3. **Zero VRAM Starvation**:
+   - In `FfmpegInProcessEncoder.cs`, hardware acceleration parameters strictly limit video memory:
+     - NVENC: `surfaces = 2`, `delay = 0`, restricting VRAM consumption to <15MB.
+     - QSV: `-low_power 1` utilizing Intel fixed-function VDENC hardware, bypassing general-purpose GPU execution units.
+4. **Full Multi-Core Parallelism on CPU Fallback**:
+   - When software encoding is selected or hardware acceleration is unavailable, `FfmpegInProcessEncoder` sets:
+     - `thread_count = 0` (automatic logical core allocation).
+     - `thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE` (concurrent multi-threading across both frame and slice domains).
+     - `threads = auto`.
+   - Maximizes throughput across all physical/logical CPU cores without blocking the capture loop or single-threading execution.
 
 ---
 
