@@ -12,11 +12,13 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Core.Media.Contracts;
+using ITB_SCREEN_RECORDER.Core.Media.Engine;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
-    public class MediaProbeService : IMediaProbeService
+    public class MediaProbeService : ITB_SCREEN_RECORDER.Features.Extractor.Services.IMediaProbeService
     {
         private readonly IStorageScannerService _storageScanner;
         private readonly IMemoryCache? _memoryCache;
@@ -131,6 +133,35 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         /// <returns>Extracted station metadata (width, height, fps, sample rate, channels, audio existence).</returns>
         public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct = default)
         {
+            // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
+            if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+            {
+                try
+                {
+                    var inProcessProbe = new FfmpegInProcessProbe();
+                    var probeResult = await inProcessProbe.ProbeFileAsync(filePath, ct);
+                    if (probeResult.Success)
+                    {
+                        return new ProbedStationMetadata
+                        {
+                            Width = probeResult.Width,
+                            Height = probeResult.Height,
+                            Fps = probeResult.Fps,
+                            IsVfr = probeResult.IsVfr,
+                            PixFmt = probeResult.PixelFormat,
+                            HasAudio = probeResult.HasAudio,
+                            AudioSampleRate = probeResult.AudioSampleRate,
+                            AudioChannels = probeResult.AudioChannels,
+                            AudioCodec = probeResult.AudioCodec
+                        };
+                    }
+                }
+                catch (Exception pEx)
+                {
+                    _logger.LogDebug(pEx, "[MediaProbeService] In-process probe note on '{File}', attempting process fallback.", filePath);
+                }
+            }
+
             var meta = new ProbedStationMetadata();
             string ffprobePath = ResolveFfprobeBinary();
 

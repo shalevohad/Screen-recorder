@@ -13,6 +13,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Media.Contracts;
+using ITB_SCREEN_RECORDER.Core.Media.Engine;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
@@ -28,7 +30,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly IVideoMetadataService _metadataService;
         private readonly ISynchronizationPlanBuilder _planBuilder;
         private readonly ISynchronizedTrackCutter _trackCutter;
-        private readonly IMediaProbeService _mediaProbeService;
+        private readonly ITB_SCREEN_RECORDER.Features.Extractor.Services.IMediaProbeService _mediaProbeService;
         private readonly ILogger<AdvancedExtractorService> _advancedLogger;
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
@@ -45,7 +47,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             IVideoMetadataService metadataService,
             ISynchronizationPlanBuilder planBuilder,
             ISynchronizedTrackCutter trackCutter,
-            IMediaProbeService mediaProbeService,
+            ITB_SCREEN_RECORDER.Features.Extractor.Services.IMediaProbeService mediaProbeService,
             ILogger<AdvancedExtractorService> logger,
             IMemoryCache? memoryCache = null,
             IKeystrokeSrtGenerator? srtGenerator = null,
@@ -467,6 +469,39 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     double sampleDur = Math.Min(dur, 15.0);
                     double seekOffset = Math.Max(0, (oStart - chunk.StartUtc).TotalSeconds);
 
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    linkedCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+                    // 1. In-process native audio decoding via Core.Media (eliminates spawning ffmpeg.exe process)
+                    if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+                    {
+                        try
+                        {
+                            var decoder = new FfmpegInProcessAudioDecoder();
+                            short[] samples = await decoder.DecodeAudioSamplesAsync(chunk.FullPath, seekOffset, sampleDur, 1000, 1, linkedCts.Token);
+                            if (samples.Length > 0)
+                            {
+                                double chunkBaseRelSec = (oStart - startUtc).TotalSeconds;
+                                for (int i = 0; i < samples.Length; i++)
+                                {
+                                    short sampleVal = samples[i];
+                                    double sampleRelSec = chunkBaseRelSec + (i / 1000.0);
+                                    int pIdx = (int)Math.Clamp(Math.Floor((sampleRelSec / totalSeconds) * points), 0, points - 1);
+                                    float amp = Math.Abs(sampleVal) / 32768.0f;
+                                    if (amp > peaks[pIdx])
+                                    {
+                                        peaks[pIdx] = amp;
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                        catch
+                        {
+                            // fallback to subprocess
+                        }
+                    }
+
                     var startInfo = new ProcessStartInfo
                     {
                         FileName = ffmpegPath,
@@ -480,9 +515,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         UseShellExecute = false,
                         CreateNoWindow = true
                     };
-
-                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    linkedCts.CancelAfter(TimeSpan.FromSeconds(3));
 
                     try
                     {

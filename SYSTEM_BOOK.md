@@ -5523,6 +5523,28 @@ The encoding and media processing subsystem was centralized into `ITB-SCREEN-REC
    - `EncoderEngine`: Configurable via `AppConfig` (`"InProcess"` [Default] or `"Process"` [Legacy Fallback]).
    - If in-process initialization fails for any environment-specific reason, the pipeline automatically logs a diagnostic warning and falls back gracefully to `FfmpegProcessManager`.
 
+### 79.3 In-Process Media Probing & Forensic Metadata Inspection (`IMediaProbeService` & `FfmpegInProcessProbe`)
+To eliminate external `ffprobe.exe` subprocess calls across the entire solution, `Core.Media` provides a native in-process probe subsystem:
+1. **`IMediaProbeService` (`ITB-SCREEN-RECORDER.Core/Media/Contracts/IMediaProbeService.cs`)**:
+   - `ProbeFileAsync(string filePath, CancellationToken ct)`: Asynchronously probes media container, duration, bitrate, video/audio stream attributes, codecs, and metadata.
+   - `ProbeFile(string filePath)`: Synchronous probe method for zero-overhead inline queries.
+2. **`MediaProbeResult` (`ITB-SCREEN-RECORDER.Core/Media/Models/MediaProbeResult.cs`)**:
+   - Strongly-typed DTO containing `Width`, `Height`, `Fps`, `IsVfr`, `PixelFormat`, `VideoCodec`, `HasAudio`, `AudioSampleRate`, `AudioChannels`, `AudioCodec`, `Duration`, `Bitrate`, and container/stream `Metadata`.
+   - Helper methods `GetStartEpochMs()` and `GetStartEpochUtc()` to parse the forensic wall-clock calibration tag (`itb_start_epoch_ms`).
+3. **`FfmpegInProcessProbe` (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessProbe.cs`)**:
+   - Uses `avformat_open_input`, `avformat_find_stream_info`, and `av_dict_get` to inspect files in microseconds.
+   - Enforces Rule 10 non-locking probe options (`-analyzeduration 1M -probesize 1M -threads 2`).
+   - Integrated into `Features/Extractor`'s `MediaProbeService.ProbeMediaFileDirectlyAsync` as the primary engine with seamless graceful fallback to `ffprobe.exe` if native libraries are unavailable.
+
+### 79.4 In-Process Audio Decoding & Waveform Peak Extraction (`IAudioDecoderService` & `FfmpegInProcessAudioDecoder`)
+1. **`IAudioDecoderService` (`ITB-SCREEN-RECORDER.Core/Media/Contracts/IAudioDecoderService.cs`)**:
+   - `ExtractWaveformPeaksAsync(...)`: Decodes audio and computes normalized peak envelopes (`0.0` to `1.0`) across a time window directly in memory.
+   - `DecodeAudioSamplesAsync(...)`: Decodes a time slice of an audio file to 16-bit PCM samples (`short[]`) at 1000Hz (or arbitrary sample rate and channel count).
+2. **`FfmpegInProcessAudioDecoder` (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessAudioDecoder.cs`)**:
+   - Opens media files, locates audio streams, allocates native decoders (AAC/MP3/Opus), and resamples via `swresample` to 1000Hz 16-bit PCM mono.
+   - Computes acoustic peak envelopes directly into caller buffers without spawning `ffmpeg.exe` child processes, avoiding OS pipe buffer exhaustion and process storms during multi-track NLE timeline scrolling.
+   - Integrated into `Features/ExtractorAdvanced`'s `AdvancedExtractorService.GenerateAudioWaveformAsync`.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
