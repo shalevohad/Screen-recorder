@@ -143,3 +143,30 @@ When modifying existing files:
 4. Keep `RULES.md` and `README.md` updated if new architectural rules are introduced.
 5. **Continuous System Book Sync**: Always update [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) whenever new features, endpoints, components, or structural patterns are introduced or modified.
 6. **Pre-Flight Dependency Verification via Socket.dev**: Before adding, installing, or modifying code dependent on any new npm or NuGet package, ALWAYS query and inspect its security profile on [https://socket.dev/](https://socket.dev/) (supply chain risk, author changes, install scripts, and CVEs). Never write code dependent on an unvetted or high-risk package. If risks exist, choose a secure alternative or use native platform APIs.
+
+---
+
+## 8. Defense Software Engineering Agent Federation Integration (.agent-kit)
+
+All AI agents (Antigravity coordinator, Antigravity subagents, and GitHub Copilot) operate within the unified **Defense Software Engineering Agent Federation** defined in `.agent-kit/agents/AGENTS.md`:
+
+| Agent Call-Sign | Subagent ID | Primary Role & Mandate | Key Authority & Documents |
+| :--- | :--- | :--- | :--- |
+| **`@ProjectLead`** | `project-lead` | Chief Systems Architect & Controller | SOW-WP authoring, `.agent-kit/tracking/WP_BOARD.md`, DoD / CDR gatekeeper. |
+| **`@BaselineAuditor`** | `baseline-auditor` | Reverse-Engineering & As-Is Mapping | Read-only discovery, `.agent-kit/tracking/BASELINE_AS_IS.md`. |
+| **`@SystemArchitect`** | `system-architect` | Target Architecture & CDR Design | Boundaries, DI scopes, `.agent-kit/deliverables/01_ARCHITECTURE_AND_DESIGN.md`. |
+| **`@HMI_Engineer`** | `hmi-engineer` | HMI & Client Systems Specialist | React 18 frontend, tactical palette, 10-15 Hz telemetry throttling. |
+| **`@DataArchitect`** | `data-architect` | Database & Persistence Architect | SQLite WAL, Dapper performance, zero-lock catalog access. |
+| **`@SoftwareEngineer`** | `software-engineer` | Core Implementation Engineer | Backend services, in-process media pipelines, zero-allocation hot paths. |
+| **`@AppSec_Engineer`** | `appsec-engineer` | AppSec & Anti-Poisoning Auditor | Pre-flight Socket.dev vetting, zero critical CVEs, absolute security veto. |
+| **`@VnV_Engineer`** | `vnv-engineer` | Verification & Validation Specialist | 100% test pass enforcement, ATP test harnesses, NCR tickets. |
+| **`@CM_Specialist`** | `cm-specialist` | Configuration Management Specialist | Branch lifecycles (`feat/<wp-id>-<slug>`), rebase protocols, packaging. |
+
+### Subagent Invocation in Antigravity
+Each agent is persistently registered in `.agents/agents/<id>.md` and can be invoked directly as a subagent via `invoke_subagent` using its Subagent ID (e.g. `TypeName: "software-engineer"`, `TypeName: "vnv-engineer"`, `TypeName: "appsec-engineer"`).
+
+### Shared Engineering & Operational Rules
+All implementations must strictly adhere to:
+- **Engineering Rules**: `.agent-kit/rules/engineering-rules.md` (Pure async/await, zero-allocation hot paths, `xi_`/`xo_`/`m_`/`s_` prefixes, `[LoggerMessage]`).
+- **Operational Rules**: `.agent-kit/rules/operational-rules.md` (WP tracking, NCR feedback loops, DoD gates).
+

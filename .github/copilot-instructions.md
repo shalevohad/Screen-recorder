@@ -22,6 +22,21 @@ ITB-SCREEN-RECORDER is an enterprise command-and-control (C2), screen capture, a
    and FFmpeg flags `-analyzeduration 1M -probesize 1M -threads 2` to prevent locking open recording files.
 6. **Multicam Synchronization**: When exporting multi-station recordings, global gaps are trimmed identically across all tracks, and station-specific internal gaps inject synthetic 5s "No Signal" dummy segments sliced via `ffconcat`.
 
-## Coding Standards
-- **C# / .NET 8**: Follow async/await throughout (`CancellationToken` propagation). Avoid blocking calls (`.Result`, `.Wait()`). Use structured logging (`ILogger<T>`).
-- **Frontend**: React 18 functional components with hooks. Use CSS custom properties defined in `ui_ux_design_specification.md` (`--bg-app`, `--surface-card`, `--accent-cyan`, `--accent-emerald`, `--accent-rose`). Avoid generic bright colors. Use semantic BEM/SCSS.
+## Coding Standards & Agent Federation (.agent-kit)
+This project operates under the **Defense Software Engineering Agent Federation** defined in `.agent-kit/agents/AGENTS.md`. All coding, review, and validation activities must adhere to:
+- **Roles:**
+  - `@ProjectLead`: Work package formulation, CDR gates, and Definition of Done.
+  - `@SoftwareEngineer`: Core backend implementation, zero-allocation hot paths, pure async/await, and source-generated `[LoggerMessage]`.
+  - `@AppSec_Engineer`: Pre-flight dependency vetting (zero critical CVEs via Socket.dev / NuGetAudit) and air-gap verification (Rule 14).
+  - `@VnV_Engineer`: Automated ATP unit/integration test harnesses, 100% test pass rate, and zero regressions.
+  - `@HMI_Engineer`: Tactical dark theme, 10-15 Hz telemetry throttling, virtualized grid cards (Rule 12).
+  - `@DataArchitect`: SQLite WAL mode, non-locking queries, and high-performance Dapper indexing.
+  - `@CM_Specialist`: Clean Git hygiene, Conventional Commits, and branch lifecycle (`feat/<wp-id>-<slug>`).
+- **Engineering Rules (`.agent-kit/rules/engineering-rules.md`):**
+  - Follow async/await throughout (`CancellationToken` propagation). Avoid blocking calls (`.Result`, `.Wait()`).
+  - Strict naming conventions: `xi_` + camelCase (inputs), `xo_` + camelCase (outputs), `m_` + camelCase (private fields), `s_` + camelCase (static fields).
+  - Zero-allocation hot paths using `Span<T>` and `MemoryPool<byte>.Shared`.
+- **Operational Rules (`.agent-kit/rules/operational-rules.md`):**
+  - Track active tasks in `.agent-kit/tracking/WP_BOARD.md`.
+  - Keep `SYSTEM_BOOK.md` synchronized with every architectural or schema change.
+
