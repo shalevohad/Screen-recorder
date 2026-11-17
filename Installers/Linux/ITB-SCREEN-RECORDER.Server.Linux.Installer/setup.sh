@@ -559,7 +559,6 @@ if [ -d "$INSTALL_ROOT/Tools" ]; then
 fi
 
 if [ -d "$INSTALL_ROOT/Tools/Linux" ]; then
-    chmod +x "$INSTALL_ROOT/Tools/Linux/ffprobe" 2>/dev/null || true
     chmod +x "$INSTALL_ROOT/Tools/Linux/mediamtx" 2>/dev/null || true
 fi
 

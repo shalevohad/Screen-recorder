@@ -5534,7 +5534,13 @@ To eliminate external `ffprobe.exe` subprocess calls across the entire solution,
 3. **`FfmpegInProcessProbe` (`ITB-SCREEN-RECORDER.Core/Media/Engine/FfmpegInProcessProbe.cs`)**:
    - Uses `avformat_open_input`, `avformat_find_stream_info`, and `av_dict_get` to inspect files in microseconds.
    - Enforces Rule 10 non-locking probe options (`-analyzeduration 1M -probesize 1M -threads 2`).
-   - Integrated into `Features/Extractor`'s `MediaProbeService.ProbeMediaFileDirectlyAsync` as the primary engine with seamless graceful fallback to `ffprobe.exe` if native libraries are unavailable.
+   - Integrated across the entire solution as the primary probing engine:
+     - `ITB-SCREEN-RECORDER.Server/Services/VideoProbeService.cs`: Probes incoming client/worker chunk uploads in `AgentController.cs` in-memory.
+     - `Features/Extractor/.../MediaProbeService.cs`: High-performance in-process station and file probing.
+     - `Features/Extractor/.../VideoMetadataService.cs`: In-process stream metadata and accurate PTS duration probing.
+     - `Features/Extractor/.../StorageScannerService.cs`: Fallback segment duration measurement via direct in-process container probe.
+     - `Features/ExtractorAdvanced/.../AdvanceJobManager.cs`: `ProbeFileHasAudio` verified in-memory without child processes.
+   - Binary packaging targets (`Tools\Win\ffprobe.exe` and `Tools/Linux/ffprobe`) removed from `ITB-SCREEN-RECORDER.Server.csproj` and Linux installer scripts, completely eliminating external `ffprobe` binaries.
 
 ### 79.4 In-Process Audio Decoding & Waveform Peak Extraction (`IAudioDecoderService` & `FfmpegInProcessAudioDecoder`)
 1. **`IAudioDecoderService` (`ITB-SCREEN-RECORDER.Core/Media/Contracts/IAudioDecoderService.cs`)**:

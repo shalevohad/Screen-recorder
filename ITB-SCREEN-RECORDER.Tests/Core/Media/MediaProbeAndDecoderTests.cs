@@ -8,8 +8,11 @@ using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Media.Contracts;
 using ITB_SCREEN_RECORDER.Core.Media.Engine;
 using ITB_SCREEN_RECORDER.Core.Media.Models;
+using ITB_SCREEN_RECORDER.Server.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using MediaProbeResult = ITB_SCREEN_RECORDER.Core.Media.Models.MediaProbeResult;
 
 namespace ITB_SCREEN_RECORDER.Tests.Core.Media
 {
@@ -136,6 +139,29 @@ namespace ITB_SCREEN_RECORDER.Tests.Core.Media
             Assert.Equal(1920, result.Width);
             Assert.Equal(1080, result.Height);
             Assert.Equal(60.0, result.Fps);
+        }
+
+        [Fact]
+        public async Task VideoProbeService_HandlesNonExistentFile_GracefullyWithoutProcess()
+        {
+            var logger = NullLogger<VideoProbeService>.Instance;
+            var service = new VideoProbeService(logger);
+
+            var result = await service.ProbeFileAsync("completely_non_existent_file_path.mp4");
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public async Task VideoProbeService_HandlesEmptyOrWhitespacePath_Gracefully()
+        {
+            var logger = NullLogger<VideoProbeService>.Instance;
+            var service = new VideoProbeService(logger);
+
+            var result1 = await service.ProbeFileAsync("");
+            Assert.Null(result1);
+
+            var result2 = await service.ProbeFileAsync("   ");
+            Assert.Null(result2);
         }
     }
 }

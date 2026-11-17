@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Media.Engine;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
@@ -739,7 +740,25 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
 
-                // Final fallback probe via FFprobe only if not derivable from file metadata
+                // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
+                if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+                {
+                    try
+                    {
+                        var inProcessProbe = new FfmpegInProcessProbe();
+                        var probeResult = inProcessProbe.ProbeFile(filePath);
+                        if (probeResult.Success && probeResult.Duration.TotalMilliseconds > 50)
+                        {
+                            return (long)Math.Round(probeResult.Duration.TotalMilliseconds);
+                        }
+                    }
+                    catch (Exception pEx)
+                    {
+                        _logger.LogDebug(pEx, "[STORAGE SCANNER] In-process duration probe note for '{Path}', attempting fallback.", filePath);
+                    }
+                }
+
+                // 2. Fallback probe via FFprobe only if not derivable from file metadata and in-process probe is not available
                 // The file is finalized on disk: sample accurate duration using FFprobe
                 string? ffprobePath = ResolveFfprobePath();
                 if (!string.IsNullOrWhiteSpace(ffprobePath) && File.Exists(ffprobePath))

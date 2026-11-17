@@ -125,11 +125,6 @@
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 
-		<None Include="Tools\Win\ffprobe.exe" Condition="Exists('Tools\Win\ffprobe.exe')">
-			<TargetPath>Tools\Win\ffprobe.exe</TargetPath>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-		</None>
 
 		<None Include="$(SolutionRoot)\Publish\Diagnostics\win-x64\itb-diagnostics.exe" Condition="Exists('$(SolutionRoot)\Publish\Diagnostics\win-x64\itb-diagnostics.exe')">
 			<TargetPath>Tools\itb-diagnostics.exe</TargetPath>
@@ -153,11 +148,6 @@
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 
-		<None Include="Tools/Linux/ffprobe" Condition="Exists('Tools/Linux/ffprobe')">
-			<TargetPath>Tools/Linux/ffprobe</TargetPath>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-		</None>
 
 		<None Include="$(SolutionRoot)/Publish/Diagnostics/linux-x64/itb-diagnostics" Condition="Exists('$(SolutionRoot)/Publish/Diagnostics/linux-x64/itb-diagnostics')">
 			<TargetPath>Tools/itb-diagnostics</TargetPath>

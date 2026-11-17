@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using ITB_SCREEN_RECORDER.Core.Media.Engine;
 
 public record MediaProbeResult(
     int Width,
@@ -25,7 +26,7 @@ public interface IVideoProbeService
 public class VideoProbeService : IVideoProbeService
 {
     private readonly ILogger<VideoProbeService> _logger;
-    private readonly string _ffprobePath;
+    private readonly string? _ffprobePath;
 
     public VideoProbeService(ILogger<VideoProbeService> logger)
     {
@@ -35,7 +36,37 @@ public class VideoProbeService : IVideoProbeService
 
     public async Task<MediaProbeResult?> ProbeFileAsync(string filePath, CancellationToken ct = default)
     {
-        if (!File.Exists(filePath) || string.IsNullOrWhiteSpace(_ffprobePath) || !File.Exists(_ffprobePath))
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            return null;
+        }
+
+        // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
+        if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+        {
+            try
+            {
+                var inProcessProbe = new FfmpegInProcessProbe();
+                var probeResult = await inProcessProbe.ProbeFileAsync(filePath, ct).ConfigureAwait(false);
+                if (probeResult.Success)
+                {
+                    return new MediaProbeResult(
+                        probeResult.Width > 0 ? probeResult.Width : 1920,
+                        probeResult.Height > 0 ? probeResult.Height : 1080,
+                        probeResult.Fps > 0 ? (int)Math.Round(probeResult.Fps) : 30,
+                        probeResult.Duration.TotalSeconds,
+                        probeResult.HasAudio
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[VideoProbeService] In-process probe note on '{Path}', attempting fallback.", filePath);
+            }
+        }
+
+        // 2. Fallback to external process if ffprobe binary exists on disk
+        if (string.IsNullOrWhiteSpace(_ffprobePath) || !File.Exists(_ffprobePath))
         {
             return null;
         }

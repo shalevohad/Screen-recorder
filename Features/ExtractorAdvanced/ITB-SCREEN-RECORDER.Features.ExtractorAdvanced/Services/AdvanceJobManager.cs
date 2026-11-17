@@ -20,6 +20,7 @@ using ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Core.Media.Engine;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 using AdvancedModels = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 
@@ -1960,7 +1961,29 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             try
             {
                 if (!File.Exists(filePath)) return false;
+
+                // 1. High-performance in-process probing via Core.Media native bindings (eliminates ffprobe.exe process)
+                if (FfmpegNativeResolver.IsAvailable || FfmpegNativeResolver.EnsureInitialized())
+                {
+                    try
+                    {
+                        var inProcessProbe = new FfmpegInProcessProbe();
+                        var probeResult = inProcessProbe.ProbeFile(filePath);
+                        if (probeResult.Success)
+                        {
+                            return probeResult.HasAudio;
+                        }
+                    }
+                    catch (Exception pEx)
+                    {
+                        _advLogger.LogDebug(pEx, "[AdvanceJobManager] In-process audio probe note for '{Path}', attempting process fallback.", filePath);
+                    }
+                }
+
+                // 2. Fallback to external process if ffprobe exists
                 string ffprobePath = _binaryResolver.ResolveFfprobe();
+                if (string.IsNullOrWhiteSpace(ffprobePath) || !File.Exists(ffprobePath)) return false;
+
                 var psi = new ProcessStartInfo
                 {
                     FileName = ffprobePath,
